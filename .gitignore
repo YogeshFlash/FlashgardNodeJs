@@ -1,0 +1,26 @@
+# Dependencies
+**/node_modules/
+
+# Build output
+**/dist/
+**/build/
+**/.turbo/
+**/.cache/
+**/.vite/
+
+# Logs
+**/*.log
+
+# Env
+**/.env
+**/.env.*
+!**/.env.example
+
+# OS / editor
+**/.DS_Store
+**/Thumbs.db
+**/.idea/
+**/.vscode/
+
+# Agent / tooling
+.git-backup/

@@ -1,0 +1,172 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------
+
+enum OrgType {
+  internal
+  distributor
+  dealer
+  retailer
+  supplier
+}
+
+enum AddressType {
+  billing
+  shipping
+  office
+  warehouse
+  other
+}
+
+// ---------------------------------------------------------
+// CORE MODELS
+// ---------------------------------------------------------
+
+model Organization {
+  id         String   @id @default(uuid()) @db.Uuid
+  parentId   String?  @map("parent_id") @db.Uuid
+  name       String   @db.VarChar(255)
+  type       OrgType
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
+
+  // Relationships
+  parent       Organization?  @relation("OrgHierarchy", fields: [parentId], references: [id])
+  children     Organization[] @relation("OrgHierarchy")
+  addresses    Address[]
+  contacts     Contact[]
+  roles        Role[]
+  users        User[]
+
+  @@map("organizations")
+}
+
+model Address {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String?     @map("organization_id") @db.Uuid
+  type           AddressType @default(office)
+  streetLine1    String      @map("street_line_1") @db.VarChar(255)
+  streetLine2    String?     @map("street_line_2") @db.VarChar(255)
+  city           String      @db.VarChar(100)
+  state          String      @db.VarChar(100)
+  postalCode     String      @map("postal_code") @db.VarChar(50)
+  country        String      @db.VarChar(100)
+  isPrimary      Boolean     @default(false) @map("is_primary")
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("addresses")
+}
+
+model Contact {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid
+  firstName      String    @map("first_name") @db.VarChar(100)
+  lastName       String    @map("last_name") @db.VarChar(100)
+  email          String?   @db.VarChar(255)
+  phone          String?   @db.VarChar(50)
+  jobTitle       String?   @map("job_title") @db.VarChar(100)
+  isPrimary      Boolean   @default(false) @map("is_primary")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  users          User[]
+
+  @@map("contacts")
+}
+
+// ---------------------------------------------------------
+// RBAC MODELS
+// ---------------------------------------------------------
+
+model Role {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid // Null = Global system role
+  name           String    @db.VarChar(100)
+  description    String?   @db.Text
+  isSystemRole   Boolean   @default(false) @map("is_system_role")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization   Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  users          User[]
+  permissions    RolePermission[]
+
+  @@unique([organizationId, name])
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  action      String           @unique @db.VarChar(100) // Format 'domain:action'
+  description String?          @db.Text
+
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ---------------------------------------------------------
+// USER MODEL
+// ---------------------------------------------------------
+
+model User {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid
+  roleId         String?   @map("role_id") @db.Uuid
+  contactId      String?   @map("contact_id") @db.Uuid
+  email          String    @unique @db.VarChar(255)
+  passwordHash   String    @map("password_hash") @db.VarChar(255)
+  firstName      String    @map("first_name") @db.VarChar(100)
+  lastName       String    @map("last_name") @db.VarChar(100)
+  isSuperAdmin   Boolean   @default(false) @map("is_super_admin")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  role           Role?         @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  contact        Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  auditLogs      AuditLog[]
+
+  @@map("users")
+}
+
+// ---------------------------------------------------------
+// NEW: Audit Logs Module
+// ---------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  action    String   @db.VarChar(50) // 'CREATE', 'UPDATE', 'DELETE'
+  entity    String   @db.VarChar(100) // 'Organization', 'Role', 'User'
+  entityId  String   @map("entity_id") @db.VarChar(255)
+  details   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
