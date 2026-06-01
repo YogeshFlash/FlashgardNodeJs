@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   Building2, Plus, Search, Edit2, Trash2, Loader2,
   Users, MapPin, Phone, Ticket, Key,
-  ChevronRight, Star, Check, ChevronDown
+  ChevronRight, ChevronLeft, Star, Check, ChevronDown
 } from 'lucide-react';
 import { orgsApi, contactsApi, usersApi, addressesApi, licensesApi, cutCreditsApi } from '../lib/api';
 import { HasPermission } from '../components/HasPermission';
@@ -815,26 +815,39 @@ const Organizations = () => {
       )}
 
       {/* ── Left Panel: Org List ── */}
-      <div className="w-72 flex-shrink-0 border-r border-slate-200 flex flex-col bg-slate-50">
-        <div className="p-4 border-b border-slate-200 bg-white space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-800">Organizations</h2>
+      <div className={`hidden lg:flex transition-all duration-300 ${isSidebarCollapsed ? 'w-20' : 'w-64'} border-r border-slate-200 bg-slate-50 flex-col shrink-0`}>
+        <div className="p-3 border-b border-slate-200 bg-white flex items-center justify-between">
+          {!isSidebarCollapsed && (
+            <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 truncate">
+              <Building2 className="w-3.5 h-3.5 text-[var(--color-accent)]" /> Organizations
+            </h2>
+          )}
+          <button 
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 transition-colors mx-auto lg:mx-0"
+          >
+            {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </button>
+        </div>
+        
+        {!isSidebarCollapsed && (
+          <div className="p-3 border-b border-slate-100 bg-white flex items-center justify-between gap-2">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/20 focus:bg-white transition-all"
+                placeholder="Search orgs..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
             <HasPermission permission="organizations:write">
-              <button onClick={() => setOrgModal('new')} className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition-colors shadow-sm" title="New Organization">
+              <button onClick={() => setOrgModal('new')} className="w-7 h-7 shrink-0 rounded-lg bg-[var(--color-accent)] text-white flex items-center justify-center hover:bg-[var(--color-accent-dark)] transition-colors shadow-sm" title="New Organization">
                 <Plus className="w-4 h-4" />
               </button>
             </HasPermission>
           </div>
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
-              placeholder="Search..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-        </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-2">
           {loading ? (
@@ -853,8 +866,8 @@ const Organizations = () => {
                   onClick={() => selectOrg(org)}
                   className={`group flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all ${
                     selected?.id === org.id 
-                      ? 'bg-blue-50 text-blue-700' 
-                      : 'hover:bg-slate-100/50 text-slate-600'
+                      ? 'bg-indigo-50 text-[var(--color-accent)]' 
+                      : 'hover:bg-white text-slate-600'
                   } ${isSidebarCollapsed ? 'justify-center' : ''}`}
                   title={isSidebarCollapsed ? org.name : ''}
                 >
@@ -865,12 +878,12 @@ const Organizations = () => {
                       <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
                     )}
                     {isSidebarCollapsed && selected?.id === org.id && (
-                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-600 rounded-full border-2 border-slate-50" />
+                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-[var(--color-accent)] rounded-full border-2 border-slate-50" />
                     )}
                   </div>
                   {!isSidebarCollapsed && (
                     <div className="flex-1 min-w-0 flex items-center justify-between">
-                      <span className={`text-[11px] font-medium truncate ${selected?.id === org.id ? 'font-bold text-blue-700' : 'text-slate-700'}`}>
+                      <span className={`text-[11px] font-medium truncate ${depth === 0 ? 'uppercase tracking-wider font-bold text-slate-900' : ''}`}>
                         {org.name}
                       </span>
                       {org.type && (
