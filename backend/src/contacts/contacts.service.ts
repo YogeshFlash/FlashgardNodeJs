@@ -26,17 +26,19 @@ export class ContactsService {
     });
   }
 
-  async findAll(organizationId?: string, currentUser?: any) {
-    const allowedOrgIds = currentUser ? await this.orgsService.getAllowedOrgIds(currentUser) : null;
-    
+  async findAll(organizationId?: string, currentUser?: any, includeDeleted?: boolean) {
     let whereClause: any = {};
     if (organizationId) {
-      if (allowedOrgIds !== null && !allowedOrgIds.includes(organizationId)) {
-         return []; // Return empty if asking for org they don't have access to
+      if (currentUser) {
+        const canAccess = await this.orgsService.canAccessOrg(currentUser, organizationId);
+        if (!canAccess) return [];
       }
       whereClause.organizationId = organizationId;
-    } else if (allowedOrgIds !== null) {
-      whereClause.organizationId = { in: allowedOrgIds };
+    } else if (currentUser) {
+      const allowedOrgIds = await this.orgsService.getAllowedOrgIds(currentUser);
+      if (allowedOrgIds !== null) {
+        whereClause.organizationId = { in: allowedOrgIds };
+      }
     }
 
     return this.prisma.contact.findMany({
@@ -84,6 +86,25 @@ export class ContactsService {
        throw new InternalServerErrorException('Permission denied.');
     }
 
+    return this.prisma.contact.update({
+      where: { id },
+      data: { isDeleted: true, deletedAt: new Date() },
+    });
+  }
+
+  async restore(id: string) {
+    const contact = await this.prisma.contact.findUnique({ where: { id } });
+    if (!contact) return null;
+    return this.prisma.contact.update({
+      where: { id },
+      data: { isDeleted: false, deletedAt: null },
+    });
+  }
+
+  async purge(id: string, currentUser?: any) {
+    if (!currentUser?.isSuperAdmin) {
+      throw new InternalServerErrorException('Only Super Admins can permanently delete contacts.');
+    }
     return this.prisma.contact.delete({ where: { id } });
   }
 }

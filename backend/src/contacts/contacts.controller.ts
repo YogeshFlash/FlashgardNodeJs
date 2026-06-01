@@ -14,8 +14,8 @@ export class ContactsController {
 
   @Get()
   @RequirePermissions('contacts:read')
-  findAll(@Query('organizationId') orgId?: string, @Req() req?: any) {
-    return this.contactsService.findAll(orgId, req?.user);
+  findAll(@Query('organizationId') orgId?: string, @Query('includeDeleted') includeDeleted?: string, @Req() req?: any) {
+    return this.contactsService.findAll(orgId, req?.user, includeDeleted === 'true');
   }
 
   @Get(':id')
@@ -34,5 +34,17 @@ export class ContactsController {
   @RequirePermissions('contacts:delete')
   remove(@Param('id') id: string, @Req() req?: any) {
     return this.contactsService.remove(id, req?.user);
+  }
+
+  @Patch(':id/restore')
+  @RequirePermissions('contacts:delete')
+  restore(@Param('id') id: string) {
+    return this.contactsService.restore(id);
+  }
+
+  @Delete(':id/purge')
+  @RequirePermissions('contacts:delete')
+  purge(@Param('id') id: string, @Req() req?: any) {
+    return this.contactsService.purge(id, req?.user);
   }
 }

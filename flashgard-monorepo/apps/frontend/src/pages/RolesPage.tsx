@@ -3,6 +3,7 @@ import { ShieldCheck, Plus, Search, Edit2, Trash2, Loader2, AlertCircle, Check }
 import { rolesApi, permissionsApi } from '../lib/api';
 import { HasPermission } from '../components/HasPermission';
 import { useAuth } from '../contexts/AuthContext';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 function RoleModal({ role, onClose, onSave }: { role: any; onClose: () => void; onSave: () => void }) {
   const [form, setForm] = useState<any>(role || { name: '', description: '', isSystemRole: false, permissionIds: [] });
@@ -62,7 +63,7 @@ function RoleModal({ role, onClose, onSave }: { role: any; onClose: () => void; 
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-2 border-b border-slate-100 pb-2">Role Permissions</label>
             {permsLoading ? (
-              <div className="flex items-center justify-center p-6"><Loader2 className="w-5 h-5 animate-spin text-blue-500" /></div>
+              <div className="flex items-center justify-center p-6"><Loader2 className="w-5 h-5 animate-spin text-[var(--color-primary)]" /></div>
             ) : (
               <div className="grid grid-cols-2 gap-x-6 gap-y-4 max-h-56 overflow-y-auto pr-2 custom-scrollbar">
                 {Object.entries(
@@ -78,7 +79,7 @@ function RoleModal({ role, onClose, onSave }: { role: any; onClose: () => void; 
                     {perms.map((p: any) => (
                       <label key={p.id} className="flex items-start gap-2.5 group cursor-pointer">
                         <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-colors
-                          ${(form.permissionIds || []).includes(p.id) ? 'bg-blue-600 border-blue-600' : 'border-slate-300 group-hover:border-blue-400'}`}>
+                          ${(form.permissionIds || []).includes(p.id) ? 'bg-[var(--color-primary)] border-[var(--color-primary)]' : 'border-slate-300 group-hover:border-[var(--color-primary)]'}`}>
                           {(form.permissionIds || []).includes(p.id) && <Check className="w-3 h-3 text-white" />}
                         </div>
                         <input type="checkbox" className="sr-only" checked={(form.permissionIds || []).includes(p.id)} onChange={() => togglePerm(p.id)} />
@@ -120,6 +121,42 @@ const RolesPage = () => {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState<any>(null);
+  const [confirm, setConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => Promise<void>;
+    isLoading: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: async () => {},
+    isLoading: false,
+  });
+
+  const closeConfirm = () => setConfirm(prev => ({ ...prev, isOpen: false }));
+
+  const showConfirm = (title: string, message: string, onConfirm: () => Promise<void>) => {
+    setConfirm({
+      isOpen: true,
+      title,
+      message,
+      isLoading: false,
+      onConfirm: async () => {
+        setConfirm(prev => ({ ...prev, isLoading: true }));
+        try {
+          await onConfirm();
+          closeConfirm();
+        } catch (err: any) {
+          console.error(err);
+          setConfirm(prev => ({ ...prev, isLoading: false }));
+          alert(err.message);
+        }
+      }
+    });
+  };
+
   const { user } = useAuth();
 
   const fetchRoles = async () => {
@@ -138,9 +175,14 @@ const RolesPage = () => {
 
   const handleDelete = async (id: string, isSystem: boolean) => {
     if (isSystem && !user?.isSuperAdmin) return alert('Only Super Admins can delete system roles.');
-    if (!confirm('Delete this role?')) return;
-    try { await rolesApi.delete(id); fetchRoles(); }
-    catch (e: any) { alert(e.message); }
+    showConfirm(
+      'Delete Role',
+      'Are you sure you want to delete this role? This will affect all users assigned to this role.',
+      async () => {
+        await rolesApi.delete(id);
+        fetchRoles();
+      }
+    );
   };
 
   return (
@@ -169,7 +211,7 @@ const RolesPage = () => {
         </div>
 
         {loading ? (
-          <div className="flex justify-center items-center h-48"><Loader2 className="w-7 h-7 text-blue-500 animate-spin" /></div>
+          <div className="flex justify-center items-center h-48"><Loader2 className="w-7 h-7 text-[var(--color-accent)] animate-spin" /></div>
         ) : error ? (
           <div className="flex items-center gap-2 text-red-600 p-8"><AlertCircle className="w-5 h-5" />{error}</div>
         ) : filtered.length === 0 ? (
@@ -192,15 +234,15 @@ const RolesPage = () => {
                   <tr key={role.id} className="hover:bg-slate-50/70 group transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
-                          <ShieldCheck className="w-4 h-4 text-purple-600" />
+                        <div className="w-8 h-8 rounded-lg bg-[var(--color-primary)]/10 flex items-center justify-center">
+                          <ShieldCheck className="w-4 h-4 text-[var(--color-primary)]" />
                         </div>
                         <span className="font-medium text-slate-800">{role.name}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-slate-500 max-w-xs truncate">{role.description || '—'}</td>
                     <td className="px-6 py-4">
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${role.isSystemRole ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${role.isSystemRole ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]' : 'bg-slate-100 text-slate-600'}`}>
                         {role.isSystemRole ? 'System' : 'Custom'}
                       </span>
                     </td>
@@ -232,6 +274,15 @@ const RolesPage = () => {
           </div>
         )}
       </div>
+
+      <ConfirmDialog 
+        isOpen={confirm.isOpen}
+        title={confirm.title}
+        message={confirm.message}
+        isLoading={confirm.isLoading}
+        onConfirm={confirm.onConfirm}
+        onClose={closeConfirm}
+      />
     </div>
   );
 };

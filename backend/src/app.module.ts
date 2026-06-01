@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -14,9 +15,50 @@ import { PermissionsGuard } from './auth/permissions.guard';
 import { PermissionsModule } from './permissions/permissions.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { AuditLoggingInterceptor } from './audit-logs/audit-logging.interceptor';
+import { FilmTypesModule } from './film-types/film-types.module';
+import { ModelCategoriesModule } from './model-categories/model-categories.module';
+import { BrandsModule } from './brands/brands.module';
+import { ModelsModule } from './models/models.module';
+import { CutPatternsModule } from './cut-patterns/cut-patterns.module';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
+import { ModelCutFilesModule } from './model-cut-files/model-cut-files.module';
+import { OrganizationTypesModule } from './organization-types/organization-types.module';
+import { InventoryModule } from './inventory/inventory.module';
+import { LicensesModule } from './licenses/licenses.module';
+import { CutCreditsModule } from './cut-credits/cut-credits.module';
+import { FilesModule } from './files/files.module';
+import { MigrationModule } from './migration/migration.module';
 
 @Module({
-  imports: [PrismaModule, OrganizationsModule, UsersModule, ContactsModule, AddressesModule, RolesModule, AuthModule, PermissionsModule, AuditLogsModule],
+  imports: [
+    ServeStaticModule.forRoot({
+      rootPath: join(process.cwd(), 'uploads'),
+      serveRoot: '/uploads',
+    }),
+    ScheduleModule.forRoot(),
+    PrismaModule, 
+    OrganizationsModule, 
+    UsersModule, 
+    ContactsModule, 
+    AddressesModule, 
+    RolesModule, 
+    AuthModule, 
+    PermissionsModule, 
+    AuditLogsModule,
+    FilmTypesModule,
+    ModelCategoriesModule,
+    BrandsModule,
+    ModelsModule,
+    CutPatternsModule,
+    ModelCutFilesModule,
+    OrganizationTypesModule,
+    InventoryModule,
+    LicensesModule,
+    CutCreditsModule,
+    FilesModule,
+    MigrationModule,
+  ],
   controllers: [AppController],
   providers: [
     AppService,

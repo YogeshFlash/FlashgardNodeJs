@@ -1,6 +1,7 @@
-import { Controller, Post, Body, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Body, UnauthorizedException, UseGuards, Request } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Public } from './public.decorator';
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -17,6 +18,21 @@ export class AuthController {
       throw new UnauthorizedException('Invalid credentials');
     }
     
-    return this.authService.login(user);
+    return this.authService.login(user, body.organizationId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('switch-org')
+  async switchOrg(@Request() req: any, @Body() body: { organizationId: string }) {
+    if (!body.organizationId) {
+       throw new UnauthorizedException('Organization ID is required');
+    }
+
+    const user = await this.authService.getUserWithOrgs(req.user.userId);
+    if (!user) {
+      throw new UnauthorizedException('User not found or inactive');
+    }
+
+    return this.authService.login(user, body.organizationId);
   }
 }

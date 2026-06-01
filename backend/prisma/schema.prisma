@@ -7,9 +7,751 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ---------------------------------------------------------
-// ENUMS
-// ---------------------------------------------------------
+model Organization {
+  id                     String              @id @default(uuid()) @db.Uuid
+  parentId               String?             @map("parent_id") @db.Uuid
+  name                   String              @db.VarChar(255)
+  isActive               Boolean             @default(true) @map("is_active")
+  createdAt              DateTime            @default(now()) @map("created_at")
+  updatedAt              DateTime            @default(now()) @updatedAt @map("updated_at")
+  deletedAt              DateTime?           @map("deleted_at")
+  isDeleted              Boolean             @default(false) @map("is_deleted")
+  legacyId               String?             @map("legacy_id")
+  organizationTypeId     String              @map("organization_type_id") @db.Uuid
+  addresses              Address[]
+  contacts               Contact[]
+  creditNotes            CreditNote[]
+  tenantTransactions     CreditTransaction[] @relation("TenantTransactions")
+  tenantCreditBatches    CutCreditBatch[]    @relation("TenantCreditBatches")
+  cutCredits             CutCredit[]         @relation("OwnerCutCredits")
+  tenantCredits          CutCredit[]         @relation("TenantCredits")
+  dispatchFrom           DispatchOrder[]     @relation("DispatchFrom")
+  dispatchTo             DispatchOrder[]     @relation("DispatchTo")
+  tenantWallets          EntityWallet[]      @relation("TenantWallets")
+  filmBatchesAsOwner     FilmBatch[]         @relation("OwnerBatches")
+  filmBatchesAsVendor    FilmBatch[]         @relation("VendorBatches")
+  filmTypes              FilmType[]          @relation("VendorFilms")
+  inwardReceiptsAsOwner  InwardReceipt[]     @relation("ReceiptOwner")
+  inwardReceiptsAsVendor InwardReceipt[]     @relation("ReceiptVendor")
+  transfersFrom          LicensingTransfer[] @relation("TransferFrom")
+  tenantTransfers        LicensingTransfer[] @relation("TenantTransfers")
+  transfersTo            LicensingTransfer[] @relation("TransferTo")
+  tenantLicenseBatches   OrgLicenseBatch[]   @relation("TenantLicenseBatches")
+  orgLicenses            OrgLicense[]        @relation("OwnerOrgLicenses")
+  tenantLicenses         OrgLicense[]        @relation("TenantLicenses")
+  organizationType       OrganizationType    @relation(fields: [organizationTypeId], references: [id])
+  parent                 Organization?       @relation("OrgHierarchy", fields: [parentId], references: [id])
+  children               Organization[]      @relation("OrgHierarchy")
+  assignedDealerQR       QRCode[]            @relation("AssignedDealer")
+  assignedQRCodes        QRCode[]            @relation("AssignedOrg")
+  returnRequests         ReturnRequest[]
+  roles                  Role[]
+  tenantSecurityAlerts   SecurityAlert[]     @relation("TenantSecurityAlerts")
+  teams                  Team[]
+  userOrganizations      UserOrganization[]
+  userPermissions        UserPermission[]
+  users                  User[]
+  workOrders             WorkOrder[]
+
+  @@map("organizations")
+}
+
+model OrganizationType {
+  id          String         @id @default(uuid()) @db.Uuid
+  name        String         @unique @db.VarChar(100)
+  description String?
+  isDeleted   Boolean        @default(false) @map("is_deleted")
+  deletedAt   DateTime?      @map("deleted_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @default(now()) @updatedAt @map("updated_at")
+  orgs        Organization[]
+
+  @@map("organization_types")
+}
+
+model Address {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String?       @map("organization_id") @db.Uuid
+  type           AddressType   @default(office)
+  streetLine1    String        @map("street_line_1") @db.VarChar(255)
+  streetLine2    String?       @map("street_line_2") @db.VarChar(255)
+  city           String        @db.VarChar(100)
+  state          String        @db.VarChar(100)
+  postalCode     String        @map("postal_code") @db.VarChar(50)
+  country        String        @db.VarChar(100)
+  isPrimary      Boolean       @default(false) @map("is_primary")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("addresses")
+}
+
+model Contact {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String?       @map("organization_id") @db.Uuid
+  firstName      String        @map("first_name") @db.VarChar(100)
+  lastName       String        @map("last_name") @db.VarChar(100)
+  email          String?       @db.VarChar(255)
+  phone          String?       @db.VarChar(50)
+  jobTitle       String?       @map("job_title") @db.VarChar(100)
+  isPrimary      Boolean       @default(false) @map("is_primary")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  deletedAt      DateTime?     @map("deleted_at")
+  isDeleted      Boolean       @default(false) @map("is_deleted")
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  users          User[]
+
+  @@index([organizationId])
+  @@map("contacts")
+}
+
+model Role {
+  id                String             @id @default(uuid()) @db.Uuid
+  organizationId    String?            @map("organization_id") @db.Uuid
+  name              String             @db.VarChar(100)
+  description       String?
+  legacyId          String?            @map("legacy_id")
+  isSystemRole      Boolean            @default(false) @map("is_system_role")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  deletedAt         DateTime?          @map("deleted_at")
+  isDeleted         Boolean            @default(false) @map("is_deleted")
+  isRestricted      Boolean            @default(false) @map("is_restricted")
+  permissions       RolePermission[]
+  organization      Organization?      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userOrganizations UserOrganization[]
+  users             User[]
+
+  @@unique([organizationId, name])
+  @@map("roles")
+}
+
+model Permission {
+  id              String           @id @default(uuid()) @db.Uuid
+  action          String           @unique @db.VarChar(100)
+  description     String?
+  deletedAt       DateTime?        @map("deleted_at")
+  isDeleted       Boolean          @default(false) @map("is_deleted")
+  roles           RolePermission[]
+  userPermissions UserPermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String     @map("role_id") @db.Uuid
+  permissionId String     @map("permission_id") @db.Uuid
+  dataScope    DataScope  @default(own) @map("data_scope")
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id                     String             @id @default(uuid()) @db.Uuid
+  organizationId         String?            @map("organization_id") @db.Uuid
+  roleId                 String?            @map("role_id") @db.Uuid
+  contactId              String?            @map("contact_id") @db.Uuid
+  email                  String             @unique @db.VarChar(255)
+  passwordHash           String             @map("password_hash") @db.VarChar(255)
+  firstName              String             @map("first_name") @db.VarChar(100)
+  lastName               String             @map("last_name") @db.VarChar(100)
+  isSuperAdmin           Boolean            @default(false) @map("is_super_admin")
+  isActive               Boolean            @default(true) @map("is_active")
+  legacyId               Int?               @map("legacy_id")
+  parentUserId           String?            @map("parent_user_id")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @default(now()) @updatedAt @map("updated_at")
+  deletedAt              DateTime?          @map("deleted_at")
+  isDeleted              Boolean            @default(false) @map("is_deleted")
+  auditLogs              AuditLog[]
+  createdDispatchOrders  DispatchOrder[]
+  teamMembers            TeamMember[]
+  organizations          UserOrganization[]
+  grantedUserPermissions UserPermission[]   @relation("GrantedByPermissions")
+  userPermissions        UserPermission[]   @relation("UserPermissions")
+  contact                Contact?           @relation(fields: [contactId], references: [id])
+  organization           Organization?      @relation(fields: [organizationId], references: [id])
+  role                   Role?              @relation(fields: [roleId], references: [id])
+  createdWorkOrders      WorkOrder[]
+
+  @@map("users")
+}
+
+model Team {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  name           String       @db.VarChar(100)
+  description    String?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at")
+  members        TeamMember[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  teamId    String   @map("team_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+model UserPermission {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  permissionId   String           @map("permission_id") @db.Uuid
+  effect         PermissionEffect
+  dataScope      DataScope?       @map("data_scope")
+  grantedById    String?          @map("granted_by_id") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at")
+  grantedBy      User?            @relation("GrantedByPermissions", fields: [grantedById], references: [id])
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permission     Permission       @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  user           User             @relation("UserPermissions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, permissionId])
+  @@map("user_permissions")
+}
+
+model UserOrganization {
+  userId         String       @map("user_id") @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  roleId         String       @map("role_id") @db.Uuid
+  isPrimary      Boolean      @default(false) @map("is_primary")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           Role         @relation(fields: [roleId], references: [id])
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, organizationId])
+  @@map("user_organizations")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  action    String   @db.VarChar(50)
+  entity    String   @db.VarChar(100)
+  entityId  String   @map("entity_id") @db.VarChar(255)
+  details   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model FilmType {
+  id               String            @id @default(uuid()) @db.Uuid
+  parentId         String?           @map("parent_id") @db.Uuid
+  name             String            @db.VarChar(100)
+  description      String?
+  isActive         Boolean           @default(true) @map("is_active")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  deletedAt        DateTime?         @map("deleted_at")
+  isDeleted        Boolean           @default(false) @map("is_deleted")
+  requiresQr       Boolean           @default(true) @map("requires_qr")
+  vendorId         String?           @map("vendor_id") @db.Uuid
+  layers           Int?              @default(1)
+  minForce         Decimal?          @map("min_force") @db.Decimal(10, 2)
+  minSpeed         Decimal?          @map("min_speed") @db.Decimal(10, 2)
+  thickness        Decimal?          @db.Decimal(10, 3)
+  filmBatches      FilmBatch[]
+  parent           FilmType?         @relation("FilmHierarchy", fields: [parentId], references: [id])
+  children         FilmType[]        @relation("FilmHierarchy")
+  vendor           Organization?     @relation("VendorFilms", fields: [vendorId], references: [id])
+  qrCodes          QRCode[]
+  workOrderOutputs WorkOrderOutput[]
+
+  @@unique([name, parentId])
+  @@map("film_types")
+}
+
+model ModelCategory {
+  id        String          @id @default(uuid()) @db.Uuid
+  parentId  String?         @map("parent_id") @db.Uuid
+  name      String          @db.VarChar(100)
+  legacyId       Int?            @map("legacy_id")
+  legacyParentId Int?            @map("legacy_parent_id")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  deletedAt DateTime?       @map("deleted_at")
+  isDeleted Boolean         @default(false) @map("is_deleted")
+  iconUrl   String?         @map("icon_url") @db.VarChar(255)
+  imageUrl  String?         @map("image_url") @db.VarChar(255)
+  sortOrder Int             @default(0) @map("sort_order")
+  parent    ModelCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children  ModelCategory[] @relation("CategoryHierarchy")
+  models    Model[]
+
+  @@unique([name, parentId])
+  @@map("model_categories")
+}
+
+model Brand {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String    @unique @db.VarChar(100)
+  legacyId       Int?      @map("legacy_id")
+  legacyParentId Int?      @map("legacy_parent_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
+  isDeleted Boolean   @default(false) @map("is_deleted")
+  imageUrl  String?   @map("image_url") @db.VarChar(255)
+  iconUrl   String?   @map("icon_url") @db.VarChar(255)
+  sortOrder Int       @default(0) @map("sort_order")
+  models    Model[]
+
+  @@map("brands")
+}
+
+model Model {
+  id         String         @id @default(uuid()) @db.Uuid
+  name       String         @db.VarChar(100)
+  brandId    String?        @map("brand_id") @db.Uuid
+  createdAt  DateTime       @default(now()) @map("created_at")
+  deletedAt  DateTime?      @map("deleted_at")
+  isDeleted  Boolean        @default(false) @map("is_deleted")
+  imageUrl   String?        @map("image_url") @db.VarChar(255)
+  iconUrl    String?        @map("icon_url") @db.VarChar(255)
+  categoryId String         @map("category_id") @db.Uuid
+  legacyId       Int?           @map("legacy_id")
+  legacyParentId Int?           @map("legacy_parent_id")
+  cutFiles       ModelCutFile[]
+  brand      Brand?         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  category   ModelCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  sortOrder  Int            @default(0) @map("sort_order")
+
+  @@unique([name, brandId, categoryId])
+  @@map("models")
+}
+
+model CutPattern {
+  id           String         @id @default(uuid()) @db.Uuid
+  name         String         @unique @db.VarChar(100)
+  description  String?
+  legacyId       Int?           @map("legacy_id")
+  legacyParentId Int?           @map("legacy_parent_id")
+  isActive       Boolean        @default(true) @map("is_active")
+  canPrintNCut Boolean        @default(false) @map("can_print_n_cut")
+  canDecalCut  Boolean        @default(false) @map("can_decal_cut")
+  cutFor       Int            @default(0) @map("cut_for")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  deletedAt    DateTime?      @map("deleted_at")
+  isDeleted    Boolean        @default(false) @map("is_deleted")
+  sortOrder    Int            @default(0) @map("sort_order")
+  modelFiles   ModelCutFile[]
+
+  @@map("cut_patterns")
+}
+
+model ModelCutFile {
+  id               String   @id @default(uuid()) @db.Uuid
+  modelId          String   @map("model_id") @db.Uuid
+  cutPatternId     String   @map("cut_pattern_id") @db.Uuid
+  encryptedPltData Bytes    @map("encrypted_plt_data")
+  encryptionKeyId  String?  @map("encryption_key_id") @db.VarChar(100)
+  createdAt        DateTime @default(now()) @map("created_at")
+  designFilePath   String?  @map("design_file_path") @db.VarChar(255)
+  legacyId       Int?     @map("legacy_id")
+  legacyParentId Int?     @map("legacy_parent_id")
+  legacyModelSkinId Int?    @map("legacy_model_skin_id")
+  cutPattern     CutPattern @relation(fields: [cutPatternId], references: [id], onDelete: Cascade)
+  model            Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@unique([modelId, cutPatternId])
+  @@map("model_cut_files")
+}
+
+model InwardReceipt {
+  id            String       @id @default(uuid()) @db.Uuid
+  receiptCode   String       @unique @map("receipt_code") @db.VarChar(100)
+  vendorId      String       @map("vendor_id") @db.Uuid
+  orgId         String       @map("org_id") @db.Uuid
+  invoiceNumber String?      @map("invoice_number") @db.VarChar(100)
+  receivedDate  DateTime     @map("received_date")
+  notes         String?
+  isDeleted     Boolean      @default(false) @map("is_deleted")
+  deletedAt     DateTime?    @map("deleted_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  filmBatches   FilmBatch[]
+  organization  Organization @relation("ReceiptOwner", fields: [orgId], references: [id])
+  vendor        Organization @relation("ReceiptVendor", fields: [vendorId], references: [id])
+
+  @@map("inward_receipts")
+}
+
+model FilmBatch {
+  id                 String              @id @default(uuid()) @db.Uuid
+  batchCode          String              @unique @map("batch_code") @db.VarChar(100)
+  filmTypeId         String              @map("film_type_id") @db.Uuid
+  vendorId           String              @map("vendor_id") @db.Uuid
+  orgId              String              @map("org_id") @db.Uuid
+  parentBatchId      String?             @map("parent_batch_id") @db.Uuid
+  quantity           Float
+  packSize           String?             @map("pack_size") @db.VarChar(100)
+  batchType          BatchType           @map("batch_type")
+  status             BatchStatus
+  arrivalDate        DateTime?           @map("arrival_date")
+  notes              String?
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @default(now()) @updatedAt @map("updated_at")
+  deletedAt          DateTime?           @map("deleted_at")
+  isDeleted          Boolean             @default(false) @map("is_deleted")
+  inwardReceiptId    String?             @map("inward_receipt_id") @db.Uuid
+  rollLength         Float?              @map("roll_length")
+  rollWidth          Float?              @map("roll_width")
+  dispatchOrderItems DispatchOrderItem[]
+  filmType           FilmType            @relation(fields: [filmTypeId], references: [id])
+  inwardReceipt      InwardReceipt?      @relation(fields: [inwardReceiptId], references: [id])
+  organization       Organization        @relation("OwnerBatches", fields: [orgId], references: [id])
+  parentBatch        FilmBatch?          @relation("BatchHierarchy", fields: [parentBatchId], references: [id])
+  childBatches       FilmBatch[]         @relation("BatchHierarchy")
+  vendor             Organization        @relation("VendorBatches", fields: [vendorId], references: [id])
+  qrCodes            QRCode[]
+  returnRequests     ReturnRequest[]
+  workOrderOutputs   WorkOrderOutput[]
+  sourceWorkOrders   WorkOrder[]         @relation("SourceWorkOrders")
+
+  @@map("film_batches")
+}
+
+model WorkOrder {
+  id              String            @id @default(uuid()) @db.Uuid
+  workOrderType   WorkOrderType     @map("work_order_type")
+  sourceBatchId   String            @map("source_batch_id") @db.Uuid
+  orgId           String            @map("org_id") @db.Uuid
+  status          WorkOrderStatus
+  inputQuantity   Float             @map("input_quantity")
+  outputQuantity  Float?            @map("output_quantity")
+  wastageQuantity Float?            @map("wastage_quantity")
+  notes           String?
+  createdBy       String            @map("created_by") @db.Uuid
+  closedAt        DateTime?         @map("closed_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  outputs         WorkOrderOutput[]
+  creator         User              @relation(fields: [createdBy], references: [id])
+  organization    Organization      @relation(fields: [orgId], references: [id])
+  sourceFilmBatch FilmBatch         @relation("SourceWorkOrders", fields: [sourceBatchId], references: [id])
+
+  @@map("work_orders")
+}
+
+model WorkOrderOutput {
+  id            String    @id @default(uuid()) @db.Uuid
+  workOrderId   String    @map("work_order_id") @db.Uuid
+  outputBatchId String    @map("output_batch_id") @db.Uuid
+  filmTypeId    String    @map("film_type_id") @db.Uuid
+  deviceModel   String    @map("device_model") @db.VarChar(255)
+  packSize      String    @map("pack_size") @db.VarChar(100)
+  quantity      Float
+  filmType      FilmType  @relation(fields: [filmTypeId], references: [id])
+  outputBatch   FilmBatch @relation(fields: [outputBatchId], references: [id])
+  workOrder     WorkOrder @relation(fields: [workOrderId], references: [id])
+
+  @@map("work_order_outputs")
+}
+
+model QRCode {
+  id               String              @id @default(uuid()) @db.Uuid
+  qrType           QRType              @map("qr_type")
+  filmBatchId      String              @map("film_batch_id") @db.Uuid
+  filmTypeId       String              @map("film_type_id") @db.Uuid
+  deviceModel      String?             @map("device_model") @db.VarChar(255)
+  status           QRStatus
+  assignedOrgId    String?             @map("assigned_org_id") @db.Uuid
+  assignedDealerId String?             @map("assigned_dealer_id") @db.Uuid
+  generatedAt      DateTime            @default(now()) @map("generated_at")
+  assignedAt       DateTime?           @map("assigned_at")
+  usedAt           DateTime?           @map("used_at")
+  returnedAt       DateTime?           @map("returned_at")
+  parentId         String?             @map("parent_id") @db.Uuid
+  sequenceNumber   String?             @map("sequence_number")
+  assignedDealer   Organization?       @relation("AssignedDealer", fields: [assignedDealerId], references: [id])
+  assignedOrg      Organization?       @relation("AssignedOrg", fields: [assignedOrgId], references: [id])
+  filmBatch        FilmBatch           @relation(fields: [filmBatchId], references: [id])
+  filmType         FilmType            @relation(fields: [filmTypeId], references: [id])
+  parent           QRCode?             @relation("QRHierarchy", fields: [parentId], references: [id])
+  children         QRCode[]            @relation("QRHierarchy")
+  returnItems      ReturnRequestItem[]
+
+  @@map("qr_codes")
+}
+
+model QRDailyLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  date           DateTime @unique @db.Date
+  totalGenerated Int      @default(0) @map("total_generated")
+
+  @@map("qr_daily_log")
+}
+
+model DispatchOrder {
+  id               String              @id @default(uuid()) @db.Uuid
+  fromOrgId        String              @map("from_org_id") @db.Uuid
+  toOrgId          String              @map("to_org_id") @db.Uuid
+  dispatchDate     DateTime            @map("dispatch_date")
+  status           DispatchOrderStatus
+  createdBy        String              @map("created_by") @db.Uuid
+  notes            String?
+  createdAt        DateTime            @default(now()) @map("created_at")
+  items            DispatchOrderItem[]
+  creator          User                @relation(fields: [createdBy], references: [id])
+  fromOrganization Organization        @relation("DispatchFrom", fields: [fromOrgId], references: [id])
+  toOrganization   Organization        @relation("DispatchTo", fields: [toOrgId], references: [id])
+
+  @@map("dispatch_orders")
+}
+
+model DispatchOrderItem {
+  id                 String        @id @default(uuid()) @db.Uuid
+  dispatchOrderId    String        @map("dispatch_order_id") @db.Uuid
+  filmBatchId        String        @map("film_batch_id") @db.Uuid
+  quantityDispatched Float         @map("quantity_dispatched")
+  quantityReceived   Float         @default(0) @map("quantity_received")
+  dispatchOrder      DispatchOrder @relation(fields: [dispatchOrderId], references: [id])
+  filmBatch          FilmBatch     @relation(fields: [filmBatchId], references: [id])
+
+  @@map("dispatch_order_items")
+}
+
+model ReturnRequest {
+  id                 String              @id @default(uuid()) @db.Uuid
+  requestingDealerId String              @map("requesting_dealer_id") @db.Uuid
+  filmBatchId        String              @map("film_batch_id") @db.Uuid
+  returnReason       ReturnReason        @map("return_reason")
+  quantity           Float
+  status             ReturnRequestStatus
+  distributorRemarks String?             @map("distributor_remarks")
+  hqRemarks          String?             @map("hq_remarks")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @default(now()) @updatedAt @map("updated_at")
+  creditNotes        CreditNote[]
+  items              ReturnRequestItem[]
+  filmBatch          FilmBatch           @relation(fields: [filmBatchId], references: [id])
+  requestingDealer   Organization        @relation(fields: [requestingDealerId], references: [id])
+
+  @@map("return_requests")
+}
+
+model ReturnRequestItem {
+  id              String        @id @default(uuid()) @db.Uuid
+  returnRequestId String        @map("return_request_id") @db.Uuid
+  qrCodeId        String?       @map("qr_code_id") @db.Uuid
+  quantity        Float
+  qrCode          QRCode?       @relation(fields: [qrCodeId], references: [id])
+  returnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id])
+
+  @@map("return_request_items")
+}
+
+model CreditNote {
+  id              String        @id @default(uuid()) @db.Uuid
+  returnRequestId String        @map("return_request_id") @db.Uuid
+  dealerOrgId     String        @map("dealer_org_id") @db.Uuid
+  amount          Float
+  issuedAt        DateTime      @map("issued_at")
+  notes           String?
+  dealerOrg       Organization  @relation(fields: [dealerOrgId], references: [id])
+  returnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id])
+
+  @@map("credit_notes")
+}
+
+model OrgLicenseBatch {
+  id          String         @id @default(uuid()) @db.Uuid
+  batchCode   String         @unique @map("batch_code") @db.VarChar(50)
+  licenseType OrgLicenseType @map("license_type")
+  description String?
+  totalCount  Int            @map("total_count")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  createdBy   String         @map("created_by") @db.Uuid
+  tenantId    String?        @map("tenant_id") @db.Uuid
+  tenant      Organization?  @relation("TenantLicenseBatches", fields: [tenantId], references: [id])
+  licenses    OrgLicense[]
+
+  @@map("org_license_batches")
+}
+
+model OrgLicense {
+  id             String                  @id @default(uuid()) @db.Uuid
+  key            String                  @unique @db.VarChar(50)
+  batchId        String                  @map("batch_id") @db.Uuid
+  status         OrgLicenseStatus        @default(AVAILABLE)
+  ownerId        String                  @map("owner_id") @db.Uuid
+  activatedAt    DateTime?               @map("activated_at")
+  createdAt      DateTime                @default(now()) @map("created_at")
+  deviceHash     String?                 @map("device_hash") @db.VarChar(255)
+  expiryDate     DateTime?               @map("expiry_date")
+  geoCity        String?                 @map("geo_city") @db.VarChar(100)
+  geoCountry     String?                 @map("geo_country") @db.VarChar(100)
+  macAddress     String?                 @map("mac_address") @db.VarChar(100)
+  machineId      String?                 @map("machine_id") @db.VarChar(100)
+  startDate      DateTime?               @map("start_date")
+  tenantId       String?                 @map("tenant_id") @db.Uuid
+  legacyId       String?                 @map("legacy_id")
+  credits        CutCredit[]             @relation("LicenseCredits")
+  transferItems  LicensingTransferItem[]
+  batch          OrgLicenseBatch         @relation(fields: [batchId], references: [id])
+  owner          Organization            @relation("OwnerOrgLicenses", fields: [ownerId], references: [id])
+  tenant         Organization?           @relation("TenantLicenses", fields: [tenantId], references: [id])
+  securityAlerts SecurityAlert[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([batchId])
+  @@index([tenantId])
+  @@map("org_licenses")
+}
+
+model LicensingTransfer {
+  id         String                  @id @default(uuid()) @db.Uuid
+  fromOrgId  String                  @map("from_org_id") @db.Uuid
+  toOrgId    String                  @map("to_org_id") @db.Uuid
+  status     TransferStatus          @default(PENDING)
+  createdAt  DateTime                @default(now()) @map("created_at")
+  resolvedAt DateTime?               @map("resolved_at")
+  resolvedBy String?                 @map("resolved_by") @db.Uuid
+  tenantId   String?                 @map("tenant_id") @db.Uuid
+  items      LicensingTransferItem[]
+  fromOrg    Organization            @relation("TransferFrom", fields: [fromOrgId], references: [id])
+  tenant     Organization?           @relation("TenantTransfers", fields: [tenantId], references: [id])
+  toOrg      Organization            @relation("TransferTo", fields: [toOrgId], references: [id])
+
+  @@map("licensing_transfers")
+}
+
+model LicensingTransferItem {
+  id         String            @id @default(uuid()) @db.Uuid
+  transferId String            @map("transfer_id") @db.Uuid
+  licenseId  String?           @map("license_id") @db.Uuid
+  creditId   String?           @map("credit_id") @db.Uuid
+  credit     CutCredit?        @relation(fields: [creditId], references: [id])
+  license    OrgLicense?       @relation(fields: [licenseId], references: [id])
+  transfer   LicensingTransfer @relation(fields: [transferId], references: [id])
+
+  @@map("licensing_transfer_items")
+}
+
+model CutCreditBatch {
+  id            String         @id @default(uuid()) @db.Uuid
+  batchCode     String         @unique @map("batch_code") @db.VarChar(50)
+  planType      CreditPlanType @map("plan_type")
+  totalCount    Int            @map("total_count")
+  creditsPerKey Int?           @map("credits_per_key")
+  validityDays  Int?           @map("validity_days")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  createdBy     String         @map("created_by") @db.Uuid
+  tenantId      String?        @map("tenant_id") @db.Uuid
+  tenant        Organization?  @relation("TenantCreditBatches", fields: [tenantId], references: [id])
+  credits       CutCredit[]
+
+  @@map("cut_credit_batches")
+}
+
+model CutCredit {
+  id               String                  @id @default(uuid()) @db.Uuid
+  key              String                  @unique @db.VarChar(50)
+  batchId          String                  @map("batch_id") @db.Uuid
+  status           CreditStatus            @default(AVAILABLE)
+  ownerId          String                  @map("owner_id") @db.Uuid
+  machineId        String?                 @map("machine_id") @db.VarChar(100)
+  remainingCredits Int?                    @map("remaining_credits")
+  activatedAt      DateTime?               @map("activated_at")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  deviceHash       String?                 @map("device_hash") @db.VarChar(255)
+  expiryDate       DateTime?               @map("expiry_date")
+  geoCity          String?                 @map("geo_city") @db.VarChar(100)
+  geoCountry       String?                 @map("geo_country") @db.VarChar(100)
+  macAddress       String?                 @map("mac_address") @db.VarChar(100)
+  startDate        DateTime?               @map("start_date")
+  tenantId         String?                 @map("tenant_id") @db.Uuid
+  licenseId        String?                 @map("license_id") @db.Uuid
+  batch            CutCreditBatch          @relation(fields: [batchId], references: [id])
+  license          OrgLicense?             @relation("LicenseCredits", fields: [licenseId], references: [id])
+  owner            Organization            @relation("OwnerCutCredits", fields: [ownerId], references: [id])
+  tenant           Organization?           @relation("TenantCredits", fields: [tenantId], references: [id])
+  transferItems    LicensingTransferItem[]
+  securityAlerts   SecurityAlert[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([batchId])
+  @@index([tenantId])
+  @@map("cut_credits")
+}
+
+model EntityWallet {
+  id              String              @id @default(uuid()) @db.Uuid
+  machineId       String?             @unique @map("machine_id") @db.VarChar(100)
+  orgId           String?             @unique @map("org_id") @db.Uuid
+  totalCredits    Int                 @default(0) @map("total_credits")
+  usedCredits     Int                 @default(0) @map("used_credits")
+  balance         Int                 @default(0)
+  lastRechargedAt DateTime?           @map("last_recharged_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  tenantId        String?             @map("tenant_id") @db.Uuid
+  transactions    CreditTransaction[]
+  tenant          Organization?       @relation("TenantWallets", fields: [tenantId], references: [id])
+
+  @@map("entity_wallets")
+}
+
+model CreditTransaction {
+  id        String          @id @default(uuid()) @db.Uuid
+  walletId  String          @map("wallet_id") @db.Uuid
+  amount    Int
+  type      TransactionType
+  source    String?         @db.VarChar(255)
+  createdAt DateTime        @default(now()) @map("created_at")
+  tenantId  String?         @map("tenant_id") @db.Uuid
+  tenant    Organization?   @relation("TenantTransactions", fields: [tenantId], references: [id])
+  wallet    EntityWallet    @relation(fields: [walletId], references: [id])
+
+  @@map("credit_transactions")
+}
+
+model MigrationLog {
+  id               String   @id @default(uuid()) @db.Uuid
+  module           String   @db.VarChar(50)
+  fileName         String   @map("file_name") @db.VarChar(255)
+  status           String   @db.VarChar(20)
+  recordsProcessed Int      @map("records_processed") @default(0)
+  recordsCreated   Int      @map("records_created") @default(0)
+  recordsUpdated   Int      @map("records_updated") @default(0)
+  recordsFailed    Int      @map("records_failed") @default(0)
+  errorMessage     String?  @map("error_message")
+  logs             Json?
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("migration_logs")
+}
+
+model SecurityAlert {
+  id                   String        @id @default(uuid()) @db.Uuid
+  licenseId            String?       @map("license_id") @db.Uuid
+  creditId             String?       @map("credit_id") @db.Uuid
+  attemptedFingerprint Json          @map("attempted_fingerprint")
+  storedFingerprint    Json?         @map("stored_fingerprint")
+  ipAddress            String?       @map("ip_address") @db.VarChar(45)
+  attemptedAt          DateTime      @default(now()) @map("attempted_at")
+  tenantId             String?       @map("tenant_id") @db.Uuid
+  credit               CutCredit?    @relation(fields: [creditId], references: [id])
+  license              OrgLicense?   @relation(fields: [licenseId], references: [id])
+  tenant               Organization? @relation("TenantSecurityAlerts", fields: [tenantId], references: [id])
+
+  @@map("security_alerts")
+}
 
 enum OrgType {
   internal
@@ -27,146 +769,118 @@ enum AddressType {
   other
 }
 
-// ---------------------------------------------------------
-// CORE MODELS
-// ---------------------------------------------------------
-
-model Organization {
-  id         String   @id @default(uuid()) @db.Uuid
-  parentId   String?  @map("parent_id") @db.Uuid
-  name       String   @db.VarChar(255)
-  type       OrgType
-  isActive   Boolean  @default(true) @map("is_active")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
-
-  // Relationships
-  parent       Organization?  @relation("OrgHierarchy", fields: [parentId], references: [id])
-  children     Organization[] @relation("OrgHierarchy")
-  addresses    Address[]
-  contacts     Contact[]
-  roles        Role[]
-  users        User[]
-
-  @@map("organizations")
+enum PermissionEffect {
+  grant
+  deny
 }
 
-model Address {
-  id             String      @id @default(uuid()) @db.Uuid
-  organizationId String?     @map("organization_id") @db.Uuid
-  type           AddressType @default(office)
-  streetLine1    String      @map("street_line_1") @db.VarChar(255)
-  streetLine2    String?     @map("street_line_2") @db.VarChar(255)
-  city           String      @db.VarChar(100)
-  state          String      @db.VarChar(100)
-  postalCode     String      @map("postal_code") @db.VarChar(50)
-  country        String      @db.VarChar(100)
-  isPrimary      Boolean     @default(false) @map("is_primary")
-  createdAt      DateTime    @default(now()) @map("created_at")
-
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@map("addresses")
+enum BatchType {
+  BULK_RECEIVED
+  RAW_MATERIAL
+  PACKAGED
+  WORK_ORDER_OUTPUT
 }
 
-model Contact {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String?   @map("organization_id") @db.Uuid
-  firstName      String    @map("first_name") @db.VarChar(100)
-  lastName       String    @map("last_name") @db.VarChar(100)
-  email          String?   @db.VarChar(255)
-  phone          String?   @db.VarChar(50)
-  jobTitle       String?   @map("job_title") @db.VarChar(100)
-  isPrimary      Boolean   @default(false) @map("is_primary")
-  createdAt      DateTime  @default(now()) @map("created_at")
-
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  users          User[]
-
-  @@map("contacts")
+enum BatchStatus {
+  BULK_RECEIVED
+  RAW_MATERIAL
+  PACKAGED
+  QR_APPLIED
+  IN_TRANSIT
+  AT_DISTRIBUTOR
+  AT_RETAILER
 }
 
-// ---------------------------------------------------------
-// RBAC MODELS
-// ---------------------------------------------------------
-
-model Role {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String?   @map("organization_id") @db.Uuid // Null = Global system role
-  name           String    @db.VarChar(100)
-  description    String?   @db.Text
-  isSystemRole   Boolean   @default(false) @map("is_system_role")
-  createdAt      DateTime  @default(now()) @map("created_at")
-
-  organization   Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  users          User[]
-  permissions    RolePermission[]
-
-  @@unique([organizationId, name])
-  @@map("roles")
+enum WorkOrderType {
+  REPACKAGING
+  SLITTING
 }
 
-model Permission {
-  id          String           @id @default(uuid()) @db.Uuid
-  action      String           @unique @db.VarChar(100) // Format 'domain:action'
-  description String?          @db.Text
-
-  roles       RolePermission[]
-
-  @@map("permissions")
+enum WorkOrderStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
 }
 
-model RolePermission {
-  roleId       String @map("role_id") @db.Uuid
-  permissionId String @map("permission_id") @db.Uuid
-
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
-  @@id([roleId, permissionId])
-  @@map("role_permissions")
+enum QRType {
+  INDIVIDUAL
+  MASTER_BOX
 }
 
-// ---------------------------------------------------------
-// USER MODEL
-// ---------------------------------------------------------
-
-model User {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String?   @map("organization_id") @db.Uuid
-  roleId         String?   @map("role_id") @db.Uuid
-  contactId      String?   @map("contact_id") @db.Uuid
-  email          String    @unique @db.VarChar(255)
-  passwordHash   String    @map("password_hash") @db.VarChar(255)
-  firstName      String    @map("first_name") @db.VarChar(100)
-  lastName       String    @map("last_name") @db.VarChar(100)
-  isSuperAdmin   Boolean   @default(false) @map("is_super_admin")
-  isActive       Boolean   @default(true) @map("is_active")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
-
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  role           Role?         @relation(fields: [roleId], references: [id], onDelete: SetNull)
-  contact        Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  auditLogs      AuditLog[]
-
-  @@map("users")
+enum QRStatus {
+  CREATED
+  IN_TRANSIT
+  ASSIGNED
+  USED
+  RETURNED
 }
 
-// ---------------------------------------------------------
-// NEW: Audit Logs Module
-// ---------------------------------------------------------
+enum DispatchOrderStatus {
+  DRAFT
+  DISPATCHED
+  RECEIVED
+  CANCELLED
+}
 
-model AuditLog {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String?  @map("user_id") @db.Uuid
-  action    String   @db.VarChar(50) // 'CREATE', 'UPDATE', 'DELETE'
-  entity    String   @db.VarChar(100) // 'Organization', 'Role', 'User'
-  entityId  String   @map("entity_id") @db.VarChar(255)
-  details   Json?
-  createdAt DateTime @default(now()) @map("created_at")
+enum ReturnReason {
+  UNSOLD
+  DAMAGED
+  WRONG_MODEL
+}
 
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+enum ReturnRequestStatus {
+  PENDING
+  DISTRIBUTOR_APPROVED
+  HQ_APPROVED
+  REJECTED
+  COMPLETED
+}
 
-  @@map("audit_logs")
+enum DataScope {
+  own
+  team
+  all
+}
+
+enum OrgLicenseStatus {
+  AVAILABLE
+  ACTIVE
+  REVOKED
+  IN_TRANSIT
+  SUSPENDED
+  EXPIRED
+}
+
+enum CreditStatus {
+  AVAILABLE
+  ALLOCATED
+  ACTIVE
+  EXPIRED
+  IN_TRANSIT
+  SUSPENDED
+  CONSUMED
+}
+
+enum TransferStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+  RECALLED
+}
+
+enum OrgLicenseType {
+  BASIC
+  ADVANCED
+  PRO
+}
+
+enum CreditPlanType {
+  USAGE
+  UNLIMITED
+  LIFETIME
+}
+
+enum TransactionType {
+  CREDIT
+  DEBIT
 }

@@ -1,4 +1,6 @@
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+import { CONFIG } from '@config';
+
+export const API_BASE = CONFIG.FRONTEND.API_BASE_URL;
 
 function getToken() {
   return localStorage.getItem('access_token');
@@ -9,8 +11,9 @@ async function request<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const token = getToken();
+  const isFormData = options.body instanceof FormData;
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers as Record<string, string>),
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -54,12 +57,21 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
+  switchOrg: (organizationId: string) =>
+    request<{ access_token: string; user: any }>('/auth/switch-org', {
+      method: 'POST',
+      body: JSON.stringify({ organizationId }),
+    }),
 };
 
 // ─── Organizations ───────────────────────────────────
 export const orgsApi = {
-  getAll: (search?: string) =>
-    request<any[]>(`/organizations${search ? `?search=${search}` : ''}`),
+  getAll: (search?: string, includeDeleted?: boolean) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (includeDeleted) params.append('includeDeleted', 'true');
+    return request<any[]>(`/organizations${params.toString() ? `?${params.toString()}` : ''}`);
+  },
   getOne: (id: string) => request<any>(`/organizations/${id}`),
   create: (data: any) =>
     request<any>('/organizations', { method: 'POST', body: JSON.stringify(data) }),
@@ -67,12 +79,38 @@ export const orgsApi = {
     request<any>(`/organizations/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) =>
     request<void>(`/organizations/${id}`, { method: 'DELETE' }),
+  restore: (id: string) =>
+    request<any>(`/organizations/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) =>
+    request<void>(`/organizations/${id}/purge`, { method: 'DELETE' }),
+};
+
+// ─── Organization Types ──────────────────────────────
+export const organizationTypesApi = {
+  getAll: (includeDeleted?: boolean) => request<any[]>(`/organization-types${includeDeleted ? '?includeDeleted=true' : ''}`),
+  create: (data: any) =>
+    request<any>('/organization-types', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) =>
+    request<any>(`/organization-types/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    request<void>(`/organization-types/${id}`, { method: 'DELETE' }),
+  restore: (id: string) =>
+    request<any>(`/organization-types/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) =>
+    request<void>(`/organization-types/${id}/purge`, { method: 'DELETE' }),
 };
 
 // ─── Users ──────────────────────────────────────────
 export const usersApi = {
-  getAll: (search?: string) =>
-    request<any[]>(`/users${search ? `?search=${search}` : ''}`),
+  getAll: (search?: string, includeDeleted?: boolean, skip?: number, take?: number, orgId?: string) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (includeDeleted) params.append('includeDeleted', 'true');
+    if (skip !== undefined) params.append('skip', skip.toString());
+    if (take !== undefined) params.append('take', take.toString());
+    if (orgId) params.append('orgId', orgId);
+    return request<any>(`/users${params.toString() ? `?${params.toString()}` : ''}`);
+  },
   getOne: (id: string) => request<any>(`/users/${id}`),
   create: (data: any) =>
     request<any>('/users', { method: 'POST', body: JSON.stringify(data) }),
@@ -80,11 +118,19 @@ export const usersApi = {
     request<any>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) =>
     request<void>(`/users/${id}`, { method: 'DELETE' }),
+  restore: (id: string) =>
+    request<any>(`/users/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) =>
+    request<void>(`/users/${id}/purge`, { method: 'DELETE' }),
+  getUserPermissions: (id: string) =>
+    request<any[]>(`/users/${id}/permissions`),
+  updateUserPermissions: (id: string, payload: { permissions: any[] }) =>
+    request<void>(`/users/${id}/permissions`, { method: 'PUT', body: JSON.stringify(payload) }),
 };
 
 // ─── Roles ──────────────────────────────────────────
 export const rolesApi = {
-  getAll: () => request<any[]>('/roles'),
+  getAll: (includeDeleted?: boolean) => request<any[]>(`/roles${includeDeleted ? '?includeDeleted=true' : ''}`),
   getOne: (id: string) => request<any>(`/roles/${id}`),
   create: (data: any) =>
     request<any>('/roles', { method: 'POST', body: JSON.stringify(data) }),
@@ -92,18 +138,30 @@ export const rolesApi = {
     request<any>(`/roles/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) =>
     request<void>(`/roles/${id}`, { method: 'DELETE' }),
+  restore: (id: string) =>
+    request<any>(`/roles/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) =>
+    request<void>(`/roles/${id}/purge`, { method: 'DELETE' }),
 };
 
 // ─── Contacts ───────────────────────────────────────
 export const contactsApi = {
-  getAll: (orgId?: string) =>
-    request<any[]>(`/contacts${orgId ? `?organizationId=${orgId}` : ''}`),
+  getAll: (orgId?: string, includeDeleted?: boolean) => {
+    const params = new URLSearchParams();
+    if (orgId) params.append('organizationId', orgId);
+    if (includeDeleted) params.append('includeDeleted', 'true');
+    return request<any[]>(`/contacts${params.toString() ? `?${params.toString()}` : ''}`);
+  },
   create: (data: any) =>
     request<any>('/contacts', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: any) =>
     request<any>(`/contacts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) =>
     request<void>(`/contacts/${id}`, { method: 'DELETE' }),
+  restore: (id: string) =>
+    request<any>(`/contacts/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) =>
+    request<void>(`/contacts/${id}/purge`, { method: 'DELETE' }),
 };
 
 // ─── Addresses ──────────────────────────────────────
@@ -116,20 +174,307 @@ export const addressesApi = {
     request<any>(`/addresses/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) =>
     request<void>(`/addresses/${id}`, { method: 'DELETE' }),
+  restore: (id: string) =>
+    request<any>(`/addresses/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) =>
+    request<void>(`/addresses/${id}/purge`, { method: 'DELETE' }),
 };
 
 // ─── Permissions ────────────────────────────────────
 export const permissionsApi = {
-  getAll: () => request<any[]>('/permissions'),
+  getAll: (includeDeleted?: boolean) => request<any[]>(`/permissions${includeDeleted ? '?includeDeleted=true' : ''}`),
   create: (data: any) =>
     request<any>('/permissions', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: any) =>
     request<any>(`/permissions/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) =>
     request<void>(`/permissions/${id}`, { method: 'DELETE' }),
+  restore: (id: string) =>
+    request<any>(`/permissions/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) =>
+    request<void>(`/permissions/${id}/purge`, { method: 'DELETE' }),
 };
 
 // ─── Audit Logs ─────────────────────────────────────
 export const auditLogsApi = {
   getAll: () => request<any[]>('/audit-logs'),
+};
+
+// ─── Product Management ──────────────────────────────
+export const filmTypesApi = {
+  getAll: (search?: string, includeDeleted?: boolean) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (includeDeleted) params.append('includeDeleted', 'true');
+    return request<any[]>(`/film-types${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getOne: (id: string) => request<any>(`/film-types/${id}`),
+  create: (data: any) => request<any>('/film-types', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => request<any>(`/film-types/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/film-types/${id}`, { method: 'DELETE' }),
+  restore: (id: string) => request<any>(`/film-types/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) => request<void>(`/film-types/${id}/purge`, { method: 'DELETE' }),
+};
+
+export const modelCategoriesApi = {
+  getAll: (search?: string, includeDeleted?: boolean) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (includeDeleted) params.append('includeDeleted', 'true');
+    return request<any[]>(`/model-categories${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getOne: (id: string) => request<any>(`/model-categories/${id}`),
+  create: (data: any) => request<any>('/model-categories', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => request<any>(`/model-categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/model-categories/${id}`, { method: 'DELETE' }),
+  restore: (id: string) => request<any>(`/model-categories/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) => request<void>(`/model-categories/${id}/purge`, { method: 'DELETE' }),
+};
+
+export const brandsApi = {
+  getAll: (categoryId?: string, search?: string, includeDeleted?: boolean) => {
+    const params = new URLSearchParams();
+    if (categoryId) params.append('categoryId', categoryId);
+    if (search) params.append('search', search);
+    if (includeDeleted) params.append('includeDeleted', 'true');
+    return request<any[]>(`/brands${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getOne: (id: string) => request<any>(`/brands/${id}`),
+  create: (data: any) => request<any>('/brands', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => request<any>(`/brands/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/brands/${id}`, { method: 'DELETE' }),
+  restore: (id: string) => request<any>(`/brands/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) => request<void>(`/brands/${id}/purge`, { method: 'DELETE' }),
+};
+
+export const modelsApi = {
+  getAll: async (brandId?: string, categoryId?: string, search?: string, skip?: number, take?: number) => {
+    let url = '/models?';
+    if (brandId) url += `brandId=${brandId}&`;
+    if (categoryId) url += `categoryId=${categoryId}&`;
+    if (search) url += `search=${search}&`;
+    if (skip !== undefined) url += `skip=${skip}&`;
+    if (take !== undefined) url += `take=${take}&`;
+    return request<{ items: any[], total: number }>(url);
+  },
+  getActiveCombinations: () => request<{categoryId: string, brandId: string}[]>('/models/active-combinations'),
+  getOne: (id: string) => request<any>(`/models/${id}`),
+  create: (data: any) => request<any>('/models', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => request<any>(`/models/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/models/${id}`, { method: 'DELETE' }),
+  restore: (id: string) => request<any>(`/models/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) => request<void>(`/models/${id}/purge`, { method: 'DELETE' }),
+};
+
+export const cutPatternsApi = {
+  getAll: (search?: string, includeDeleted?: boolean) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (includeDeleted) params.append('includeDeleted', 'true');
+    return request<any[]>(`/cut-patterns${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getOne: (id: string) => request<any>(`/cut-patterns/${id}`),
+  create: (data: any) => request<any>('/cut-patterns', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => request<any>(`/cut-patterns/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/cut-patterns/${id}`, { method: 'DELETE' }),
+  restore: (id: string) => request<any>(`/cut-patterns/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) => request<void>(`/cut-patterns/${id}/purge`, { method: 'DELETE' }),
+};
+
+export const modelCutFilesApi = {
+  getAll: (modelId?: string, search?: string, skip?: number, take?: number) => {
+    const params = new URLSearchParams();
+    if (modelId) params.append('modelId', modelId);
+    if (search) params.append('search', search);
+    if (skip !== undefined) params.append('skip', skip.toString());
+    if (take !== undefined) params.append('take', take.toString());
+    return request<{ items: any[], total: number }>(`/model-cut-files?${params}`);
+  },
+  getOne: (id: string) => request<any>(`/model-cut-files/${id}`),
+  create: (data: any) => request<any>('/model-cut-files', { method: 'POST', body: JSON.stringify(data) }),
+  upload: (formData: FormData) => request<any>('/model-cut-files/upload', { method: 'POST', body: formData }),
+  normalize: (id: string) => request<any>(`/model-cut-files/${id}/normalize`, { method: 'PATCH' }),
+  remove: (id: string) => request<void>(`/model-cut-files/${id}`, { method: 'DELETE' }),
+};
+
+// ─── Inventory ───────────────────────────────────────
+export const inventoryApi = {
+  // Inward Receipts
+  getInwardReceipts: (params?: Record<string, any>) => {
+    const q = new URLSearchParams();
+    if (params) Object.entries(params).forEach(([k, v]) => v != null && q.append(k, String(v)));
+    return request<any>(`/inventory/inward-receipts${q.toString() ? `?${q}` : ''}`);
+  },
+  createInwardReceipt: (data: any) => request<any>('/inventory/inward-receipts', { method: 'POST', body: JSON.stringify(data) }),
+  deleteInwardReceipt: (id: string) => request<any>(`/inventory/inward-receipts/${id}/delete`, { method: 'PATCH' }),
+
+  // Batches
+  getBatches: (params?: Record<string, any>) => {
+    const q = new URLSearchParams();
+    if (params) Object.entries(params).forEach(([k, v]) => v != null && q.append(k, String(v)));
+    return request<any>(`/inventory/batches${q.toString() ? `?${q}` : ''}`);
+  },
+  getBatch: (id: string) => request<any>(`/inventory/batches/${id}`),
+  createBulkInward: (data: any) => request<any>('/inventory/inward/bulk', { method: 'POST', body: JSON.stringify(data) }),
+  createRawInward: (data: any) => request<any>('/inventory/inward/raw', { method: 'POST', body: JSON.stringify(data) }),
+  createInwardProcurement: (data: any) => request<any>('/inventory/inward/procurement', { method: 'POST', body: JSON.stringify(data) }),
+  generateQR: (batchId: string, data: any) =>
+    request<any>(`/inventory/batches/${batchId}/qr-generate`, { method: 'POST', body: JSON.stringify(data) }),
+  getBatchQRCodes: (batchId: string) =>
+    request<any[]>(`/inventory/batches/${batchId}/qrs`),
+
+  // Work Orders
+  getWorkOrders: (params?: Record<string, any>) => {
+    const q = new URLSearchParams();
+    if (params) Object.entries(params).forEach(([k, v]) => v != null && q.append(k, String(v)));
+    return request<any>(`/inventory/work-orders${q.toString() ? `?${q}` : ''}`);
+  },
+  getWorkOrder: (id: string) => request<any>(`/inventory/work-orders/${id}`),
+  closeWorkOrder: (id: string, data: any) =>
+    request<any>(`/inventory/work-orders/${id}/close`, { method: 'PATCH', body: JSON.stringify(data) }),
+  addWorkOrderOutput: (id: string, data: any) =>
+    request<any>(`/inventory/work-orders/${id}/output`, { method: 'POST', body: JSON.stringify(data) }),
+  finalizeWorkOrder: (id: string) =>
+    request<any>(`/inventory/work-orders/${id}/finalize`, { method: 'POST' }),
+
+  // Dispatch
+  getDispatches: (params?: Record<string, any>) => {
+    const q = new URLSearchParams();
+    if (params) Object.entries(params).forEach(([k, v]) => v != null && q.append(k, String(v)));
+    return request<any>(`/inventory/dispatch${q.toString() ? `?${q}` : ''}`);
+  },
+  createDispatch: (data: any) => request<any>('/inventory/dispatch', { method: 'POST', body: JSON.stringify(data) }),
+  receiveDispatch: (id: string, data: any) =>
+    request<any>(`/inventory/dispatch/${id}/receive`, { method: 'POST', body: JSON.stringify(data) }),
+  updateBatch: (id: string, data: any) =>
+    request<any>(`/inventory/batches/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteBatch: (id: string) =>
+    request<any>(`/inventory/batches/${id}/delete`, { method: 'PATCH' }),
+  restoreBatch: (id: string) =>
+    request<any>(`/inventory/batches/${id}/restore`, { method: 'PATCH' }),
+  purgeBatch: (id: string) =>
+    request<any>(`/inventory/batches/${id}`, { method: 'DELETE' }),
+};
+
+// ─── Org Licenses ──────────────────────────────────────
+export const licensesApi = {
+  getBatches: () => request<any[]>('/licenses/batches'),
+  getBatchDetails: (id: string) => request<any>(`/licenses/batches/${id}`),
+  issue: (data: any) => request<any>('/licenses/issue', { method: 'POST', body: JSON.stringify(data) }),
+  dispatch: (data: { licenseIds: string[]; toOrgId: string }) => 
+    request<any>('/licenses/dispatch', { method: 'POST', body: JSON.stringify(data) }),
+  acceptTransfer: (id: string) => request<any>(`/licenses/accept-transfer/${id}`, { method: 'POST' }),
+  rejectTransfer: (id: string) => request<any>(`/licenses/reject-transfer/${id}`, { method: 'POST' }),
+  recallTransfer: (id: string) => request<any>(`/licenses/recall-transfer/${id}`, { method: 'POST' }),
+  activate: (data: { key: string; fingerprint: any; geo: any }) => 
+    request<any>('/licenses/activate', { method: 'POST', body: JSON.stringify(data) }),
+  getInventory: (orgId?: string, skip?: number, take?: number, search?: string) => {
+    const p = new URLSearchParams();
+    if (orgId) p.append('orgId', orgId);
+    if (skip !== undefined) p.append('skip', skip.toString());
+    if (take !== undefined) p.append('take', take.toString());
+    if (search) p.append('search', search);
+    return request<any>(`/licenses/inventory${p.toString() ? `?${p.toString()}` : ''}`);
+  },
+  getTransfers: (orgId?: string) => request<any[]>(`/licenses/transfers${orgId ? `?orgId=${orgId}` : ''}`),
+};
+
+// ─── Cut Credits ─────────────────────────────────────
+export const cutCreditsApi = {
+  getBatches: () => request<any[]>('/cut-credits/batches'),
+  issue: (data: any) => request<any>('/cut-credits/issue', { method: 'POST', body: JSON.stringify(data) }),
+  dispatch: (data: { creditIds: string[]; toOrgId: string }) => 
+    request<any>('/cut-credits/dispatch', { method: 'POST', body: JSON.stringify(data) }),
+  acceptTransfer: (id: string) => request<any>(`/cut-credits/accept-transfer/${id}`, { method: 'POST' }),
+  rejectTransfer: (id: string) => request<any>(`/cut-credits/reject-transfer/${id}`, { method: 'POST' }),
+  recallTransfer: (id: string) => request<any>(`/cut-credits/recall-transfer/${id}`, { method: 'POST' }),
+  activate: (data: { key: string; machineId: string; fingerprint: any; geo: any }) => 
+    request<any>('/cut-credits/activate', { method: 'POST', body: JSON.stringify(data) }),
+  getInventory: (orgId?: string, skip?: number, take?: number, search?: string) => {
+    const p = new URLSearchParams();
+    if (orgId) p.append('orgId', orgId);
+    if (skip !== undefined) p.append('skip', skip.toString());
+    if (take !== undefined) p.append('take', take.toString());
+    if (search) p.append('search', search);
+    return request<any>(`/cut-credits/inventory${p.toString() ? `?${p.toString()}` : ''}`);
+  },
+  getTransfers: (orgId?: string) => request<any[]>(`/cut-credits/transfers${orgId ? `?orgId=${orgId}` : ''}`),
+  getWallet: (machineId: string) => request<any>(`/cut-credits/wallet/${machineId}`),
+};
+
+// ─── Files ──────────────────────────────────────────
+export const filesApi = {
+  uploadAsset: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request<{ url: string }>('/files/upload-asset', {
+      method: 'POST',
+      body: formData,
+      headers: {
+        // fetch handles Content-Type for FormData
+      },
+    });
+  },
+};
+
+// ─── Migration ──────────────────────────────────────
+export const migrationApi = {
+  migrateCatalog: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request<any>('/migration/legacy/catalog', { method: 'POST', body: formData });
+  },
+  migrateSkins: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request<any>('/migration/legacy/skins', { method: 'POST', body: formData });
+  },
+  migrateRoles: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request<any>('/migration/legacy/roles', { method: 'POST', body: formData });
+  },
+  migrateUsers: (users?: File, userRoles?: File) => {
+    const formData = new FormData();
+    if (users) formData.append('users', users);
+    if (userRoles) formData.append('userRoles', userRoles);
+    return request<any>('/migration/legacy/users', { method: 'POST', body: formData });
+  },
+  migrateLicenses: (licenses: File, licenseDealers?: File) => {
+    const formData = new FormData();
+    formData.append('licenses', licenses);
+    if (licenseDealers) formData.append('licenseDealers', licenseDealers);
+    return request<any>('/migration/legacy/licenses', { method: 'POST', body: formData });
+  },
+  migrateMobileUsers: (mobileUsers: File) => {
+    const formData = new FormData();
+    formData.append('mobileUsers', mobileUsers);
+    return request<any>('/migration/legacy/mobile-users', { method: 'POST', body: formData });
+  },
+  migrateDesigns: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request<any>('/migration/legacy/designs', { method: 'POST', body: formData });
+  },
+  migrateDesignsLocal: () => {
+    return request<any>('/migration/legacy/designs/local', { method: 'POST' });
+  },
+  generateDesignImages: () => {
+    return request<any>('/migration/legacy/designs/generate-images', { method: 'POST' });
+  },
+  generateDesignImagesForModel: (modelId: string) => {
+    return request<any>(`/migration/legacy/designs/generate-images/model/${modelId}`, { method: 'POST' });
+  },
+  generateDesignImageForCutFile: (cutFileId: string) => {
+    return request<any>(`/migration/legacy/designs/generate-images/cut-file/${cutFileId}`, { method: 'POST' });
+  },
+  getLogs: () => {
+    return request<any[]>('/migration/logs');
+  },
+  cleanData: (module: string) => {
+    return request<any>('/migration/clean', {
+      method: 'POST',
+      body: JSON.stringify({ module })
+    });
+  }
 };

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req, Put } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 
@@ -14,8 +14,17 @@ export class UsersController {
 
   @Get()
   @RequirePermissions('users:read')
-  findAll(@Query('search') search?: string, @Req() req?: any) {
-    return this.usersService.findAll(search, req?.user);
+  findAll(
+    @Query('search') search?: string,
+    @Query('includeDeleted') includeDeleted?: string,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
+    @Query('orgId') orgId?: string,
+    @Req() req?: any
+  ) {
+    const skipVal = skip ? parseInt(skip, 10) : undefined;
+    const takeVal = take ? parseInt(take, 10) : undefined;
+    return this.usersService.findAll(search, req?.user, includeDeleted === 'true', skipVal, takeVal, orgId);
   }
 
   @Get(':id')
@@ -34,5 +43,29 @@ export class UsersController {
   @RequirePermissions('users:delete')
   remove(@Param('id') id: string, @Req() req?: any) {
     return this.usersService.remove(id, req?.user);
+  }
+
+  @Patch(':id/restore')
+  @RequirePermissions('users:delete') // Re-using delete permission for restore/purge
+  restore(@Param('id') id: string, @Req() req?: any) {
+    return this.usersService.restore(id, req?.user);
+  }
+
+  @Delete(':id/purge')
+  @RequirePermissions('users:delete')
+  purge(@Param('id') id: string, @Req() req?: any) {
+    return this.usersService.purge(id, req?.user);
+  }
+
+  @Get(':id/permissions')
+  @RequirePermissions('users:read')
+  getPermissions(@Param('id') id: string, @Req() req?: any) {
+    return this.usersService.getPermissions(id, req?.user);
+  }
+
+  @Put(':id/permissions')
+  @RequirePermissions('users:write')
+  updatePermissions(@Param('id') id: string, @Body() body: any, @Req() req?: any) {
+    return this.usersService.updatePermissions(id, body, req?.user);
   }
 }

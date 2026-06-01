@@ -2,8 +2,11 @@
 
 @layer theme {
   :root {
-    --color-primary: #1e3a8a; /* deep blue */
-    --color-primary-hover: #1e40af;
+    --color-primary: #C6011F; /* Cincinnati Red */
+    --color-primary-hover: #A50119;
+    --color-accent: #D4AF37; /* Gold */
+    --color-gold-light: #fdfcf0;
+    --color-gold-muted: #f9f1d8;
     --color-secondary: #f3f4f6;
     --color-background: #f8fafc;
     --color-surface: #ffffff;

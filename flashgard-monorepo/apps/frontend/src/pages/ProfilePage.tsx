@@ -32,17 +32,17 @@ const ProfilePage = () => {
       {/* Profile card */}
       <div className="card bg-white p-6 space-y-5">
         <div className="flex items-center gap-5 pb-5 border-b border-slate-100">
-          <div className="w-20 h-20 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold text-2xl shadow-lg shadow-blue-500/20">
+          <div className="w-20 h-20 rounded-2xl bg-[var(--color-accent)] flex items-center justify-center text-white font-bold text-2xl shadow-lg shadow-[var(--color-accent)]/20">
             {user?.email?.slice(0, 2).toUpperCase() || 'SA'}
           </div>
           <div>
             <h2 className="text-xl font-semibold text-slate-800">
-              {user?.isSuperAdmin ? 'Super Administrator' : 'Administrator'}
+              {user?.isSuperAdmin ? 'Platform Administrator' : 'Administrator'}
             </h2>
             <p className="text-slate-500 text-sm mt-0.5">{user?.email}</p>
             {user?.isSuperAdmin && (
               <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full">
-                <ShieldCheck className="w-3.5 h-3.5" /> Super Admin
+                <ShieldCheck className="w-3.5 h-3.5" /> Platform Admin
               </span>
             )}
           </div>
@@ -50,17 +50,17 @@ const ProfilePage = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-            <Mail className="w-5 h-5 text-blue-500" />
+            <Mail className="w-5 h-5 text-[var(--color-accent)]" />
             <div>
               <p className="text-xs text-slate-500 font-medium">Email</p>
               <p className="text-sm text-slate-800">{user?.email || '—'}</p>
             </div>
           </div>
           <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-            <ShieldCheck className="w-5 h-5 text-purple-500" />
+            <ShieldCheck className="w-5 h-5 text-[var(--color-primary)]" />
             <div>
               <p className="text-xs text-slate-500 font-medium">Access Level</p>
-              <p className="text-sm text-slate-800">{user?.isSuperAdmin ? 'Super Admin' : 'Standard'}</p>
+              <p className="text-sm text-slate-800">{user?.isSuperAdmin ? 'Platform Admin' : 'Standard'}</p>
             </div>
           </div>
         </div>

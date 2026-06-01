@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Req, Query } from '@nestjs/common';
 import { PermissionsService } from './permissions.service';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 
@@ -7,8 +7,8 @@ export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
 
   @Get()
-  findAll() {
-    return this.permissionsService.findAll();
+  findAll(@Query('includeDeleted') includeDeleted?: string) {
+    return this.permissionsService.findAll(includeDeleted === 'true');
   }
 
   @Post()
@@ -27,5 +27,17 @@ export class PermissionsController {
   @RequirePermissions('roles:delete')
   remove(@Param('id') id: string, @Req() req?: any) {
     return this.permissionsService.remove(id, req?.user);
+  }
+
+  @Patch(':id/restore')
+  @RequirePermissions('roles:write')
+  restore(@Param('id') id: string, @Req() req?: any) {
+    return this.permissionsService.restore(id, req?.user);
+  }
+
+  @Delete(':id/purge')
+  @RequirePermissions('roles:delete')
+  purge(@Param('id') id: string, @Req() req?: any) {
+    return this.permissionsService.purge(id, req?.user);
   }
 }

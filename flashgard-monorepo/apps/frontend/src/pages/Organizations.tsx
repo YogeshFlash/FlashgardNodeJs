@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Building2, Plus, Search, Edit2, Trash2, Loader2,
-  Users, MapPin, Phone, ShieldCheck,
-  ChevronRight, Star, Check
+  Users, MapPin, Phone, Ticket, Key,
+  ChevronRight, Star, Check, ChevronDown
 } from 'lucide-react';
-import { orgsApi, contactsApi, usersApi, addressesApi, rolesApi, permissionsApi } from '../lib/api';
+import { orgsApi, contactsApi, usersApi, addressesApi, licensesApi, cutCreditsApi } from '../lib/api';
 import { HasPermission } from '../components/HasPermission';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -36,7 +36,7 @@ function buildOrgRows(orgs: any[]) {
     o?.id && !seenRootIds.has(o.id) ? (seenRootIds.add(o.id), true) : false
   );
 
-  const rows: { org: any; depth: number }[] = [];
+  const rows: { org: any; depth: number; hasChildren: boolean }[] = [];
   const visiting = new Set<string>();
 
   const walk = (node: any, depth: number) => {
@@ -44,8 +44,8 @@ function buildOrgRows(orgs: any[]) {
     if (visiting.has(node.id)) return; // cycle guard
     visiting.add(node.id);
 
-    rows.push({ org: node, depth });
     const kids = byParent.get(node.id) || [];
+    rows.push({ org: node, depth, hasChildren: kids.length > 0 });
     for (const child of kids) walk(child, depth + 1);
 
     visiting.delete(node.id);
@@ -59,20 +59,33 @@ function buildOrgRows(orgs: any[]) {
 }
 
 // ─── Helper Components ───────────────────────────────
-const TabBar = ({ tabs, active, onChange }: { tabs: string[]; active: string; onChange: (t: string) => void }) => (
-  <div className="flex border-b border-slate-200 bg-white">
-    {tabs.map(tab => (
-      <button
-        key={tab}
-        onClick={() => onChange(tab)}
-        className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
-          ${active === tab
-            ? 'border-blue-600 text-blue-600'
-            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
-      >
-        {tab}
-      </button>
-    ))}
+const TabBar = ({ tabs, active, onChange }: { tabs: any[]; active: string; onChange: (t: string) => void }) => (
+  <div className="flex border-b border-slate-200 bg-white sticky top-0 z-10">
+    <div className="flex overflow-x-auto no-scrollbar px-2">
+      {tabs.map(tab => {
+        const Icon = tab.icon;
+        return (
+          <button
+            key={tab.id}
+            onClick={() => onChange(tab.id)}
+            className={`flex items-center gap-2 px-4 py-3 text-xs font-bold transition-all whitespace-nowrap border-b-2 
+              ${active === tab.id
+                ? 'border-[var(--color-accent)] text-[var(--color-accent)] bg-[var(--color-accent)]/5'
+                : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+              }`}
+          >
+            <Icon className={`w-3.5 h-3.5 ${active === tab.id ? 'text-[var(--color-accent)]' : 'text-slate-400'}`} />
+            <span>{tab.label}</span>
+            {tab.count !== undefined && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold 
+                ${active === tab.id ? 'bg-[var(--color-accent)] text-white' : 'bg-slate-100 text-slate-500'}`}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
   </div>
 );
 
@@ -640,80 +653,84 @@ const AddressesTab = ({ orgId }: { orgId: number }) => {
   );
 };
 
-const RolesTab = ({ orgId }: { orgId: number }) => {
-  const [roles, setRoles] = useState<any[]>([]);
+const LicensesTab = ({ orgId }: { orgId: string }) => {
+  const [licenses, setLicenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState<any>(null);
-
-  const load = useCallback(async () => {
+  useEffect(() => {
     setLoading(true);
-    try {
-      const all = await rolesApi.getAll();
-      setRoles(all.filter((r: any) => r.organizationId === orgId));
-    } catch { } finally { setLoading(false); }
+    licensesApi.getInventory(orgId).then((res: any) => {
+      setLicenses(Array.isArray(res) ? res : (res.data || []));
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [orgId]);
+  
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>;
+  if (licenses.length === 0) return <EmptyState icon={Key} message="No licenses found for this organization." />;
+  return (
+    <div className="p-6 space-y-4">
+      <h3 className="font-semibold text-slate-700">Organization Licenses</h3>
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+            <tr><th className="p-3">Key</th><th className="p-3">Status</th></tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {licenses.map(l => (
+              <tr key={l.id}>
+                <td className="p-3 font-mono font-bold text-slate-800">{l.key}</td>
+                <td className="p-3">{l.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const CreditsTab = ({ orgId }: { orgId: string }) => {
+  const [credits, setCredits] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    setLoading(true);
+    cutCreditsApi.getInventory(orgId).then((res: any) => {
+      setCredits(Array.isArray(res) ? res : (res.data || []));
+    }).catch(() => {}).finally(() => setLoading(false));
   }, [orgId]);
 
-  useEffect(() => { load(); }, [load]);
-
-  const del = async (id: string) => {
-    if (!confirm('Delete this role?')) return;
-    await rolesApi.delete(id);
-    load();
-  };
-
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>;
+  if (credits.length === 0) return <EmptyState icon={Ticket} message="No credits found for this organization." />;
   return (
-    <div className="p-6">
-      {modal && <OrgRoleModal role={modal === 'new' ? null : modal} orgId={orgId} onClose={() => setModal(null)} onSave={() => { setModal(null); load(); }} />}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="font-semibold text-slate-700">Org Roles</h3>
-          <p className="text-xs text-slate-400">System roles in <a href="/settings" className="text-blue-600 hover:underline">Settings</a></p>
-        </div>
-        <HasPermission permission="roles:write">
-          <button onClick={() => setModal('new')} className="btn-primary text-sm flex items-center gap-1.5 py-1.5">
-            <Plus className="w-3.5 h-3.5" /> New Role
-          </button>
-        </HasPermission>
+    <div className="p-6 space-y-4">
+      <h3 className="font-semibold text-slate-700">Machine Cut Credits</h3>
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+            <tr><th className="p-3">Key</th><th className="p-3">Type</th><th className="p-3">Status</th></tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {credits.map(c => (
+              <tr key={c.id}>
+                <td className="p-3 font-mono font-bold text-slate-800">{c.key}</td>
+                <td className="p-3">{c.batch?.planType}</td>
+                <td className="p-3">{c.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-      {loading ? (
-        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>
-      ) : roles.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <ShieldCheck className="w-10 h-10 text-slate-300 mb-3" />
-          <p className="text-slate-500 text-sm font-medium">No custom roles for this organization yet.</p>
-          <p className="text-xs text-slate-400 mt-1">System-level roles are available to all organizations from Settings.</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {roles.map(r => (
-            <div key={r.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 group transition-colors hover:border-slate-200">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
-                  <ShieldCheck className="w-4 h-4 text-purple-600" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">{r.name}</p>
-                  {r.description && <p className="text-xs text-slate-500">{r.description}</p>}
-                </div>
-              </div>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <HasPermission permission="roles:write">
-                  <button onClick={() => setModal(r)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
-                </HasPermission>
-                <HasPermission permission="roles:delete">
-                  <button onClick={() => del(r.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                </HasPermission>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
 
 // ─── Main Organizations Page ──────────────────────────
-const TABS = ['Details', 'Contacts', 'Users', 'Addresses', 'Roles'];
+const TABS = [
+  { id: 'Details', label: 'Details', icon: Building2 },
+  { id: 'Contacts', label: 'Contacts', icon: Phone },
+  { id: 'Users', label: 'Users', icon: Users },
+  { id: 'Addresses', label: 'Addresses', icon: MapPin },
+  { id: 'Licenses', label: 'Licenses', icon: Key },
+  { id: 'Credits', label: 'Credits', icon: Ticket },
+];
 
 const Organizations = () => {
   const [orgs, setOrgs] = useState<any[]>([]);
@@ -722,6 +739,20 @@ const Organizations = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [orgModal, setOrgModal] = useState<any>(null);
+
+  // New state for collapsible left sidebar and tree expansions
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const fetchOrgs = async (keepSelected?: boolean) => {
     setLoading(true);
@@ -763,7 +794,14 @@ const Organizations = () => {
     supplier: 'bg-rose-100 text-rose-700',
   };
 
-  const orgRows = buildOrgRows(orgs);
+  const orgRows = buildOrgRows(orgs).filter((row: any) => {
+    let p = orgs.find((o: any) => o.id === row.org.parentId);
+    while (p) {
+      if (!expandedIds.has(p.id)) return false;
+      p = orgs.find((o: any) => o.id === p.parentId);
+    }
+    return true;
+  });
 
   return (
     <div className="flex h-[calc(100vh-8rem)] -mx-6 -mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -798,35 +836,53 @@ const Organizations = () => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto p-2">
           {loading ? (
             <div className="flex justify-center items-center h-32"><Loader2 className="w-5 h-5 text-blue-500 animate-spin" /></div>
           ) : orgs.length === 0 ? (
             <div className="p-6 text-center">
               <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm text-slate-400">No organizations found</p>
+              {!isSidebarCollapsed && <p className="text-sm text-slate-400">No organizations found</p>}
             </div>
           ) : (
-            orgRows.map(({ org, depth }: any) => (
-              <button
-                key={org.id}
-                onClick={() => selectOrg(org)}
-                className={`w-full text-left py-3.5 border-b border-slate-100 transition-colors group
-                  ${selected?.id === org.id ? 'bg-blue-50 border-l-2 border-l-blue-600' : 'hover:bg-white'}`}
-              >
-                <div className="flex items-center justify-between" style={{ paddingLeft: 16 + depth * 14, paddingRight: 16 }}>
-                  <div className="min-w-0">
-                    <p className={`text-sm font-semibold truncate ${selected?.id === org.id ? 'text-blue-700' : 'text-slate-800'}`}>
-                      {org.name}
-                    </p>
-                    <span className={`mt-1 inline-block px-2 py-0.5 rounded-full text-xs font-medium ${typeColors[org.type] || 'bg-slate-100 text-slate-600'}`}>
-                      {org.type}
-                    </span>
+            <div className="space-y-1">
+              {orgRows.map(({ org, depth, hasChildren }: any) => (
+                <div
+                  key={org.id}
+                  style={{ paddingLeft: `${depth * 1}rem` }}
+                  onClick={() => selectOrg(org)}
+                  className={`group flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all ${
+                    selected?.id === org.id 
+                      ? 'bg-blue-50 text-blue-700' 
+                      : 'hover:bg-slate-100/50 text-slate-600'
+                  } ${isSidebarCollapsed ? 'justify-center' : ''}`}
+                  title={isSidebarCollapsed ? org.name : ''}
+                >
+                  <div className="relative flex items-center justify-center w-4 h-4 shrink-0" onClick={(e) => hasChildren ? toggleExpand(org.id, e) : undefined}>
+                    {hasChildren ? (
+                      <ChevronRight className={`w-3 h-3 transition-transform ${expandedIds.has(org.id) ? 'rotate-90' : ''}`} />
+                    ) : (
+                      <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                    )}
+                    {isSidebarCollapsed && selected?.id === org.id && (
+                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-600 rounded-full border-2 border-slate-50" />
+                    )}
                   </div>
-                  <ChevronRight className={`w-4 h-4 flex-shrink-0 ml-2 transition-opacity ${selected?.id === org.id ? 'text-blue-500 opacity-100' : 'text-slate-300 opacity-0 group-hover:opacity-100'}`} />
+                  {!isSidebarCollapsed && (
+                    <div className="flex-1 min-w-0 flex items-center justify-between">
+                      <span className={`text-[11px] font-medium truncate ${selected?.id === org.id ? 'font-bold text-blue-700' : 'text-slate-700'}`}>
+                        {org.name}
+                      </span>
+                      {org.type && (
+                         <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${typeColors[org.type] || 'bg-slate-100 text-slate-500'}`}>
+                           {org.type}
+                         </span>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </button>
-            ))
+              ))}
+            </div>
           )}
         </div>
 
@@ -888,7 +944,8 @@ const Organizations = () => {
             {activeTab === 'Contacts' && <ContactsTab orgId={selected.id} />}
             {activeTab === 'Users' && <UsersTab orgId={selected.id} />}
             {activeTab === 'Addresses' && <AddressesTab orgId={selected.id} />}
-            {activeTab === 'Roles' && <RolesTab orgId={selected.id} />}
+            {activeTab === 'Licenses' && <LicensesTab orgId={selected.id} />}
+            {activeTab === 'Credits' && <CreditsTab orgId={selected.id} />}
           </div>
         </div>
       )}

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CONFIG } from '../app-config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -11,8 +12,8 @@ import { JwtStrategy } from './jwt.strategy';
     PrismaModule,
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'flashgard-super-secret-key-2026',
-      signOptions: { expiresIn: '8h' },
+      secret: CONFIG.BACKEND.JWT_SECRET,
+      signOptions: { expiresIn: '24h' },
     }),
   ],
   controllers: [AuthController],

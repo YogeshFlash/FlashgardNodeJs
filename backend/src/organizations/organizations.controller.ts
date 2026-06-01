@@ -7,31 +7,31 @@ export class OrganizationsController {
   constructor(private readonly organizationsService: OrganizationsService) {}
 
   @Post()
-  @RequirePermissions('organizations:write')
+  @RequirePermissions('orgs:write')
   create(@Body() body: any, @Req() req: any) {
     return this.organizationsService.create(body, req.user);
   }
 
   @Get()
-  @RequirePermissions('organizations:read')
-  findAll(@Query('search') search?: string, @Req() req?: any) {
-    return this.organizationsService.findAll(search, req?.user);
+  @RequirePermissions('orgs:read')
+  findAll(@Query('search') search?: string, @Query('includeDeleted') includeDeleted?: string, @Req() req?: any) {
+    return this.organizationsService.findAll(search, req?.user, includeDeleted === 'true');
   }
 
   @Get(':id')
-  @RequirePermissions('organizations:read')
+  @RequirePermissions('orgs:read')
   findOne(@Param('id') id: string, @Req() req?: any) {
     return this.organizationsService.findOne(id, req?.user);
   }
 
   @Patch(':id')
-  @RequirePermissions('organizations:write')
+  @RequirePermissions('orgs:write')
   update(@Param('id') id: string, @Body() body: any, @Req() req?: any) {
     return this.organizationsService.update(id, body, req?.user);
   }
 
   @Delete(':id')
-  @RequirePermissions('organizations:delete')
+  @RequirePermissions('orgs:delete')
   remove(@Param('id') id: string, @Req() req?: any) {
     return this.organizationsService.remove(id, req?.user);
   }

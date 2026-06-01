@@ -14,8 +14,8 @@ export class RolesController {
 
   @Get()
   @RequirePermissions('roles:read')
-  findAll(@Req() req?: any) {
-    return this.rolesService.findAll(req?.user);
+  findAll(@Query('includeDeleted') includeDeleted?: string, @Req() req?: any) {
+    return this.rolesService.findAll(req?.user, includeDeleted === 'true');
   }
 
   @Get(':id')
@@ -34,5 +34,17 @@ export class RolesController {
   @RequirePermissions('roles:delete')
   remove(@Param('id') id: string, @Req() req?: any) {
     return this.rolesService.remove(id, req?.user);
+  }
+
+  @Patch(':id/restore')
+  @RequirePermissions('roles:delete')
+  restore(@Param('id') id: string, @Req() req?: any) {
+    return this.rolesService.restore(id, req?.user);
+  }
+
+  @Delete(':id/purge')
+  @RequirePermissions('roles:delete')
+  purge(@Param('id') id: string, @Req() req?: any) {
+    return this.rolesService.purge(id, req?.user);
   }
 }

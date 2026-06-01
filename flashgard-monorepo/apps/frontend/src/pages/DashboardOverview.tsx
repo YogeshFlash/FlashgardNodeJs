@@ -12,7 +12,7 @@ const DashboardOverview = () => {
       change: '+12%',
       trend: 'up',
       icon: Building2,
-      color: 'bg-blue-500',
+      color: 'bg-[var(--color-primary)]',
     },
     {
       title: 'Active Users',
@@ -28,7 +28,7 @@ const DashboardOverview = () => {
       change: '+2',
       trend: 'neutral',
       icon: ShieldCheck,
-      color: 'bg-purple-500',
+      color: 'bg-[var(--color-primary)]',
     },
     {
       title: 'System Health',
@@ -47,7 +47,7 @@ const DashboardOverview = () => {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard Overview</h1>
-          <p className="text-slate-500 mt-1">Welcome back, System Admin. Here's what's happening today.</p>
+          <p className="text-slate-500 mt-1">Welcome back, Platform Admin. Here's what's happening today.</p>
         </div>
         <button className="btn-primary flex items-center gap-2">
           Generate Report
@@ -91,7 +91,7 @@ const DashboardOverview = () => {
         <div className="lg:col-span-2 card bg-white">
           <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center">
             <h2 className="text-lg font-semibold text-slate-800">Recent Organizations</h2>
-            <button className="text-sm font-medium text-blue-600 hover:text-blue-700">View All</button>
+            <button className="text-sm font-medium text-[var(--color-primary)] hover:text-[var(--color-primary-hover)]">View All</button>
           </div>
           <div className="p-6">
             <div className="flex flex-col items-center justify-center h-48 text-center border-2 border-dashed border-slate-200 rounded-lg bg-slate-50">
@@ -111,7 +111,7 @@ const DashboardOverview = () => {
             <div className="space-y-6">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="flex gap-4">
-                  <div className="w-2 h-2 mt-2 rounded-full bg-blue-500 ring-4 ring-blue-50" />
+                  <div className="w-2 h-2 mt-2 rounded-full bg-[var(--color-primary)] ring-4 bg-[var(--color-primary)]/10" />
                   <div>
                     <p className="text-sm font-medium text-slate-800">System Initialization completed</p>
                     <p className="text-xs text-slate-400 mt-0.5">2 hours ago</p>

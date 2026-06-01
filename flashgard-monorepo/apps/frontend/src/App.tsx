@@ -1,4 +1,3 @@
-
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -11,6 +10,10 @@ import UsersPage from './pages/UsersPage';
 import RolesPage from './pages/RolesPage';
 import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
+import ModelsPage from './pages/ModelsPage';
+import InventoryPage from './pages/InventoryPage';
+import LicensesPage from './pages/LicensesPage';
+import DataMigration from './pages/DataMigration';
 
 function App() {
   return (
@@ -31,10 +34,14 @@ function App() {
           >
             <Route index element={<DashboardOverview />} />
             <Route path="organizations" element={<Organizations />} />
+            <Route path="models" element={<ModelsPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="roles" element={<RolesPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="inventory" element={<InventoryPage />} />
+            <Route path="licenses" element={<LicensesPage />} />
+            <Route path="migration" element={<DataMigration />} />
           </Route>
 
           {/* Catch-all → redirect to dashboard */}

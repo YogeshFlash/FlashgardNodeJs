@@ -2,20 +2,29 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { authApi } from '../lib/api';
 
-interface User {
+export interface AccessibleOrg {
+  organizationId: string;
+  roleId: string;
+  isPrimary: boolean;
+  organizationName?: string;
+}
+
+export interface User {
   userId: string;
   email: string;
   organizationId: string | null;
   roleId: string | null;
   isSuperAdmin: boolean;
-  permissions: string[]; // <-- Added permissions array
+  permissions: string[];
   organization?: { id: string; name: string; type: string };
+  accessibleOrgs?: AccessibleOrg[];
 }
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<any>;
+  switchOrganization: (organizationId: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
 }
@@ -46,6 +55,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('access_token', response.access_token);
     localStorage.setItem('user', JSON.stringify(response.user));
     setUser(response.user);
+    return response.user; // Return user to allow Login page to check accessibleOrgs
+  };
+
+  const switchOrganization = async (organizationId: string) => {
+    const response = await authApi.switchOrg(organizationId);
+    localStorage.setItem('access_token', response.access_token);
+    localStorage.setItem('user', JSON.stringify(response.user));
+    setUser(response.user);
   };
 
   const logout = () => {
@@ -56,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, login, logout, isAuthenticated: !!user }}
+      value={{ user, isLoading, login, switchOrganization, logout, isAuthenticated: !!user }}
     >
       {children}
     </AuthContext.Provider>

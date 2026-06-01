@@ -37,6 +37,25 @@ export class OrganizationsService {
     return Array.from(allOrgIds);
   }
 
+  
+  async canAccessOrg(user: any, targetOrgId: string): Promise<boolean> {
+    if (user.isSuperAdmin) return true;
+    if (!user.organizationId) return false;
+    if (user.organizationId === targetOrgId) return true;
+    
+    let currentOrgId: string | null = targetOrgId;
+    while (currentOrgId) {
+      const parentOrg: any = await this.prisma.organization.findUnique({
+        where: { id: currentOrgId },
+        select: { parentId: true }
+      });
+      if (!parentOrg || !parentOrg.parentId) return false;
+      if (parentOrg.parentId === user.organizationId) return true;
+      currentOrgId = parentOrg.parentId;
+    }
+    return false;
+  }
+
   async getAllowedOrgIds(user: any): Promise<string[] | null> {
     if (user.isSuperAdmin) return null; // null means all access
     if (!user.organizationId) return []; // No org access
@@ -45,8 +64,8 @@ export class OrganizationsService {
 
   async create(data: any, currentUser: any) {
     try {
-      const { name, type, isActive, parentId } = data;
-      this.logger.log(`Creating org: name=${name}, type=${type} by user=${currentUser.email}`);
+      const { name, organizationTypeId, isActive, parentId } = data;
+      this.logger.log(`Creating org: name=${name}, typeId=${organizationTypeId} by user=${currentUser.email}`);
       
       const allowedOrgIds = await this.getAllowedOrgIds(currentUser);
 
@@ -56,8 +75,10 @@ export class OrganizationsService {
       // - Cannot create internal org types.
       let effectiveParentId: string | null = parentId ?? null;
       if (allowedOrgIds !== null) {
-        if (type === 'internal') {
-          throw new ForbiddenException('You do not have permission to create internal organizations.');
+        // Fetch organization type to check for 'parent' restriction if needed
+        const orgType = await this.prisma.organizationType.findUnique({ where: { id: organizationTypeId } });
+        if (orgType?.name === 'parent') {
+          throw new ForbiddenException('You do not have permission to create parent organizations.');
         }
 
         if (!currentUser.organizationId) {
@@ -74,7 +95,7 @@ export class OrganizationsService {
       }
       
       const result = await this.prisma.organization.create({
-        data: { name, type, isActive: isActive ?? true, parentId: effectiveParentId },
+        data: { name, organizationTypeId, isActive: isActive ?? true, parentId: effectiveParentId },
       });
       this.logger.log(`Created org id=${result.id}`);
       return result;
@@ -85,7 +106,7 @@ export class OrganizationsService {
     }
   }
 
-  async findAll(search?: string, currentUser?: any) {
+  async findAll(search?: string, currentUser?: any, includeDeleted?: boolean) {
     const allowedOrgIds = currentUser ? await this.getAllowedOrgIds(currentUser) : null;
     
     const whereClause: any = {};
@@ -97,8 +118,11 @@ export class OrganizationsService {
       whereClause.id = { in: allowedOrgIds };
     }
 
+    // Always return all orgs including deleted (UI handles visual distinction)
+
     return this.prisma.organization.findMany({
       where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
+      include: { organizationType: true },
       orderBy: { name: 'asc' },
     });
   }
@@ -112,8 +136,14 @@ export class OrganizationsService {
     return this.prisma.organization.findUnique({
       where: { id },
       include: {
+        organizationType: true,
         contacts: true,
         users: { include: { role: true } },
+        userOrganizations: {
+          include: {
+            user: true
+          }
+        },
         addresses: true,
         roles: true,
       },
@@ -126,7 +156,7 @@ export class OrganizationsService {
        throw new InternalServerErrorException('You do not have permission to update this organization.');
     }
 
-    const { name, type, isActive, parentId } = data;
+    const { name, organizationTypeId, isActive, parentId } = data;
     
     // Non-super-admins cannot move an org to the root.
     if (allowedOrgIds !== null && parentId === null) {
@@ -139,7 +169,7 @@ export class OrganizationsService {
 
     return this.prisma.organization.update({
       where: { id },
-      data: { name, type, isActive, parentId: parentId ? parentId : null },
+      data: { name, organizationTypeId, isActive, parentId: parentId ? parentId : null },
     });
   }
 
@@ -148,6 +178,9 @@ export class OrganizationsService {
     if (allowedOrgIds !== null && !allowedOrgIds.includes(id)) {
        throw new InternalServerErrorException('You do not have permission to delete this organization.');
     }
-    return this.prisma.organization.delete({ where: { id } });
+    return this.prisma.organization.update({ 
+      where: { id },
+      data: { isDeleted: true, deletedAt: new Date() }
+    });
   }
 }
