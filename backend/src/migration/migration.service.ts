@@ -1,5 +1,5 @@
 import * as sql from 'mssql';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as crypto from 'crypto';
 import csv from 'csv-parser';
@@ -2130,7 +2130,7 @@ export class MigrationService {
     const config = {
       user: credentials.user,
       password: credentials.password,
-      server: credentials.host,
+      server: credentials.server || credentials.host,
       database: credentials.database,
       port: parseInt(credentials.port || '1433'),
       options: {
@@ -2144,7 +2144,7 @@ export class MigrationService {
       await pool.close();
       return result.recordset.map(r => r.TABLE_NAME);
     } catch (err: any) {
-      throw new Error('Database connection failed: ' + err.message);
+      throw new BadRequestException('Database connection failed: ' + err.message);
     }
   }
 
@@ -2152,7 +2152,7 @@ export class MigrationService {
     const config = {
       user: credentials.user,
       password: credentials.password,
-      server: credentials.host,
+      server: credentials.server || credentials.host,
       database: credentials.database,
       port: parseInt(credentials.port || '1433'),
       options: {
@@ -2186,7 +2186,7 @@ export class MigrationService {
         const assignRows = tableMap.file2 ? (await pool.request().query("SELECT * FROM [" + tableMap.file2 + "]")).recordset : [];
         return await this.migrateLicenses(licenseRows, assignRows, "MSSQL: " + tableMap.file1);
       } else {
-        throw new Error('Unsupported module type for DB migration: ' + moduleType);
+        throw new BadRequestException('Unsupported module type for DB migration: ' + moduleType);
       }
     } finally {
       await pool.close();
