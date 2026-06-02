@@ -1346,13 +1346,30 @@ export class MigrationService {
 
     // Cache existing organizations and users for ownership resolution
     const orgs = await this.prisma.organization.findMany({
-      where: { legacyId: { not: null } },
-      select: { id: true, legacyId: true }
+      select: { id: true, legacyId: true, parentId: true }
     });
+    const orgMap = new Map<string, any>(); // DB ID -> org
     const orgLegacyMap = new Map<string, string>(); // legacyId -> DB Org ID
     orgs.forEach(o => {
-      orgLegacyMap.set(o.legacyId!, o.id);
+      orgMap.set(o.id, o);
+      if (o.legacyId) {
+        orgLegacyMap.set(o.legacyId, o.id);
+      }
     });
+
+    const getOrgHierarchy = (orgId: string): string[] => {
+      const hierarchy: string[] = [];
+      let current = orgMap.get(orgId);
+      while (current) {
+        hierarchy.push(current.id);
+        if (current.parentId && current.parentId !== current.id) {
+          current = orgMap.get(current.parentId);
+        } else {
+          break;
+        }
+      }
+      return hierarchy.reverse(); // Root first, leaf last
+    };
 
     const dbUsers = await this.prisma.user.findMany({
       where: { organizationId: { not: null } },
@@ -1405,37 +1422,52 @@ export class MigrationService {
           continue;
         }
 
-        let orgId: string | undefined = undefined;
+        let finalOrgId: string | undefined = undefined;
+        let transferPath: string[] = [];
+        let batchCreatedDate = this.safeDate(lic.CreatedDate) || new Date();
 
-        // 1. Check dealer assignments from LicenseAssignDealer (latest assignment first)
+        // 1. Collect all dealer assignments
         const assignments = licenseDealerMap.get(licenseId) || [];
+        
+        // Use the first assignment's created date for the batch if available
+        if (assignments.length > 0 && assignments[0].CreatedDate) {
+          batchCreatedDate = this.safeDate(assignments[0].CreatedDate) || batchCreatedDate;
+        }
+
+        // 2. Resolve the target org
+        let targetDealerOrgId: string | undefined = undefined;
         for (let i = assignments.length - 1; i >= 0; i--) {
           const ld = assignments[i];
           const dealerId = String(ld.DealerID || '').trim();
-          const dealerOrgId = resolveOrgId(dealerId);
-          if (dealerOrgId) {
-            orgId = dealerOrgId;
+          targetDealerOrgId = resolveOrgId(dealerId);
+          if (targetDealerOrgId) {
             break;
           }
         }
 
-        // 2. Check AssignUserID / OwnerID from LicenseMaster
-        if (!orgId) {
+        if (!targetDealerOrgId) {
           const assignUserId = String(lic.AssignUserID || lic.AssignUserId || '').trim();
           const ownerId = String(lic.OwnerID || lic.OwnerId || '').trim();
-          orgId = resolveOrgId(assignUserId) || resolveOrgId(ownerId);
+          targetDealerOrgId = resolveOrgId(assignUserId) || resolveOrgId(ownerId);
         }
 
-        // 3. Fallback to rootOrg
-        if (!orgId) {
-          orgId = rootOrg?.id;
+        if (targetDealerOrgId) {
+          finalOrgId = targetDealerOrgId;
+          // Build hierarchy from root down to this target org
+          transferPath = getOrgHierarchy(targetDealerOrgId);
+        } else if (rootOrg) {
+          finalOrgId = rootOrg.id;
+          transferPath = [rootOrg.id];
         }
 
-        if (!orgId) {
+        if (!finalOrgId || transferPath.length === 0) {
           skippedRows++;
-          failures.push({ row: lic, error: 'Failed to resolve organization ownership' });
+          failures.push({ row: lic, error: 'Failed to resolve organization ownership hierarchy' });
           continue;
         }
+
+        // The first owner is the root of the path
+        const initialOwnerId = transferPath[0];
 
         const decodedKey = this.decodeHex(licenseKey);
         const encryptedKey = encryptLicenseKey(decodedKey);
@@ -1462,7 +1494,7 @@ export class MigrationService {
             where: { batchCode }
           });
           if (!batch && rootOrg) {
-            let batchTenantId = orgId;
+            let batchTenantId = initialOwnerId;
             if (assignments.length > 0) {
               const firstAssignment = assignments[0];
               const firstDealerId = String(firstAssignment.DealerID || '').trim();
@@ -1483,7 +1515,7 @@ export class MigrationService {
                   totalCount: 0,
                   createdBy: sysAdmin.id,
                   tenantId: batchTenantId,
-                  createdAt: this.safeDate(lic.CreatedDate)
+                  createdAt: batchCreatedDate
                 }
               });
             }
@@ -1503,11 +1535,11 @@ export class MigrationService {
           key: encryptedKey,
           batchId: batch.id,
           status: 'ACTIVE' as const,
-          ownerId: orgId,
-          tenantId: orgId,
+          ownerId: finalOrgId,
+          tenantId: initialOwnerId,
           legacyId: licenseId,
-          activatedAt: this.safeDate(lic.CreatedDate),
-          startDate: this.safeDate(lic.CreatedDate)
+          activatedAt: batchCreatedDate,
+          startDate: batchCreatedDate
         };
 
         if (!existingLicense) {
@@ -1515,10 +1547,37 @@ export class MigrationService {
             data: {
               id: licenseUuid,
               ...licenseData,
-              createdAt: this.safeDate(lic.CreatedDate)
+              createdAt: batchCreatedDate
             }
           });
           importedLicenses++;
+
+          // Generate Transfers!
+          if (transferPath.length > 1) {
+            for (let i = 0; i < transferPath.length - 1; i++) {
+              const fromOrgId = transferPath[i];
+              const toOrgId = transferPath[i + 1];
+              
+              if (fromOrgId === toOrgId) continue;
+              
+              await (this.prisma as any).licensingTransfer.create({
+                data: {
+                  fromOrgId: fromOrgId,
+                  toOrgId: toOrgId,
+                  status: 'APPROVED',
+                  tenantId: initialOwnerId,
+                  resolvedAt: batchCreatedDate,
+                  createdAt: batchCreatedDate,
+                  items: {
+                    create: {
+                      licenseId: existingLicense.id
+                    }
+                  }
+                }
+              });
+            }
+          }
+
         } else {
           existingLicense = await (this.prisma as any).orgLicense.update({
             where: { id: existingLicense.id },
