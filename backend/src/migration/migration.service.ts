@@ -978,7 +978,7 @@ export class MigrationService {
 
     // Parse CSVs
     const usersData = usersFile ? this.parseUsersCsvRobustly((usersFile as Express.Multer.File).buffer) : [];
-    const userRolesData = userRolesFile ? await this.parseCsvBuffer((userRolesFile as Express.Multer.File).buffer) : [];
+    const userRolesData = userRolesFile ? (Array.isArray(userRolesFile) ? userRolesFile : await this.parseCsvBuffer((userRolesFile as Express.Multer.File).buffer)) : [];
 
     // Cache to map legacyRoleId -> newRoleId
     const roleMap = new Map<string, string>(); // legacy Role ID (string) -> DB Role ID (UUID)
@@ -1322,8 +1322,8 @@ export class MigrationService {
       throw new Error('Licenses file is required');
     }
 
-    const licensesData = await this.parseCsvBuffer((licensesFile as Express.Multer.File).buffer);
-    const licenseDealersData = licenseDealersFile ? await this.parseCsvBuffer((licenseDealersFile as Express.Multer.File).buffer) : [];
+    const licensesData = Array.isArray(licensesFile) ? licensesFile : await this.parseCsvBuffer((licensesFile as Express.Multer.File).buffer);
+    const licenseDealersData = licenseDealersFile ? (Array.isArray(licenseDealersFile) ? licenseDealersFile : await this.parseCsvBuffer((licenseDealersFile as Express.Multer.File).buffer)) : [];
 
     // Sort assignments by LicenseAssignID ascending to ensure chronological order
     licenseDealersData.sort((a, b) => {
@@ -1623,7 +1623,9 @@ export class MigrationService {
       throw new Error('Mobile users file is required');
     }
 
-    const mobileUsersData = await this.parseCsvBuffer((mobileUsersFile as Express.Multer.File).buffer);
+    const mobileUsersData = Array.isArray(mobileUsersFile)
+      ? mobileUsersFile
+      : await this.parseCsvBuffer((mobileUsersFile as Express.Multer.File).buffer);
 
     // Cache organizations and users
     const orgs = await this.prisma.organization.findMany({
@@ -1925,7 +1927,7 @@ export class MigrationService {
       throw new Error('Roles file is required');
     }
 
-    const rolesData = await this.parseCsvBuffer((rolesFile as Express.Multer.File).buffer);
+    const rolesData = Array.isArray(rolesFile) ? rolesFile : await this.parseCsvBuffer((rolesFile as Express.Multer.File).buffer);
 
     for (const roleRow of rolesData) {
       try {
