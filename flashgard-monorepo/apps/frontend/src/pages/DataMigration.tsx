@@ -34,13 +34,7 @@ const DataMigration: React.FC = () => {
   const [isMigrating, setIsMigrating] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [statusModal, setStatusModal] = useState<{ 
-    isOpen: boolean; 
-    title: string; 
-    message: string; 
-    type: 'success' | 'info' | 'error';
-    data?: any 
-  }>({ isOpen: false, title: '', message: '', type: 'success' });
+  
   const [migrationLogs, setMigrationLogs] = useState<any[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
@@ -107,12 +101,7 @@ const DataMigration: React.FC = () => {
       
       if (!response.ok) {
           if (response.status === 404) {
-            setStatusModal({
-              isOpen: true,
-              title: 'Clean Migration',
-              message: 'No failures were recorded for this migration attempt. All records were processed successfully.',
-              type: 'info'
-            });
+            
           } else {
             throw new Error('Failed to download');
           }
@@ -142,24 +131,13 @@ const DataMigration: React.FC = () => {
     try {
       const data = await migrationApi.cleanData(module);
       setResult(data);
-      setStatusModal({
-        isOpen: true,
-        title: 'Cleanup Successful',
-        message: data.message || `Successfully cleaned migration data for module: ${module}.`,
-        type: 'success',
-        data: null
-      });
+      
       setConfirmCleanModule(null);
     setResult(null);
     setError(null);
     } catch (err: any) {
       setError(err.message);
-      setStatusModal({
-        isOpen: true,
-        title: 'Cleanup Failed',
-        message: err.message || 'An unexpected error occurred during data cleanup.',
-        type: 'error'
-      });
+      
     } finally {
       setIsCleaning(false);
     }
@@ -205,21 +183,10 @@ const DataMigration: React.FC = () => {
       }
       
       setResult(data);
-      setStatusModal({
-        isOpen: true,
-        title: 'Migration Successful',
-        message: 'The data migration has been completed successfully.',
-        type: 'success',
-        data: data
-      });
+      
     } catch (err: any) {
       setError(err.message);
-      setStatusModal({
-        isOpen: true,
-        title: 'Migration Failed',
-        message: err.message || 'An unexpected error occurred during migration.',
-        type: 'error'
-      });
+      
     } finally {
       setIsMigrating(false);
     }
@@ -261,7 +228,7 @@ const DataMigration: React.FC = () => {
       const res = await migrationApi.dbConnect(dbConfig);
       setDbTables(res.tables || []);
       setDbConnected(true);
-      setStatusModal({ isOpen: true, title: 'Connected', message: 'Successfully connected to MSSQL database.', type: 'success' });
+      
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -280,7 +247,7 @@ const DataMigration: React.FC = () => {
         tableMap: { file1: dbMapFile1, file2: dbMapFile2 }
       });
       setResult(data);
-      setStatusModal({ isOpen: true, title: 'Migration Successful', message: 'The database migration has been completed.', type: 'success', data });
+      
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -556,13 +523,7 @@ const DataMigration: React.FC = () => {
                               try {
                                 const data = await migrationApi.migrateDesignsLocal();
                                 setResult(data);
-                                setStatusModal({ 
-                                  isOpen: true, 
-                                  title: 'Local Scan Completed', 
-                                  message: 'The high-speed local migration has finished processing all records.',
-                                  type: 'success',
-                                  data: data
-                                });
+                                
                               } catch (err: any) {
                                 setError(err.message);
                               } finally {
@@ -583,13 +544,7 @@ const DataMigration: React.FC = () => {
                               try {
                                 const data = await migrationApi.generateDesignImages();
                                 setResult(data);
-                                setStatusModal({ 
-                                  isOpen: true, 
-                                  title: 'Previews Generated', 
-                                  message: 'SVG preview images have been successfully generated from the encrypted PLT data.',
-                                  type: 'success',
-                                  data: data
-                                });
+                                
                               } catch (err: any) {
                                 setError(err.message);
                               } finally {
@@ -810,14 +765,7 @@ const DataMigration: React.FC = () => {
       )}
 
       {/* Status Modal Instance */}
-      <StatusModal 
-        isOpen={statusModal.isOpen}
-        onClose={() => setStatusModal({ ...statusModal, isOpen: false })}
-        title={statusModal.title}
-        message={statusModal.message}
-        type={statusModal.type}
-        data={statusModal.data}
-      />
+      
     </div>
   );
 };
