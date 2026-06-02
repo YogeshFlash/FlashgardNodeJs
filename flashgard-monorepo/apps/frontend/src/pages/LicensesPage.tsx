@@ -22,14 +22,46 @@ const Badge = ({ children, variant = 'gray' }: any) => {
   );
 };
 
-const buildHierarchy = (orgs: any[], parentId: string | null = null, depth = 0): any[] => {
-  return orgs
-    .filter(o => o.parentId === parentId)
-    .reduce((acc, o) => [
-      ...acc,
-      { ...o, depth },
-      ...buildHierarchy(orgs, o.id, depth + 1)
-    ], []);
+const buildHierarchy = (orgsInput: any[]): any[] => {
+  const orgs = Array.isArray(orgsInput) ? orgsInput : (orgsInput as any).data || (orgsInput as any).items || [];
+  const byParent = new Map<string, any[]>();
+  const byId = new Map<string, any>();
+
+  for (const org of orgs) {
+    if (!org?.id) continue;
+    byId.set(org.id, org);
+    const parentKey = org.parentId || '__root__';
+    const arr = byParent.get(parentKey) || [];
+    arr.push(org);
+    byParent.set(parentKey, arr);
+  }
+
+  // Find actual roots for the current user's view (if parent isn't in the list)
+  const roots = (byParent.get('__root__') || []).slice();
+  for (const org of orgs) {
+    if (org?.parentId && !byId.has(org.parentId)) {
+      roots.push(org);
+    }
+  }
+
+  const rows: any[] = [];
+  const visiting = new Set<string>();
+
+  const walk = (node: any, depth: number) => {
+    if (!node?.id || visiting.has(node.id)) return;
+    visiting.add(node.id);
+    rows.push({ ...node, depth });
+    const kids = byParent.get(node.id) || [];
+    // Sort kids alphabetically
+    kids.sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')));
+    for (const child of kids) walk(child, depth + 1);
+    visiting.delete(node.id);
+  };
+
+  roots.sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')))
+       .forEach((r) => walk(r, 0));
+
+  return rows;
 };
 
 const IssueOrgLicenseModal = ({ onClose, onSave, orgs }: any) => {
@@ -207,12 +239,22 @@ const IssueCreditsModal = ({ onClose, onSave, orgs, licenses }: any) => {
 };
 
 const DispatchModal = ({ onClose, onSave, orgs, type, selectedIds }: any) => {
+  const { user } = useAuth();
   const hierarchicalOrgs = buildHierarchy(orgs);
+  // Strictly downwards: exclude the current user's organization so they can only dispatch to children/descendants.
+  const validOrgs = hierarchicalOrgs.filter((o: any) => o.id !== user?.organizationId);
   const [targetOrgId, setTargetOrgId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filteredOrgs = validOrgs.filter((o: any) => o.name.toLowerCase().includes(search.toLowerCase()));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!targetOrgId) {
+      alert('Please select a target recipient.');
+      return;
+    }
     setLoading(true);
     try {
       if (type === 'licenses') {
@@ -240,16 +282,31 @@ const DispatchModal = ({ onClose, onSave, orgs, type, selectedIds }: any) => {
              <Send className="w-5 h-5 flex-shrink-0" />
              <p>Transfer ownership of the selected items to a child organization.</p>
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700">Target Recipient</label>
-            <select value={targetOrgId} onChange={e => setTargetOrgId(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl" required>
-              <option value="">Select child...</option>
-              {hierarchicalOrgs.map((o: any) => (
-                <option key={o.id} value={o.id}>
-                  {'\u00A0'.repeat(o.depth * 4)}{o.depth > 0 ? 'â†³ ' : ''}{o.name} ({o.organizationType?.name})
-                </option>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search organizations..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all"
+              />
+            </div>
+            <div className="border border-slate-200 rounded-xl overflow-y-auto bg-slate-50 max-h-48">
+              {filteredOrgs.length === 0 ? (
+                <div className="p-4 text-sm text-slate-500 text-center">No organizations match your search.</div>
+              ) : filteredOrgs.map((o: any) => (
+                <div
+                  key={o.id}
+                  onClick={() => setTargetOrgId(o.id)}
+                  className={`px-3 py-2.5 text-sm cursor-pointer hover:bg-white border-b border-slate-100 last:border-0 transition-colors ${targetOrgId === o.id ? 'bg-indigo-50 text-indigo-700 font-bold hover:bg-indigo-50' : 'text-slate-700'}`}
+                >
+                  {'\u00A0'.repeat(search ? 0 : o.depth * 4)}{!search && o.depth > 0 ? '↳ ' : ''}{o.name} <span className="ml-1 text-xs text-slate-400">({o.organizationType?.name})</span>
+                </div>
               ))}
-            </select>
+            </div>
           </div>
           <div className="pt-4 flex gap-3">
             <button type="button" onClick={onClose} className="flex-1 px-6 py-2.5 border border-slate-200 font-bold rounded-xl whitespace-nowrap">Cancel</button>
@@ -295,7 +352,9 @@ const LicensesPage = () => {
 
   // Fetch orgs once on mount
   useEffect(() => {
-    orgsApi.getAll().then(setOrgs).catch(console.error);
+    orgsApi.getAll().then(res => {
+      setOrgs(Array.isArray(res) ? res : (res.data || res.items || []));
+    }).catch(console.error);
   }, []);
 
   // Refetch when tab, page, or search changes
@@ -698,67 +757,6 @@ const LicensesPage = () => {
         </div>
       )}
 
-      
-        {tab === 'pending' ? (
-          <div className="space-y-6 animate-in fade-in duration-300">
-            {(pendingInbound.length > 0 || pendingOutbound.length > 0) ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {pendingInbound.length > 0 && (
-                  <div className="bg-white border-2 border-indigo-100 rounded-2xl p-4 shadow-sm">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-bold text-indigo-900 flex items-center gap-2">
-                        <Activity className="w-4 h-4" /> Inbound Transfers ({pendingInbound.length})
-                      </h3>
-                    </div>
-                    <div className="space-y-2">
-                      {pendingInbound.map(t => (
-                        <div key={t.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                          <div>
-                            <div className="font-bold text-xs text-slate-900">{t.items.length} {t.itemType}s from {t.fromOrg?.name}</div>
-                            <div className="text-[10px] text-slate-500">Received {new Date(t.createdAt).toLocaleDateString()}</div>
-                          </div>
-                          <div className="flex gap-2">
-                            <button onClick={() => handleTransferAction(t.id, 'accept', t.itemType)} className="px-3 py-1 bg-emerald-600 text-white text-[10px] font-bold rounded-lg hover:bg-emerald-700">Accept</button>
-                            <button onClick={() => handleTransferAction(t.id, 'reject', t.itemType)} className="px-3 py-1 bg-red-100 text-red-600 text-[10px] font-bold rounded-lg hover:bg-red-200">Reject</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {pendingOutbound.length > 0 && (
-                  <div className="bg-white border-2 border-slate-100 rounded-2xl p-4 shadow-sm">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                        <Send className="w-4 h-4" /> Outbound Pending ({pendingOutbound.length})
-                      </h3>
-                    </div>
-                    <div className="space-y-2">
-                      {pendingOutbound.map(t => (
-                        <div key={t.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                          <div>
-                            <div className="font-bold text-xs text-slate-900">{t.items.length} {t.itemType}s to {t.toOrg?.name}</div>
-                            <div className="text-[10px] text-slate-500">Sent {new Date(t.createdAt).toLocaleDateString()}</div>
-                          </div>
-                          <button onClick={() => handleTransferAction(t.id, 'recall', t.itemType)} className="px-3 py-1 bg-slate-200 text-slate-600 text-[10px] font-bold rounded-lg hover:bg-slate-300">Recall</button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="bg-white rounded-2xl p-12 shadow-sm border border-slate-200 text-center flex flex-col items-center justify-center">
-                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                  <Activity className="w-8 h-8 text-slate-300" />
-                </div>
-                <h3 className="font-bold text-slate-700 text-lg">No Pending Transfers</h3>
-                <p className="text-sm text-slate-500 mt-2">You're all caught up! There are no incoming or outgoing transfers awaiting action.</p>
-              </div>
-            )}
-          </div>
-        ) : null}
-  
 
       {modal === 'org-license' && <IssueOrgLicenseModal orgs={orgs} onClose={() => setModal(null)} onSave={() => { setModal(null); fetchData(); }} />}
       {modal === 'cut-credits' && <IssueCreditsModal orgs={orgs} licenses={orgLicenses} onClose={() => setModal(null)} onSave={() => { setModal(null); fetchData(); }} />}

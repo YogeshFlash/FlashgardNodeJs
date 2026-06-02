@@ -4,7 +4,7 @@ const prisma = new PrismaClient();
 
 async function main() {
   const role = await prisma.role.findFirst({
-    where: { name: 'internal_sales' },
+    where: { name: 'system_sales' },
     include: {
       permissions: {
         include: { permission: true }

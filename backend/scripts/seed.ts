@@ -6,31 +6,61 @@ const prisma = new PrismaClient();
 async function seed() {
   console.log('\n🌱 Seeding database...\n');
 
+  // 0. Ensure organization types exist
+  const orgTypesData = [
+    { name: 'parent', description: 'Parent organization Flashgard' },
+    { name: 'Distributor', description: 'Distributor organization' },
+    { name: 'Dealer', description: 'Dealer organization' },
+    { name: 'Retailer', description: 'Retailer organization' },
+    { name: 'Vendor', description: 'Vendor organization' },
+  ];
+
+  for (const type of orgTypesData) {
+    await prisma.organizationType.upsert({
+      where: { name: type.name },
+      update: { description: type.description },
+      create: type,
+    });
+  }
+
   // 1. Flashgard HQ organization
   let hq = await prisma.organization.findFirst({ where: { name: 'Flashgard HQ' } });
   if (!hq) {
+    let internalOrgType = await prisma.organizationType.findUnique({ where: { name: 'parent' } });
+    if (!internalOrgType) {
+      internalOrgType = await prisma.organizationType.create({
+        data: { name: 'parent', description: 'Parent organization Flashgard' },
+      });
+    }
     hq = await prisma.organization.create({
-      data: { name: 'Flashgard HQ', type: 'internal', isActive: true },
+      data: { name: 'Flashgard HQ', organizationTypeId: internalOrgType.id, isActive: true },
     });
   }
   console.log('✅ Organization:', hq.name, `(id=${hq.id})`);
 
   // 2. System Roles
   const roleData = [
-    { name: 'super_admin',        description: 'Complete unrestricted system access', isSystemRole: true },
-    { name: 'internal_admin',     description: 'Manage global settings and users',    isSystemRole: true },
-    { name: 'internal_sales',     description: 'Flashgard Sales team role',           isSystemRole: true },
-    { name: 'internal_warehouse', description: 'Flashgard Warehouse role',            isSystemRole: true },
-    { name: 'internal_reports',   description: 'Reports analyst access',              isSystemRole: true },
-    { name: 'external_admin',     description: 'Admin role for external orgs',        isSystemRole: true },
-    { name: 'external_sales',     description: 'Sales role for external orgs',        isSystemRole: true },
-    { name: 'external_viewer',    description: 'View-only role for external orgs',    isSystemRole: true },
+    { name: 'super_admin', description: 'Complete unrestricted system access', isSystemRole: true, isRestricted: true },
+    { name: 'system_admin', description: 'Manage global settings and users', isSystemRole: true, isRestricted: true },
+    { name: 'system_sales', description: 'Flashgard Sales team role', isSystemRole: true, isRestricted: true },
+    { name: 'system_warehouse', description: 'Flashgard Warehouse role', isSystemRole: true, isRestricted: true },
+    { name: 'system_reports', description: 'Reports analyst access', isSystemRole: true, isRestricted: true },
+    { name: 'org_admin', description: 'Admin role for external orgs', isSystemRole: true, isRestricted: false },
+    { name: 'org_sales', description: 'Sales role for external orgs', isSystemRole: true, isRestricted: false },
+    { name: 'org_viewer', description: 'View-only role for external orgs', isSystemRole: true, isRestricted: false },
   ];
 
   for (const r of roleData) {
-    const existing = await prisma.role.findFirst({ where: { name: r.name, isSystemRole: true } });
-    if (!existing) {
-      await prisma.role.create({ data: { ...r, organizationId: null } });
+    const existing = await prisma.role.findFirst({ where: { name: r.name, organizationId: null } });
+    if (existing) {
+      await (prisma.role as any).update({
+        where: { id: existing.id },
+        data: { isRestricted: r.isRestricted, description: r.description },
+      });
+    } else {
+      await (prisma.role as any).create({
+        data: { ...r, organizationId: null },
+      });
     }
   }
   const roles = await prisma.role.findMany({ where: { isSystemRole: true } });
@@ -47,6 +77,7 @@ async function seed() {
     { action: 'roles:read', description: 'View roles and permissions' },
     { action: 'roles:write', description: 'Create or edit roles' },
     { action: 'roles:delete', description: 'Delete roles' },
+    { action: 'roles:system_access', description: 'Access and assign restricted system roles (system_*, super_*)' },
     { action: 'contacts:read', description: 'View contacts' },
     { action: 'contacts:write', description: 'Create or edit contacts' },
     { action: 'contacts:delete', description: 'Delete contacts' },

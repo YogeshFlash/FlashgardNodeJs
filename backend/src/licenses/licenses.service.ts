@@ -93,7 +93,9 @@ export class LicensesService {
         data: {
           fromOrgId: effectiveFromOrgId,
           toOrgId: data.toOrgId,
-          status: TransferStatus.PENDING,
+          status: TransferStatus.COMPLETED,
+          resolvedAt: new Date(),
+          resolvedBy: data.userId,
           tenantId: data.tenantId || effectiveFromOrgId,
           items: { create: data.licenseIds.map((id: any) => ({ licenseId: id })) }
         }
@@ -101,7 +103,11 @@ export class LicensesService {
 
       await (tx as any).orgLicense.updateMany({
         where: { id: { in: data.licenseIds } },
-        data: { status: OrgLicenseStatus.IN_TRANSIT }
+        data: { 
+          status: OrgLicenseStatus.AVAILABLE,
+          ownerId: data.toOrgId,
+          tenantId: data.toOrgId
+        }
       });
 
       return transfer;
@@ -291,5 +297,20 @@ export class LicensesService {
       }));
     }
     return batch;
+  }
+  async updateStatus(id: string, status: OrgLicenseStatus, userId: string) {
+    const license = await (this.prisma.orgLicense as any).findUnique({ where: { id } });
+    if (!license) throw new NotFoundException('License not found');
+    
+    // Allow toggle between AVAILABLE, ACTIVE, SUSPENDED, REVOKED
+    // If it was ACTIVE and being suspended, we can just change the status.
+    // If it was SUSPENDED and being activated again, we revert to ACTIVE.
+    
+    const updated = await (this.prisma.orgLicense as any).update({
+      where: { id },
+      data: { status }
+    });
+    
+    return { ...updated, key: decryptLicenseKey(updated.key) };
   }
 }

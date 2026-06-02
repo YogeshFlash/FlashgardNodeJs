@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Bell, ShieldCheck, Database, Globe,
   Plus, Edit2, Trash2, Loader2, Users, Search, Key, Check, List, X, Shield, RotateCcw, Building, ScrollText,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, ChevronDown
 } from 'lucide-react';
 import { rolesApi, usersApi, permissionsApi, auditLogsApi, orgsApi, organizationTypesApi, filmTypesApi } from '../lib/api';
 import { HasPermission, usePermissions } from '../components/HasPermission';
@@ -511,6 +511,66 @@ const RolesTabSettings = () => {
 };
 
 // ─── Internal Users Tab ─────────────────────────────
+
+const TreeComboBox = ({ value, onChange, disabled, items, placeholder }: any) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filteredItems = React.useMemo(() => {
+    if (!search) return items.slice(0, 100);
+    return items.filter((i: any) => i.name.toLowerCase().includes(search.toLowerCase())).slice(0, 100);
+  }, [items, search]);
+
+  const selected = items.find((i: any) => i.id === value);
+
+  return (
+    <div className="relative">
+      <div 
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        className={`w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg flex items-center justify-between text-sm ${disabled ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'cursor-pointer hover:border-slate-300'}`}
+      >
+        <span className="truncate">{selected ? selected.name : placeholder || 'Select...'}</span>
+        <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+      </div>
+      
+      {isOpen && !disabled && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+          <div className="absolute z-20 w-full bottom-full mb-1 bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden">
+            <div className="p-2 border-b border-slate-100 bg-white">
+              <input 
+                autoFocus
+                type="text"
+                placeholder="Search..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
+              />
+            </div>
+            <div className="overflow-y-auto p-1 max-h-48 custom-scrollbar">
+              {filteredItems.length === 0 ? (
+                <div className="p-3 text-sm text-slate-400 text-center">No results</div>
+              ) : filteredItems.map((item: any) => (
+                <div
+                  key={item.id}
+                  onClick={() => { onChange(item.id); setIsOpen(false); setSearch(''); }}
+                  className={`px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-slate-50 ${value === item.id ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)] font-bold' : 'text-slate-700'}`}
+                >
+                  {!search ? (
+                    <span className="whitespace-pre">{'\u00A0'.repeat(item.depth * 3)}{item.depth > 0 ? '└ ' : ''}{item.name}</span>
+                  ) : (
+                    <span>{item.name}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const UserModal = ({ user: u, roles, orgs, currentOrgId, onClose, onSave }: any) => {
   const { user: currentUser } = useAuth();
   
@@ -526,6 +586,14 @@ const UserModal = ({ user: u, roles, orgs, currentOrgId, onClose, onSave }: any)
   const [userOrgs, setUserOrgs] = useState<any[]>(initialOrgs);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const treeItems = React.useMemo(() => {
+    return buildOrgRows(orgs, currentUser?.isSuperAdmin ? undefined : (currentUser?.organizationId as any)).map(({ org: o, depth }: any) => ({
+      id: o.id,
+      name: o.name,
+      depth
+    }));
+  }, [orgs, currentUser]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError('');
@@ -545,7 +613,7 @@ const UserModal = ({ user: u, roles, orgs, currentOrgId, onClose, onSave }: any)
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white">
           <h2 className="text-lg font-semibold">{u ? 'Edit User' : 'New User'}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
@@ -595,25 +663,17 @@ const UserModal = ({ user: u, roles, orgs, currentOrgId, onClose, onSave }: any)
                   )}
                   <div className="grid grid-cols-2 gap-3 pr-6">
                     <div>
-                      <select 
-                        className="input-field text-sm py-1.5" 
-                        value={assign.organizationId} 
-                        onChange={e => {
+                      <TreeComboBox 
+                        value={assign.organizationId}
+                        items={treeItems}
+                        placeholder="Select Organization"
+                        disabled={form.isSuperAdmin}
+                        onChange={(val: string) => {
                           const newOrgs = [...userOrgs];
-                          newOrgs[index].organizationId = e.target.value;
+                          newOrgs[index].organizationId = val;
                           setUserOrgs(newOrgs);
                         }}
-                        disabled={form.isSuperAdmin}
-                        required
-                      >
-                        <option value="" disabled>Select Organization</option>
-                        {buildOrgRows(orgs, currentUser?.isSuperAdmin ? undefined : (currentUser?.organizationId as any))
-                          .map(({ org: o, depth }: any) => (
-                            <option key={o.id} value={o.id}>
-                              {'\u00A0'.repeat(depth * 3)}{depth > 0 ? '└ ' : ''}{o.name}
-                            </option>
-                          ))}
-                      </select>
+                      />
                     </div>
                     <div>
                       <select 

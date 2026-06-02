@@ -2,11 +2,13 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   Building2, Plus, Search, Edit2, Trash2, Loader2,
   Users, MapPin, Phone, Ticket, Key,
-  ChevronRight, ChevronLeft, Star, Check, ChevronDown
+  ChevronRight, ChevronLeft, Star, Check, ChevronDown, X
 } from 'lucide-react';
 import { orgsApi, contactsApi, usersApi, addressesApi, licensesApi, cutCreditsApi } from '../lib/api';
 import { HasPermission } from '../components/HasPermission';
 import { useAuth } from '../contexts/AuthContext';
+import { UserModal } from './UsersPage';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 function buildOrgRows(orgs: any[]) {
   const byParent = new Map<string, any[]>();
@@ -110,6 +112,20 @@ const OrgModal = ({ org, allOrgs, onClose, onSave }: any) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const [searchOrg, setSearchOrg] = useState('');
+  const [isParentOpen, setIsParentOpen] = useState(false);
+  
+  const validParents = React.useMemo(() => {
+    return (allOrgs || []).filter((o: any) => o.id !== org?.id);
+  }, [allOrgs, org?.id]);
+
+  const filteredParents = React.useMemo(() => {
+    if (!searchOrg) return validParents.slice(0, 100);
+    return validParents.filter((o: any) => o.name.toLowerCase().includes(searchOrg.toLowerCase())).slice(0, 100);
+  }, [validParents, searchOrg]);
+
+  const selectedParent = validParents.find((o: any) => o.id === form.parentId);
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError('');
     try {
@@ -145,14 +161,56 @@ const OrgModal = ({ org, allOrgs, onClose, onSave }: any) => {
               ))}
             </select>
           </div>
-          <div>
+          <div className="relative">
             <label className="text-sm font-medium text-slate-700 block mb-1">Parent Organization</label>
-            <select className="input-field" value={form.parentId || ''} onChange={e => setForm({ ...form, parentId: e.target.value })}>
-              {user?.isSuperAdmin && <option value="">None (Top-level)</option>}
-              {allOrgs?.filter((o: any) => o.id !== org?.id).map((o: any) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </select>
+            <div className="relative">
+              <div 
+                onClick={() => setIsParentOpen(!isParentOpen)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between cursor-pointer focus:ring-2 focus:ring-indigo-500/20"
+              >
+                <span className="text-sm truncate">
+                  {form.parentId ? (selectedParent?.name || 'Unknown') : (user?.isSuperAdmin ? 'None (Top-level)' : 'Select parent...')}
+                </span>
+                <ChevronDown className="w-4 h-4 text-slate-400" />
+              </div>
+              {isParentOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsParentOpen(false)} />
+                  <div className="absolute z-20 w-full bottom-full mb-1 bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden">
+                    <div className="p-2 border-b border-slate-100 bg-white">
+                      <input 
+                        autoFocus
+                        type="text"
+                        placeholder="Search organizations..."
+                        value={searchOrg}
+                        onChange={e => setSearchOrg(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div className="overflow-y-auto p-1 max-h-48 custom-scrollbar">
+                      {user?.isSuperAdmin && !searchOrg && (
+                        <div
+                          onClick={() => { setForm({ ...form, parentId: '' }); setIsParentOpen(false); setSearchOrg(''); }}
+                          className={`px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-slate-50 ${!form.parentId ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'}`}
+                        >
+                          None (Top-level)
+                        </div>
+                      )}
+                      {filteredParents.map((o: any) => (
+                        <div
+                          key={o.id}
+                          onClick={() => { setForm({ ...form, parentId: o.id }); setIsParentOpen(false); setSearchOrg(''); }}
+                          className={`px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-slate-50 ${form.parentId === o.id ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'}`}
+                        >
+                          {o.name}
+                        </div>
+                      ))}
+                      {filteredParents.length === 0 && <div className="p-3 text-sm text-slate-400 text-center">No results found</div>}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" id="orgActive" checked={form.isActive} onChange={e => setForm({ ...form, isActive: e.target.checked })} className="rounded border-slate-300" />
@@ -534,42 +592,55 @@ const ContactsTab = ({ orgId }: { orgId: number }) => {
   );
 };
 
-const UsersTab = ({ orgId }: { orgId: number }) => {
+const UsersTab = ({ orgId }: { orgId: string }) => {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState<any>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     setLoading(true);
-    usersApi.getAll().then((all: any[]) => {
-      // Exclude global super admins from the specific organization view
-      setItems(all.filter(u => u.organizationId === orgId && !u.isSuperAdmin));
+    usersApi.getAll(undefined, false, undefined, undefined, orgId).then((res: any) => {
+      const data = Array.isArray(res) ? res : (res.data || res.items || []);
+      setItems(data.filter((u: any) => !u.isSuperAdmin));
     }).catch(() => {}).finally(() => setLoading(false));
   }, [orgId]);
 
+  useEffect(() => { load(); }, [load]);
+
   return (
     <div className="p-6">
+      {modal && <UserModal user={modal === 'new' ? null : modal} defaultOrgId={orgId} onClose={() => setModal(null)} onSave={() => { setModal(null); load(); }} />}
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-slate-700">Users</h3>
-        <p className="text-xs text-slate-400">Manage all users via the <a href="/users" className="text-blue-600 hover:underline">Users section</a></p>
+        <HasPermission permission="users:write">
+          <button onClick={() => setModal('new')} className="btn-primary text-sm flex items-center gap-1.5 py-1.5">
+            <Plus className="w-3.5 h-3.5" /> Add User
+          </button>
+        </HasPermission>
       </div>
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>
       ) : items.length === 0 ? (
-        <EmptyState icon={Users} message="No users in this organization" addLabel="Go to Users section" onAdd={() => window.location.href = '/users'} />
+        <EmptyState icon={Users} message="No users in this organization" addLabel="Add a user" onAdd={() => setModal('new')} />
       ) : (
         <div className="space-y-2">
           {items.map(u => (
-            <div key={u.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+            <div key={u.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 group">
               <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 font-bold text-sm flex items-center justify-center">
                 {(u.firstName?.[0] || u.email?.[0] || '?').toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-slate-800 truncate">{[u.firstName, u.lastName].filter(Boolean).join(' ') || u.email}</p>
-                <p className="text-xs text-slate-500 truncate">{u.email} · {u.role?.name || 'No role'}</p>
+                <p className="text-xs text-slate-500 truncate">{u.email} · {u.organizations?.find((o: any) => String(o.organizationId) === String(orgId))?.role?.name || 'No role'}</p>
               </div>
               <span className={`px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${u.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                 {u.isActive ? 'Active' : 'Inactive'}
               </span>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                <HasPermission permission="users:write">
+                  <button onClick={() => setModal(u)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
+                </HasPermission>
+              </div>
             </div>
           ))}
         </div>
@@ -577,6 +648,7 @@ const UsersTab = ({ orgId }: { orgId: number }) => {
     </div>
   );
 };
+
 
 const AddressesTab = ({ orgId }: { orgId: number }) => {
   const [items, setItems] = useState<any[]>([]);
@@ -653,36 +725,153 @@ const AddressesTab = ({ orgId }: { orgId: number }) => {
   );
 };
 
+const IssueLicenseModal = ({ orgId, onClose, onSave }: any) => {
+  const [form, setForm] = useState({
+    targetOrgId: orgId,
+    licenseType: 'BASIC',
+    totalCount: 1,
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await licensesApi.issue(form);
+      onSave();
+    } catch (err: any) { alert(err.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="font-bold text-slate-800">Issue New Licenses</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="text-sm font-semibold text-slate-700 mb-1 block">Service Level</label>
+            <select value={form.licenseType} onChange={e=>setForm({...form, licenseType: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-blue-500">
+              <option value="BASIC">Basic</option>
+              <option value="ADVANCED">Advanced</option>
+              <option value="PRO">Pro</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-slate-700 mb-1 block">Quantity</label>
+            <input type="number" min="1" value={form.totalCount} onChange={e=>setForm({...form, totalCount: parseInt(e.target.value)})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-blue-500" />
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 py-2 border rounded-lg font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
+            <button type="submit" disabled={loading} className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50">{loading ? 'Issuing...' : 'Issue'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const LicensesTab = ({ orgId }: { orgId: string }) => {
   const [licenses, setLicenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => {
+  const [modal, setModal] = useState(false);
+  const [confirmState, setConfirmState] = useState<{isOpen: boolean; license?: any; newStatus?: string; loading: boolean}>({
+    isOpen: false, loading: false
+  });
+
+  const load = useCallback(() => {
     setLoading(true);
     licensesApi.getInventory(orgId).then((res: any) => {
       setLicenses(Array.isArray(res) ? res : (res.data || []));
     }).catch(() => {}).finally(() => setLoading(false));
   }, [orgId]);
-  
-  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>;
-  if (licenses.length === 0) return <EmptyState icon={Key} message="No licenses found for this organization." />;
+
+  useEffect(() => { load(); }, [load]);
+
+  const toggleStatus = async () => {
+    if (!confirmState.license || !confirmState.newStatus) return;
+    setConfirmState(prev => ({ ...prev, loading: true }));
+    try {
+      await licensesApi.updateStatus(confirmState.license.id, confirmState.newStatus);
+      load();
+      setConfirmState({ isOpen: false, loading: false });
+    } catch (err: any) { 
+      alert(err.message); 
+      setConfirmState(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  const handleToggleClick = (license: any) => {
+    const newStatus = license.status === 'AVAILABLE' || license.status === 'ACTIVE' ? 'SUSPENDED' : 'AVAILABLE';
+    setConfirmState({ isOpen: true, license, newStatus, loading: false });
+  };
+
   return (
-    <div className="p-6 space-y-4">
-      <h3 className="font-semibold text-slate-700">Organization Licenses</h3>
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
-            <tr><th className="p-3">Key</th><th className="p-3">Status</th></tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {licenses.map(l => (
-              <tr key={l.id}>
-                <td className="p-3 font-mono font-bold text-slate-800">{l.key}</td>
-                <td className="p-3">{l.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="p-6">
+      {modal && <IssueLicenseModal orgId={orgId} onClose={() => setModal(false)} onSave={() => { setModal(false); load(); }} />}
+      <ConfirmDialog 
+        isOpen={confirmState.isOpen}
+        title="Change License Status"
+        message={`Are you sure you want to change the status of this license to ${confirmState.newStatus}?`}
+        confirmLabel={confirmState.newStatus === 'SUSPENDED' ? 'Suspend' : 'Activate'}
+        variant={confirmState.newStatus === 'SUSPENDED' ? 'danger' : 'success'}
+        isLoading={confirmState.loading}
+        onConfirm={toggleStatus}
+        onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+      />
+      
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-slate-700">Organization Licenses</h3>
+        <HasPermission permission="licenses:admin">
+          <button onClick={() => setModal(true)} className="btn-primary text-sm flex items-center gap-1.5 py-1.5">
+            <Plus className="w-3.5 h-3.5" /> Add Licenses
+          </button>
+        </HasPermission>
       </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>
+      ) : licenses.length === 0 ? (
+        <EmptyState icon={Key} message="No licenses found for this organization." onAdd={() => setModal(true)} addLabel="Add Licenses" />
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+              <tr>
+                <th className="p-3">Key</th>
+                <th className="p-3">Type</th>
+                <th className="p-3">Status</th>
+                <th className="p-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {licenses.map(l => (
+                <tr key={l.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="p-3 font-mono font-bold text-slate-800">{l.key}</td>
+                  <td className="p-3">{l.batch?.licenseType || 'BASIC'}</td>
+                  <td className="p-3">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${l.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : l.status === 'AVAILABLE' ? 'bg-blue-100 text-blue-700' : l.status === 'SUSPENDED' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                      {l.status}
+                    </span>
+                  </td>
+                  <td className="p-3 text-right">
+                    <HasPermission permission="licenses:admin">
+                      <button 
+                        onClick={() => handleToggleClick(l)} 
+                        className={`text-xs font-semibold px-2 py-1 rounded transition-colors ${l.status === 'AVAILABLE' || l.status === 'ACTIVE' ? 'text-amber-600 hover:bg-amber-50' : 'text-emerald-600 hover:bg-emerald-50'}`}
+                      >
+                        {l.status === 'AVAILABLE' || l.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
+                      </button>
+                    </HasPermission>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };
@@ -738,11 +927,19 @@ const Organizations = () => {
   const [activeTab, setActiveTab] = useState('Details');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [orgModal, setOrgModal] = useState<any>(null);
 
   // New state for collapsible left sidebar and tree expansions
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (debouncedSearch !== search) setDebouncedSearch(search);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [search, debouncedSearch]);
 
   const toggleExpand = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -757,21 +954,28 @@ const Organizations = () => {
   const fetchOrgs = async (keepSelected?: boolean) => {
     setLoading(true);
     try {
-      const data = await orgsApi.getAll(search);
+      const res = await orgsApi.getAll(debouncedSearch);
+      const data = Array.isArray(res) ? res : (res.data || res.items || []);
       setOrgs(data);
+      
       // After save, re-fetch selected org detail
       if (keepSelected && selected) {
-        const fresh = await orgsApi.getOne(selected.id);
+        const fresh = await orgsApi.getOne(selected.id).catch(() => selected);
         setSelected(fresh);
       } else if (!selected && data.length > 0) {
-        const detail = await orgsApi.getOne(data[0].id);
-        setSelected(detail);
+        // Find the first visual row after hierarchy and sort
+        const rows = buildOrgRows(data);
+        const firstOrg = rows.length > 0 ? rows[0].org : data[0];
+        if (firstOrg && firstOrg.id) {
+          const detail = await orgsApi.getOne(firstOrg.id).catch(() => firstOrg);
+          setSelected(detail);
+        }
       }
-    } catch { }
+    } catch (err) { console.error('Failed to fetch orgs:', err); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchOrgs(); }, [search]);
+  useEffect(() => { fetchOrgs(); }, [debouncedSearch]);
 
   const selectOrg = async (org: any) => {
     setActiveTab('Details');
@@ -794,14 +998,18 @@ const Organizations = () => {
     supplier: 'bg-rose-100 text-rose-700',
   };
 
-  const orgRows = buildOrgRows(orgs).filter((row: any) => {
-    let p = orgs.find((o: any) => o.id === row.org.parentId);
-    while (p) {
-      if (!expandedIds.has(p.id)) return false;
-      p = orgs.find((o: any) => o.id === p.parentId);
-    }
-    return true;
-  });
+  const orgRows = React.useMemo(() => {
+    const allRows = buildOrgRows(orgs);
+    const orgMap = new Map(orgs.map(o => [o.id, o]));
+    return allRows.filter((row: any) => {
+      let p = orgMap.get(row.org.parentId);
+      while (p) {
+        if (!expandedIds.has(p.id)) return false;
+        p = orgMap.get(p.parentId);
+      }
+      return true;
+    });
+  }, [orgs, expandedIds]);
 
   return (
     <div className="flex h-[calc(100vh-8rem)] -mx-6 -mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">

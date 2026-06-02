@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Request, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Request, UseGuards, Query } from '@nestjs/common';
 import { LicensesService } from './licenses.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
@@ -88,5 +88,11 @@ export class LicensesController {
   @RequirePermissions('licenses:admin')
   getBatchDetails(@Param('id') id: string) {
     return this.licensesService.getBatchDetails(id);
+  }
+
+  @Patch(':id/status')
+  @RequirePermissions('licenses:admin')
+  updateStatus(@Request() req: any, @Param('id') id: string, @Body() body: { status: any }) {
+    return this.licensesService.updateStatus(id, body.status, req.user.userId);
   }
 }

@@ -7,8 +7,11 @@ const prisma = new PrismaClient({
 async function test() {
   console.log('\n=== Testing Organization Create ===');
   try {
+    const orgType = await prisma.organizationType.findFirst();
+    if (!orgType) throw new Error('No organization types found. Please seed first.');
+
     const r = await prisma.organization.create({
-      data: { name: 'Test Org CLI', type: 'distributor' as any, isActive: true },
+      data: { name: 'Test Org CLI', organizationTypeId: orgType.id, isActive: true },
     });
     console.log('✅ Created:', r);
     // Cleanup

@@ -377,6 +377,7 @@ export const licensesApi = {
     return request<any>(`/licenses/inventory${p.toString() ? `?${p.toString()}` : ''}`);
   },
   getTransfers: (orgId?: string) => request<any[]>(`/licenses/transfers${orgId ? `?orgId=${orgId}` : ''}`),
+  updateStatus: (id: string, status: string) => request<any>(`/licenses/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
 };
 
 // ─── Cut Credits ─────────────────────────────────────

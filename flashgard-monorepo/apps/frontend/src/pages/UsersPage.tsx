@@ -1,10 +1,64 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Plus, Search, Edit2, Trash2, Loader2, AlertCircle, X, Shield, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, Plus, Search, Edit2, Trash2, Loader2, AlertCircle, X, Shield, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { usersApi, rolesApi, orgsApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 
-function UserModal({ user: u, onClose, onSave }: { user: any; onClose: () => void; onSave: () => void }) {
+const OrgComboBox = ({ value, onChange, disabled, orgs }: any) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filteredOrgs = React.useMemo(() => {
+    if (!search) return orgs.slice(0, 100);
+    return orgs.filter((o: any) => o.name.toLowerCase().includes(search.toLowerCase())).slice(0, 100);
+  }, [orgs, search]);
+
+  const selected = orgs.find((o: any) => o.id === value);
+
+  return (
+    <div className="relative">
+      <div 
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        className={`w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg flex items-center justify-between text-sm ${disabled ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'cursor-pointer hover:border-slate-300'}`}
+      >
+        <span className="truncate">{selected ? selected.name : 'Select Organization'}</span>
+        <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+      </div>
+      
+      {isOpen && !disabled && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+          <div className="absolute z-20 w-full bottom-full mb-1 bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden">
+            <div className="p-2 border-b border-slate-100 bg-white">
+              <input 
+                autoFocus
+                type="text"
+                placeholder="Search..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="overflow-y-auto p-1 max-h-48 custom-scrollbar">
+              {filteredOrgs.length === 0 ? (
+                <div className="p-3 text-sm text-slate-400 text-center">No results</div>
+              ) : filteredOrgs.map((o: any) => (
+                <div
+                  key={o.id}
+                  onClick={() => { onChange(o.id); setIsOpen(false); setSearch(''); }}
+                  className={`px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-slate-50 ${value === o.id ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'}`}
+                >
+                  {o.name}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+export function UserModal({ user: u, defaultOrgId, onClose, onSave }: { user: any; defaultOrgId?: string; onClose: () => void; onSave: () => void }) {
   const { user: currentUser } = useAuth();
   
   const initialOrgs = u?.organizations?.length > 0 
@@ -13,7 +67,7 @@ function UserModal({ user: u, onClose, onSave }: { user: any; onClose: () => voi
         roleId: org.roleId,
         isPrimary: org.isPrimary
       }))
-    : [{ organizationId: currentUser?.organizationId || '', roleId: '', isPrimary: true }];
+    : [{ organizationId: defaultOrgId || currentUser?.organizationId || '', roleId: '', isPrimary: true }];
 
   const [form, setForm] = useState<any>(u ? { ...u } : { firstName: '', lastName: '', email: '', password: '', isActive: true });
   const [userOrgs, setUserOrgs] = useState<any[]>(initialOrgs);
@@ -76,39 +130,37 @@ function UserModal({ user: u, onClose, onSave }: { user: any; onClose: () => voi
           <div className="pt-2 border-t border-slate-100">
             <div className="flex items-center justify-between mb-3">
               <label className="text-sm font-semibold text-slate-800">Organization & Role Assignments</label>
-              <button 
-                type="button" 
-                onClick={() => setUserOrgs([...userOrgs, { organizationId: '', roleId: '', isPrimary: userOrgs.length === 0 }])}
-                className="text-xs flex items-center gap-1 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 px-2 py-1 rounded-md transition-colors"
-               >
-                <Plus className="w-3 h-3" /> Add Assignment
-              </button>
+              {!defaultOrgId && (
+                <button 
+                  type="button" 
+                  onClick={() => setUserOrgs([...userOrgs, { organizationId: '', roleId: '', isPrimary: userOrgs.length === 0 }])}
+                  className="text-xs flex items-center gap-1 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 px-2 py-1 rounded-md transition-colors"
+                 >
+                  <Plus className="w-3 h-3" /> Add Assignment
+                </button>
+              )}
             </div>
             
             <div className="space-y-3">
               {userOrgs.map((assign, index) => (
                 <div key={index} className={`p-3 rounded-lg border relative ${assign.isPrimary ? 'border-[var(--color-primary)]/40 bg-[var(--color-primary)]/5' : 'border-slate-200 bg-slate-50'}`}>
-                  {userOrgs.length > 1 && (
+                  {userOrgs.length > 1 && !defaultOrgId && (
                     <button type="button" onClick={() => setUserOrgs(userOrgs.filter((_, i) => i !== index))} className="absolute right-2 top-2 p-1 text-slate-400 hover:text-red-500 rounded-md hover:bg-white transition-colors">
                       <X className="w-4 h-4" />
                     </button>
                   )}
                   <div className="grid grid-cols-2 gap-3 pr-6">
                     <div>
-                      <select 
-                        className="input-field text-sm py-1.5" 
-                        value={assign.organizationId} 
-                        onChange={e => {
+                      <OrgComboBox 
+                        value={assign.organizationId}
+                        orgs={orgs}
+                        disabled={form.isSuperAdmin || !!defaultOrgId}
+                        onChange={(val: string) => {
                           const newOrgs = [...userOrgs];
-                          newOrgs[index].organizationId = e.target.value;
+                          newOrgs[index].organizationId = val;
                           setUserOrgs(newOrgs);
                         }}
-                        disabled={form.isSuperAdmin}
-                        required
-                      >
-                        <option value="" disabled>Select Organization</option>
-                        {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                      </select>
+                      />
                     </div>
                     <div>
                       <select 
