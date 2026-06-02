@@ -452,6 +452,10 @@ export const migrationApi = {
     formData.append('mobileUsers', mobileUsers);
     return request<any>('/migration/legacy/mobile-users', { method: 'POST', body: formData });
   },
+  dbConnect: (config: any) => 
+    request<any>('/migration/db/connect', { method: 'POST', body: JSON.stringify(config) }),
+  dbRun: (data: any) =>
+    request<any>('/migration/db/run', { method: 'POST', body: JSON.stringify(data) }),
   migrateDesigns: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);

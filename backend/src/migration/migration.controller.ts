@@ -189,4 +189,20 @@ export class MigrationController {
   cleanData(@Body('module') module: string) {
     return this.migrationService.cleanData(module);
   }
+
+  @Post('db/connect')
+  @RequirePermissions('models:write')
+  async dbConnect(@Body() credentials: any) {
+    return this.migrationService.dbConnect(credentials);
+  }
+
+  @Post('db/run')
+  @RequirePermissions('models:write')
+  async dbRun(
+    @Body('credentials') credentials: any,
+    @Body('moduleType') moduleType: string,
+    @Body('tableMap') tableMap: Record<string, string>
+  ) {
+    return this.migrationService.dbRun(credentials, moduleType, tableMap);
+  }
 }

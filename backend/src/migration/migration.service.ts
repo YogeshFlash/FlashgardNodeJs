@@ -1,3 +1,4 @@
+import * as sql from 'mssql';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as crypto from 'crypto';
@@ -243,18 +244,22 @@ export class MigrationService {
   }
 
   // 1. Migrate Catalog (Using Path logic: Cat -> SubCat -> Brand -> Model)
-  async migrateCatalog(file: Express.Multer.File) {
-    const rows: any[] = [];
-    await new Promise((resolve, reject) => {
-      Readable.from(file.buffer)
-        .pipe(csv({
-            mapHeaders: ({ header }) => header.trim().replace(/^\ufeff/, ''),
-            mapValues: ({ value }) => value?.trim()
-        }))
-        .on('data', (row: any) => rows.push(row))
-        .on('end', resolve)
-        .on('error', reject);
-    });
+  async migrateCatalog(file: Express.Multer.File | any[], sourceName?: string) {
+    let rows: any[] = [];
+    if (Array.isArray(file)) {
+      rows = file;
+    } else {
+      await new Promise((resolve, reject) => {
+        Readable.from((file as Express.Multer.File).buffer)
+          .pipe(csv({
+              mapHeaders: ({ header }) => header.trim().replace(/^\ufeff/, ''),
+              mapValues: ({ value }) => value?.trim()
+          }))
+          .on('data', (row: any) => rows.push(row))
+          .on('end', resolve)
+          .on('error', reject);
+      });
+    }
 
     // Sort rows by path depth to ensure parents are created before children
     rows.sort((a, b) => {
@@ -469,7 +474,7 @@ export class MigrationService {
     
     await this.logMigration({
       module: 'catalog',
-      fileName: file.originalname,
+      fileName: sourceName || (file as Express.Multer.File).originalname,
       status: skippedRows === 0 ? 'SUCCESS' : (importedCategories + importedBrands + importedModels > 0 ? 'PARTIAL' : 'FAILED'),
       processed: rows.length,
       created: importedCategories + importedBrands + importedModels,
@@ -482,18 +487,22 @@ export class MigrationService {
   }
 
   // 2. Migrate Skins (Cut Patterns)
-  async migrateSkins(file: Express.Multer.File) {
-    const data: any[] = [];
-    await new Promise((resolve, reject) => {
-      Readable.from(file.buffer)
-        .pipe(csv({
-            mapHeaders: ({ header }) => header.trim().replace(/^\ufeff/, ''),
-            mapValues: ({ value }) => value?.trim()
-        }))
-        .on('data', (row: any) => data.push(row))
-        .on('end', resolve)
-        .on('error', reject);
-    });
+  async migrateSkins(file: Express.Multer.File | any[], sourceName?: string) {
+    let data: any[] = [];
+    if (Array.isArray(file)) {
+      data = file;
+    } else {
+      await new Promise((resolve, reject) => {
+        Readable.from((file as Express.Multer.File).buffer)
+          .pipe(csv({
+              mapHeaders: ({ header }) => header.trim().replace(/^\ufeff/, ''),
+              mapValues: ({ value }) => value?.trim()
+          }))
+          .on('data', (row: any) => data.push(row))
+          .on('end', resolve)
+          .on('error', reject);
+      });
+    }
 
     let imported = 0;
     let updated = 0;
@@ -558,7 +567,7 @@ export class MigrationService {
 
     await this.logMigration({
       module: 'skins',
-      fileName: file.originalname,
+      fileName: sourceName || (file as Express.Multer.File).originalname,
       status: skipped === 0 ? 'SUCCESS' : (imported + updated > 0 ? 'PARTIAL' : 'FAILED'),
       processed: data.length,
       created: imported,
@@ -957,8 +966,8 @@ export class MigrationService {
   }
 
   async migrateUsers(
-    usersFile?: Express.Multer.File,
-    userRolesFile?: Express.Multer.File
+    usersFile?: Express.Multer.File | any[],
+    userRolesFile?: Express.Multer.File | any[], sourceName?: string
   ) {
     let importedUsers = 0;
     let updatedUsers = 0;
@@ -968,8 +977,8 @@ export class MigrationService {
     const failures: any[] = [];
 
     // Parse CSVs
-    const usersData = usersFile ? this.parseUsersCsvRobustly(usersFile.buffer) : [];
-    const userRolesData = userRolesFile ? await this.parseCsvBuffer(userRolesFile.buffer) : [];
+    const usersData = usersFile ? this.parseUsersCsvRobustly((usersFile as Express.Multer.File).buffer) : [];
+    const userRolesData = userRolesFile ? await this.parseCsvBuffer((userRolesFile as Express.Multer.File).buffer) : [];
 
     // Cache to map legacyRoleId -> newRoleId
     const roleMap = new Map<string, string>(); // legacy Role ID (string) -> DB Role ID (UUID)
@@ -1285,8 +1294,8 @@ export class MigrationService {
     };
 
     const fileName = [
-      usersFile ? usersFile.originalname : '',
-      userRolesFile ? userRolesFile.originalname : ''
+      usersFile && !Array.isArray(usersFile) ? (usersFile as Express.Multer.File).originalname : '',
+      userRolesFile && !Array.isArray(userRolesFile) ? (userRolesFile as Express.Multer.File).originalname : ''
     ].filter(Boolean).join(', ');
 
     await this.logMigration({
@@ -1303,10 +1312,7 @@ export class MigrationService {
     return result;
   }
 
-  async migrateLicenses(
-    licensesFile: Express.Multer.File,
-    licenseDealersFile?: Express.Multer.File
-  ) {
+  async migrateLicenses(licensesFile: Express.Multer.File | any[], licenseDealersFile?: Express.Multer.File | any[], sourceName?: string) {
     let importedLicenses = 0;
     let updatedLicenses = 0;
     let skippedRows = 0;
@@ -1316,8 +1322,8 @@ export class MigrationService {
       throw new Error('Licenses file is required');
     }
 
-    const licensesData = await this.parseCsvBuffer(licensesFile.buffer);
-    const licenseDealersData = licenseDealersFile ? await this.parseCsvBuffer(licenseDealersFile.buffer) : [];
+    const licensesData = await this.parseCsvBuffer((licensesFile as Express.Multer.File).buffer);
+    const licenseDealersData = licenseDealersFile ? await this.parseCsvBuffer((licenseDealersFile as Express.Multer.File).buffer) : [];
 
     // Sort assignments by LicenseAssignID ascending to ensure chronological order
     licenseDealersData.sort((a, b) => {
@@ -1456,6 +1462,16 @@ export class MigrationService {
             where: { batchCode }
           });
           if (!batch && rootOrg) {
+            let batchTenantId = orgId;
+            if (assignments.length > 0) {
+              const firstAssignment = assignments[0];
+              const firstDealerId = String(firstAssignment.DealerID || '').trim();
+              const firstDealerOrgId = resolveOrgId(firstDealerId);
+              if (firstDealerOrgId) {
+                batchTenantId = firstDealerOrgId;
+              }
+            }
+
             const sysAdmin = await this.prisma.user.findFirst({
               where: { isSuperAdmin: true }
             });
@@ -1466,7 +1482,7 @@ export class MigrationService {
                   licenseType: 'PRO',
                   totalCount: 0,
                   createdBy: sysAdmin.id,
-                  tenantId: orgId,
+                  tenantId: batchTenantId,
                   createdAt: this.safeDate(lic.CreatedDate)
                 }
               });
@@ -1577,8 +1593,8 @@ export class MigrationService {
     };
 
     const fileName = [
-      licensesFile ? licensesFile.originalname : '',
-      licenseDealersFile ? licenseDealersFile.originalname : ''
+      licensesFile && !Array.isArray(licensesFile) ? (licensesFile as Express.Multer.File).originalname : '',
+      licenseDealersFile && !Array.isArray(licenseDealersFile) ? (licenseDealersFile as Express.Multer.File).originalname : ''
     ].filter(Boolean).join(', ');
 
     await this.logMigration({
@@ -1595,7 +1611,7 @@ export class MigrationService {
     return result;
   }
 
-  async migrateMobileUsers(mobileUsersFile: Express.Multer.File) {
+  async migrateMobileUsers(mobileUsersFile: Express.Multer.File | any[], sourceName?: string) {
     let importedUsers = 0;
     let updatedUsers = 0;
     let importedLicenses = 0;
@@ -1607,7 +1623,7 @@ export class MigrationService {
       throw new Error('Mobile users file is required');
     }
 
-    const mobileUsersData = await this.parseCsvBuffer(mobileUsersFile.buffer);
+    const mobileUsersData = await this.parseCsvBuffer((mobileUsersFile as Express.Multer.File).buffer);
 
     // Cache organizations and users
     const orgs = await this.prisma.organization.findMany({
@@ -1887,7 +1903,7 @@ export class MigrationService {
 
     await this.logMigration({
       module: 'mobile-users',
-      fileName: mobileUsersFile.originalname || 'Uploaded Mobile Users CSV File',
+      fileName: sourceName || (!Array.isArray(mobileUsersFile) ? (mobileUsersFile as Express.Multer.File).originalname : 'Uploaded Mobile Users CSV File'),
       status: skippedRows === 0 ? 'SUCCESS' : (importedUsers + importedLicenses > 0 ? 'PARTIAL' : 'FAILED'),
       processed: mobileUsersData.length,
       created: importedUsers + importedLicenses,
@@ -1899,7 +1915,7 @@ export class MigrationService {
     return result;
   }
 
-  async migrateRoles(rolesFile: Express.Multer.File) {
+  async migrateRoles(rolesFile: Express.Multer.File | any[], sourceName?: string) {
     let importedRoles = 0;
     let updatedRoles = 0;
     let skippedRows = 0;
@@ -1909,7 +1925,7 @@ export class MigrationService {
       throw new Error('Roles file is required');
     }
 
-    const rolesData = await this.parseCsvBuffer(rolesFile.buffer);
+    const rolesData = await this.parseCsvBuffer((rolesFile as Express.Multer.File).buffer);
 
     for (const roleRow of rolesData) {
       try {
@@ -1960,7 +1976,7 @@ export class MigrationService {
 
     await this.logMigration({
       module: 'roles',
-      fileName: rolesFile.originalname || 'Uploaded Roles CSV File',
+      fileName: sourceName || (!Array.isArray(rolesFile) ? (rolesFile as Express.Multer.File).originalname : 'Uploaded Roles CSV File'),
       status: skippedRows === 0 ? 'SUCCESS' : (importedRoles > 0 ? 'PARTIAL' : 'FAILED'),
       processed: rolesData.length,
       created: importedRoles,
@@ -2108,5 +2124,72 @@ export class MigrationService {
     });
 
     return { success: true, message: `Successfully cleaned ${module} migration data.` };
+  }
+
+  async dbConnect(credentials: any) {
+    const config = {
+      user: credentials.user,
+      password: credentials.password,
+      server: credentials.host,
+      database: credentials.database,
+      port: parseInt(credentials.port || '1433'),
+      options: {
+        encrypt: false,
+        trustServerCertificate: true
+      }
+    };
+    try {
+      const pool = await sql.connect(config);
+      const result = await pool.request().query("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'");
+      await pool.close();
+      return result.recordset.map(r => r.TABLE_NAME);
+    } catch (err: any) {
+      throw new Error('Database connection failed: ' + err.message);
+    }
+  }
+
+  async dbRun(credentials: any, moduleType: string, tableMap: Record<string, string>) {
+    const config = {
+      user: credentials.user,
+      password: credentials.password,
+      server: credentials.host,
+      database: credentials.database,
+      port: parseInt(credentials.port || '1433'),
+      options: {
+        encrypt: false,
+        trustServerCertificate: true
+      },
+      requestTimeout: 300000 // 5 minutes
+    };
+    const pool = await sql.connect(config);
+    try {
+      if (moduleType === 'catalog') {
+        const rows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
+        return await this.migrateCatalog(rows, "MSSQL: " + tableMap.file1);
+      } else if (moduleType === 'skins') {
+        const rows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
+        return await this.migrateSkins(rows, "MSSQL: " + tableMap.file1);
+      } else if (moduleType === 'roles') {
+        const rows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
+        return await this.migrateRoles(rows, "MSSQL: " + tableMap.file1);
+      } else if (moduleType === 'designs') {
+        throw new Error('Direct DB migration for designs is not supported. Use Local Scan instead.');
+      } else if (moduleType === 'mobile-users') {
+        const rows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
+        return await this.migrateMobileUsers(rows, "MSSQL: " + tableMap.file1);
+      } else if (moduleType === 'users') {
+        const userRows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
+        const roleRows = tableMap.file2 ? (await pool.request().query("SELECT * FROM [" + tableMap.file2 + "]")).recordset : [];
+        return await this.migrateUsers(userRows, roleRows, "MSSQL: " + tableMap.file1);
+      } else if (moduleType === 'licenses') {
+        const licenseRows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
+        const assignRows = tableMap.file2 ? (await pool.request().query("SELECT * FROM [" + tableMap.file2 + "]")).recordset : [];
+        return await this.migrateLicenses(licenseRows, assignRows, "MSSQL: " + tableMap.file1);
+      } else {
+        throw new Error('Unsupported module type for DB migration: ' + moduleType);
+      }
+    } finally {
+      await pool.close();
+    }
   }
 }

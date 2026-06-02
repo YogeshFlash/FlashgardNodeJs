@@ -211,15 +211,36 @@ export class LicensesService {
   }
 
   async getMyInventory(orgId: string, isSuperAdmin = false, skip?: number, take?: number, search?: string) {
-    const where: any = isSuperAdmin ? {} : { ownerId: orgId };
+    const where: any = isSuperAdmin ? {} : {
+      OR: [
+        { ownerId: orgId },
+        {
+          transferItems: {
+            some: {
+              transfer: {
+                fromOrgId: orgId
+              }
+            }
+          }
+        }
+      ]
+    };
 
     if (search) {
-      where.OR = [
-        { owner: { name: { contains: search, mode: 'insensitive' } } },
-        { batch: { batchCode: { contains: search, mode: 'insensitive' } } },
-        { batch: { licenseType: { contains: search, mode: 'insensitive' } } },
-        { status: { equals: search.toUpperCase() as any } },
-      ].filter(Boolean);
+      const searchFilter = {
+        OR: [
+          { owner: { name: { contains: search, mode: 'insensitive' } } },
+          { batch: { batchCode: { contains: search, mode: 'insensitive' } } },
+          { batch: { licenseType: { contains: search, mode: 'insensitive' } } },
+          { status: { equals: search.toUpperCase() as any } },
+        ].filter(Boolean)
+      };
+      
+      if (isSuperAdmin) {
+        Object.assign(where, searchFilter);
+      } else {
+        where.AND = [searchFilter];
+      }
     }
 
     if (skip !== undefined || take !== undefined) {

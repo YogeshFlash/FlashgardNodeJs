@@ -410,7 +410,7 @@ const LicensesPage = () => {
   };
 
   const selectFullBatch = (items: any[], batchId: string) => {
-    const batchItems = items.filter(item => item.batchId === batchId && item.status === 'AVAILABLE');
+    const batchItems = items.filter(item => item.batchId === batchId && item.status === 'AVAILABLE' && (user?.isSuperAdmin || item.ownerId === user?.organizationId));
     const batchItemIds = batchItems.map(item => item.id);
     const allInBatchSelected = batchItemIds.every(id => selectedIds.includes(id));
 
@@ -586,14 +586,14 @@ const LicensesPage = () => {
                     <th className="px-6 py-4">Serial / Key</th>
                     <th className="px-6 py-4">Service Level</th>
                     <th className="px-6 py-4">Status</th>
-                    {user?.isSuperAdmin && <th className="px-6 py-4">Current Owner</th>}
+                    <th className="px-6 py-4">Owner</th>
                     <th className="px-6 py-4">Activated At</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
                   {orgLicenses.length === 0 ? (
                     <tr>
-                      <td colSpan={user?.isSuperAdmin ? 6 : 5} className="px-6 py-12 text-center text-slate-400 italic">
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic">
                         {orgLicenses.length === 0 ? 'No org licenses found.' : 'No licenses match your search.'}
                       </td>
                     </tr>
@@ -603,12 +603,12 @@ const LicensesPage = () => {
                         <td className="px-6 py-3 text-center">
                           <input 
                             type="checkbox" 
-                            checked={group.items.filter((i: any) => i.status === 'AVAILABLE').every((i: any) => selectedIds.includes(i.id)) && group.items.filter((i: any) => i.status === 'AVAILABLE').length > 0}
+                            checked={group.items.filter((i: any) => i.status === 'AVAILABLE' && (user?.isSuperAdmin || i.ownerId === user?.organizationId)).every((i: any) => selectedIds.includes(i.id)) && group.items.filter((i: any) => i.status === 'AVAILABLE' && (user?.isSuperAdmin || i.ownerId === user?.organizationId)).length > 0}
                             onChange={() => selectFullBatch(orgLicenses, batchId)}
                             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
                           />
                         </td>
-                        <td colSpan={user?.isSuperAdmin ? 5 : 4} className="px-6 py-3">
+                        <td colSpan={5} className="px-6 py-3">
                           <div className="flex items-center gap-3">
                             <span className="font-bold text-slate-700 text-xs uppercase tracking-wider">Batch: {group.info.batchCode}</span>
                             <span className="text-slate-400 text-xs">•</span>
@@ -621,21 +621,24 @@ const LicensesPage = () => {
                       {group.items.map((item: any) => (
                         <tr key={item.id} className={`hover:bg-slate-50 transition-colors ${selectedIds.includes(item.id) ? 'bg-indigo-50/50' : ''}`}>
                           <td className="px-6 py-4 text-center">
-                            {item.status === 'AVAILABLE' && (
+                            {item.status === 'AVAILABLE' && (user?.isSuperAdmin || item.ownerId === user?.organizationId) && (
                               <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelect(item.id)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer" />
                             )}
                           </td>
                           <td className="px-6 py-4 font-mono font-bold text-slate-900">{item.key}</td>
                           <td className="px-6 py-4"><span className="font-semibold text-slate-700">{item.batch.licenseType}</span></td>
                           <td className="px-6 py-4">{getStatusBadge(item.status)}</td>
-                          {user?.isSuperAdmin && (
-                            <td className="px-6 py-4">
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col items-start gap-1">
                               <div className="flex flex-col">
                                 <span className="font-bold text-slate-900">{item.owner?.name}</span>
                                 <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{item.owner?.organizationType?.name}</span>
                               </div>
-                            </td>
-                          )}
+                              {item.ownerId !== user?.organizationId && !user?.isSuperAdmin && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase tracking-wider">Distributed</span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-6 py-4 text-slate-500">{item.activatedAt ? new Date(item.activatedAt).toLocaleDateString() : '—'}</td>
                         </tr>
                       ))}
