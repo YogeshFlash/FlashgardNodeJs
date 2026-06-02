@@ -243,6 +243,7 @@ const DataMigration: React.FC = () => {
     setResult(null);
     try {
       const data = await migrationApi.dbRun({ 
+        credentials: dbConfig,
         moduleType: legacySubTab, 
         tableMap: { file1: dbMapFile1, file2: dbMapFile2 }
       });
