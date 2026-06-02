@@ -451,6 +451,7 @@ const DataMigration: React.FC = () => {
                           )}
                         </div>
                       ) : (
+                        <>
                         <div className="grid grid-cols-1 gap-6">
                           {/* File 1 */}
                           <div className="space-y-3">
@@ -505,6 +506,7 @@ const DataMigration: React.FC = () => {
                         {isMigrating ? <Loader2 className="w-6 h-6 animate-spin" /> : <RefreshCcw className="w-6 h-6" />}
                         {isMigrating ? 'Syncing...' : 'Start Migration'}
                       </button>
+                      </>
                       )}
 
                       {result && (
