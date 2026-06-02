@@ -2142,7 +2142,7 @@ export class MigrationService {
       const pool = await sql.connect(config);
       const result = await pool.request().query("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'");
       await pool.close();
-      return result.recordset.map(r => r.TABLE_NAME);
+      return { tables: result.recordset.map(r => r.TABLE_NAME) };
     } catch (err: any) {
       throw new BadRequestException('Database connection failed: ' + err.message);
     }
