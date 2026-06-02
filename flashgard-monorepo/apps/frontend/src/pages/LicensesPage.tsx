@@ -293,6 +293,11 @@ const LicensesPage = () => {
     return () => clearTimeout(timer);
   }, [searchQuery, debouncedSearch]);
 
+  // Fetch orgs once on mount
+  useEffect(() => {
+    orgsApi.getAll().then(setOrgs).catch(console.error);
+  }, []);
+
   // Refetch when tab, page, or search changes
   useEffect(() => {
     fetchData();
@@ -305,51 +310,35 @@ const LicensesPage = () => {
       const skip = (page - 1) * ITEMS_PER_PAGE;
       const take = ITEMS_PER_PAGE;
 
-      const promises: any[] = [
-        orgsApi.getAll().catch(() => []),
-        licensesApi.getTransfers().catch(() => []),
-        cutCreditsApi.getTransfers().catch(() => [])
-      ];
-
       if (tab === 'licenses') {
-        promises.push(licensesApi.getInventory(undefined, skip, take, debouncedSearch).catch(() => ({ data: [], total: 0 })));
-      } else if (tab === 'credits') {
-        promises.push(cutCreditsApi.getInventory(undefined, skip, take, debouncedSearch).catch(() => ({ data: [], total: 0 })));
-      }
-
-      const results = await Promise.all(promises);
-      const orgsRes = results[0];
-      const transferLicRes = results[1];
-      const transferCredRes = results[2];
-      
-      setOrgs(orgsRes || []);
-      
-      if (tab === 'licenses') {
-        const licRes = results[3] || { data: [], total: 0 };
+        const licRes: any = await licensesApi.getInventory(undefined, skip, take, debouncedSearch).catch(() => ({ data: [], total: 0 }));
         if (Array.isArray(licRes)) {
            setOrgLicenses(licRes); setTotalItems(licRes.length);
         } else {
            setOrgLicenses(licRes.data || []); setTotalItems(licRes.total || 0);
         }
       } else if (tab === 'credits') {
-        const credRes = results[3] || { data: [], total: 0 };
+        const credRes: any = await cutCreditsApi.getInventory(undefined, skip, take, debouncedSearch).catch(() => ({ data: [], total: 0 }));
         if (Array.isArray(credRes)) {
            setCutCredits(credRes); setTotalItems(credRes.length);
         } else {
            setCutCredits(credRes.data || []); setTotalItems(credRes.total || 0);
         }
+      } else if (tab === 'history' || tab === 'pending') {
+        const [transferLicRes, transferCredRes] = await Promise.all([
+          licensesApi.getTransfers().catch(() => []),
+          cutCreditsApi.getTransfers().catch(() => [])
+        ]);
+        const transferMap = new Map();
+        (transferLicRes || []).forEach((t: any) => transferMap.set(t.id, { ...t, itemType: 'License' }));
+        (transferCredRes || []).forEach((t: any) => {
+          if (!transferMap.has(t.id)) transferMap.set(t.id, { ...t, itemType: 'Credits' });
+        });
+        const allTransfers = Array.from(transferMap.values())
+          .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setTransfers(allTransfers);
+        setTotalItems(allTransfers.length);
       }
-
-      // Combine transfers
-      const transferMap = new Map();
-      (transferLicRes || []).forEach((t: any) => transferMap.set(t.id, { ...t, itemType: 'License' }));
-      (transferCredRes || []).forEach((t: any) => {
-        if (!transferMap.has(t.id)) transferMap.set(t.id, { ...t, itemType: 'Credits' });
-      });
-      const allTransfers = Array.from(transferMap.values())
-        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      
-      setTransfers(allTransfers);
     } catch (err: any) {
       console.error('Fetch error:', err);
     } finally {
@@ -425,6 +414,37 @@ const LicensesPage = () => {
     } catch (err: any) {
       alert(err.message);
     }
+  };
+
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+    const pages = [];
+    let start = Math.max(1, page - 2);
+    let end = Math.min(totalPages, start + 4);
+    if (end - start < 4) start = Math.max(1, end - 4);
+    
+    for (let i = start; i <= end; i++) pages.push(i);
+
+    return (
+      <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+        <div className="text-sm text-slate-500 font-medium">
+          Showing {((page - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(page * ITEMS_PER_PAGE, totalItems)} of {totalItems} items
+        </div>
+        <div className="flex gap-1">
+          <button disabled={page === 1} onClick={() => setPage(page - 1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-100 disabled:opacity-50">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          {pages.map(p => (
+            <button key={p} onClick={() => setPage(p)} className={`w-8 h-8 rounded-lg text-sm font-bold ${page === p ? 'bg-[var(--color-accent)] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+              {p}
+            </button>
+          ))}
+          <button disabled={page === totalPages} onClick={() => setPage(page + 1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-100 disabled:opacity-50">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -565,27 +585,7 @@ const LicensesPage = () => {
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50">
-              <span className="text-sm text-slate-500">
-                Showing {totalItems > 0 ? (page - 1) * ITEMS_PER_PAGE + 1 : 0} to {Math.min(page * ITEMS_PER_PAGE, totalItems)} of <span className="font-semibold text-slate-700">{totalItems}</span> results
-              </span>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="p-2 border border-slate-200 rounded-lg hover:bg-white disabled:opacity-50 disabled:hover:bg-transparent"
-                >
-                  <ChevronLeft className="w-4 h-4 text-slate-600" />
-                </button>
-                <button 
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
-                  className="p-2 border border-slate-200 rounded-lg hover:bg-white disabled:opacity-50 disabled:hover:bg-transparent"
-                >
-                  <ChevronRight className="w-4 h-4 text-slate-600" />
-                </button>
-              </div>
-            </div>
+            {renderPagination()}
           </div>
         </div>
       ) : tab === 'credits' ? (
@@ -656,6 +656,7 @@ const LicensesPage = () => {
               </tbody>
             </table>
           </div>
+          {renderPagination()}
         </div>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -693,6 +694,7 @@ const LicensesPage = () => {
               </tbody>
             </table>
           </div>
+          {renderPagination()}
         </div>
       )}
 
