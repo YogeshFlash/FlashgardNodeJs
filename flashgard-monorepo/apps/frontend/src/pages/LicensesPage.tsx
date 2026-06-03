@@ -102,53 +102,33 @@ const IssueOrgLicenseModal = ({ onClose, onSave, orgs }: any) => {
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-5 h-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="space-y-1.5 relative">
+          <div className="space-y-1.5">
             <label className="text-sm font-semibold text-slate-700">Select Organization</label>
-            <div className="relative">
-              <div 
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer flex justify-between items-center transition-all hover:bg-slate-100"
-                onClick={() => setShowOrgDropdown(!showOrgDropdown)}
-              >
-                <span className={selectedOrg ? 'text-slate-900 font-medium' : 'text-slate-400'}>
-                  {selectedOrg ? `${selectedOrg.name} (${selectedOrg.organizationType?.name})` : 'Choose partner...'}
-                </span>
-                <svg className={`w-4 h-4 text-slate-400 transition-transform ${showOrgDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            <div className="border border-slate-200 rounded-xl overflow-hidden flex flex-col bg-slate-50 max-h-64">
+              <div className="p-2 border-b border-slate-200 bg-white sticky top-0 z-10">
+                <input 
+                  type="text" 
+                  placeholder="Search organization..." 
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  value={orgSearch}
+                  onChange={e => setOrgSearch(e.target.value)}
+                />
               </div>
-              
-              {showOrgDropdown && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden max-h-60 flex flex-col">
-                  <div className="p-2 border-b border-slate-100">
-                    <input 
-                      type="text" 
-                      placeholder="Search organization..." 
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                      value={orgSearch}
-                      onChange={e => setOrgSearch(e.target.value)}
-                      onClick={e => e.stopPropagation()}
-                      autoFocus
-                    />
-                  </div>
-                  <div className="overflow-y-auto flex-1">
-                    {filteredOrgs.length === 0 ? (
-                      <div className="p-4 text-sm text-slate-500 text-center">No organizations found</div>
-                    ) : (
-                      filteredOrgs.map((o: any) => (
-                        <div 
-                          key={o.id}
-                          className={`px-4 py-2.5 text-sm cursor-pointer transition-colors ${form.targetOrgId === o.id ? 'bg-indigo-50 text-indigo-700 font-medium' : 'hover:bg-slate-50 text-slate-700'}`}
-                          onClick={() => {
-                            setForm({...form, targetOrgId: o.id});
-                            setShowOrgDropdown(false);
-                            setOrgSearch('');
-                          }}
-                        >
-                          {'\u00A0'.repeat(o.depth * 4)}{o.depth > 0 ? '↳ ' : ''}{o.name} <span className="text-xs text-slate-400">({o.organizationType?.name})</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
+              <div className="overflow-y-auto flex-1">
+                {filteredOrgs.length === 0 ? (
+                  <div className="p-4 text-sm text-slate-500 text-center">No organizations found</div>
+                ) : (
+                  filteredOrgs.map((o: any) => (
+                    <div 
+                      key={o.id}
+                      className={`px-4 py-2.5 text-sm cursor-pointer transition-colors border-b border-slate-100 last:border-0 ${form.targetOrgId === o.id ? 'bg-indigo-50 text-indigo-700 font-bold sticky bottom-0 top-0 z-20' : 'hover:bg-slate-100 text-slate-700 bg-white'}`}
+                      onClick={() => setForm({...form, targetOrgId: o.id})}
+                    >
+                      {'\u00A0'.repeat(o.depth * 4)}{o.depth > 0 ? '↳ ' : ''}{o.name} <span className="text-xs opacity-70">({o.organizationType?.name})</span>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -224,53 +204,33 @@ const IssueCreditsModal = ({ onClose, onSave, orgs, licenses }: any) => {
              <AlertCircle className="w-5 h-5 flex-shrink-0" />
              <p>Select the organization to receive these machine Cut Credits.</p>
           </div>
-          <div className="space-y-1.5 relative">
+          <div className="space-y-1.5">
             <label className="text-sm font-semibold text-slate-700">Target Organization</label>
-            <div className="relative">
-              <div 
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer flex justify-between items-center transition-all hover:bg-slate-100"
-                onClick={() => setShowOrgDropdown(!showOrgDropdown)}
-              >
-                <span className={selectedOrg ? 'text-slate-900 font-medium' : 'text-slate-400'}>
-                  {selectedOrg ? `${selectedOrg.name} (${selectedOrg.organizationType?.name})` : 'Select recipient...'}
-                </span>
-                <svg className={`w-4 h-4 text-slate-400 transition-transform ${showOrgDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            <div className="border border-slate-200 rounded-xl overflow-hidden flex flex-col bg-slate-50 max-h-64">
+              <div className="p-2 border-b border-slate-200 bg-white sticky top-0 z-10">
+                <input 
+                  type="text" 
+                  placeholder="Search organization..." 
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  value={orgSearch}
+                  onChange={e => setOrgSearch(e.target.value)}
+                />
               </div>
-              
-              {showOrgDropdown && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden max-h-60 flex flex-col">
-                  <div className="p-2 border-b border-slate-100">
-                    <input 
-                      type="text" 
-                      placeholder="Search organization..." 
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                      value={orgSearch}
-                      onChange={e => setOrgSearch(e.target.value)}
-                      onClick={e => e.stopPropagation()}
-                      autoFocus
-                    />
-                  </div>
-                  <div className="overflow-y-auto flex-1">
-                    {filteredOrgs.length === 0 ? (
-                      <div className="p-4 text-sm text-slate-500 text-center">No organizations found</div>
-                    ) : (
-                      filteredOrgs.map((o: any) => (
-                        <div 
-                          key={o.id}
-                          className={`px-4 py-2.5 text-sm cursor-pointer transition-colors ${form.targetOrgId === o.id ? 'bg-indigo-50 text-indigo-700 font-medium' : 'hover:bg-slate-50 text-slate-700'}`}
-                          onClick={() => {
-                            setForm({...form, targetOrgId: o.id});
-                            setShowOrgDropdown(false);
-                            setOrgSearch('');
-                          }}
-                        >
-                          {'\u00A0'.repeat(o.depth * 4)}{o.depth > 0 ? '↳ ' : ''}{o.name} <span className="text-xs text-slate-400">({o.organizationType?.name})</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
+              <div className="overflow-y-auto flex-1">
+                {filteredOrgs.length === 0 ? (
+                  <div className="p-4 text-sm text-slate-500 text-center">No organizations found</div>
+                ) : (
+                  filteredOrgs.map((o: any) => (
+                    <div 
+                      key={o.id}
+                      className={`px-4 py-2.5 text-sm cursor-pointer transition-colors border-b border-slate-100 last:border-0 ${form.targetOrgId === o.id ? 'bg-indigo-50 text-indigo-700 font-bold sticky bottom-0 top-0 z-20' : 'hover:bg-slate-100 text-slate-700 bg-white'}`}
+                      onClick={() => setForm({...form, targetOrgId: o.id})}
+                    >
+                      {'\u00A0'.repeat(o.depth * 4)}{o.depth > 0 ? '↳ ' : ''}{o.name} <span className="text-xs opacity-70">({o.organizationType?.name})</span>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
 
