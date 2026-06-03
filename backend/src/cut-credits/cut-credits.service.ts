@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreditStatus, CreditPlanType, TransferStatus, TransactionType } from '@prisma/client';
+import { resolveTransferPath } from '../utils/hierarchy.util';
 import { decryptLicenseKey } from '../utils/encryption';
 
 @Injectable()
@@ -91,20 +92,37 @@ export class CutCreditsService {
     return this.prisma.$transaction(async (tx) => {
       const effectiveFromOrgId = data.fromOrgId || credits[0].ownerId;
 
-      const transfer = await (tx as any).licensingTransfer.create({
-        data: {
-          fromOrgId: effectiveFromOrgId,
-          toOrgId: data.toOrgId,
-          status: TransferStatus.PENDING,
-          tenantId: data.tenantId || effectiveFromOrgId,
-          items: { create: data.creditIds.map((id: any) => ({ creditId: id })) }
+      const path = await resolveTransferPath(tx, effectiveFromOrgId, data.toOrgId);
+      
+      let finalTransfer = null;
+
+      // Loop through the path and create sequential transfers
+      for (let i = 0; i < path.length - 1; i++) {
+        const fromId = path[i];
+        const toId = path[i + 1];
+        const isLast = i === path.length - 2;
+
+        const transfer = await (tx as any).licensingTransfer.create({
+          data: {
+            fromOrgId: fromId,
+            toOrgId: toId,
+            status: isLast ? TransferStatus.PENDING : TransferStatus.COMPLETED,
+            resolvedAt: isLast ? null : new Date(),
+            resolvedBy: isLast ? null : data.userId,
+            tenantId: data.tenantId || effectiveFromOrgId,
+            items: { create: data.creditIds.map((id: any) => ({ creditId: id })) }
+          }
+        });
+
+        if (isLast) {
+          finalTransfer = transfer;
         }
-      });
+      }
       await (tx as any).cutCredit.updateMany({
         where: { id: { in: data.creditIds } },
         data: { status: CreditStatus.IN_TRANSIT }
       });
-      return transfer;
+      return finalTransfer;
     });
   }
 

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { OrgLicenseStatus, OrgLicenseType, TransferStatus } from '@prisma/client';
 import { encryptLicenseKey, decryptLicenseKey } from '../utils/encryption';
+import { resolveTransferPath } from '../utils/hierarchy.util';
 
 @Injectable()
 export class LicensesService {
@@ -89,17 +90,33 @@ export class LicensesService {
       // Use the actual current owner of the first license for the transfer if fromOrgId was not set (Super Admin)
       const effectiveFromOrgId = data.fromOrgId || licenses[0].ownerId;
 
-      const transfer = await (tx as any).licensingTransfer.create({
-        data: {
-          fromOrgId: effectiveFromOrgId,
-          toOrgId: data.toOrgId,
-          status: TransferStatus.COMPLETED,
-          resolvedAt: new Date(),
-          resolvedBy: data.userId,
-          tenantId: data.tenantId || effectiveFromOrgId,
-          items: { create: data.licenseIds.map((id: any) => ({ licenseId: id })) }
+      const path = await resolveTransferPath(tx, effectiveFromOrgId, data.toOrgId);
+      
+      let finalTransfer = null;
+
+      // Loop through the path and create sequential transfers
+      // path example: [RootId, MasterDistributorId, SubDistributorId, RetailerId]
+      for (let i = 0; i < path.length - 1; i++) {
+        const fromId = path[i];
+        const toId = path[i + 1];
+
+        const transfer = await (tx as any).licensingTransfer.create({
+          data: {
+            fromOrgId: fromId,
+            toOrgId: toId,
+            status: TransferStatus.COMPLETED,
+            resolvedAt: new Date(),
+            resolvedBy: data.userId,
+            tenantId: data.tenantId || effectiveFromOrgId,
+            items: { create: data.licenseIds.map((id: any) => ({ licenseId: id })) }
+          }
+        });
+
+        // The last transfer is the one we return to the caller
+        if (i === path.length - 2) {
+          finalTransfer = transfer;
         }
-      });
+      }
 
       await (tx as any).orgLicense.updateMany({
         where: { id: { in: data.licenseIds } },
@@ -110,7 +127,7 @@ export class LicensesService {
         }
       });
 
-      return transfer;
+      return finalTransfer;
     });
   }
 
