@@ -74,8 +74,12 @@ const IssueOrgLicenseModal = ({ onClose, onSave, orgs }: any) => {
   });
   const [loading, setLoading] = useState(false);
 
+  const [orgSearch, setOrgSearch] = useState('');
+  const [showOrgDropdown, setShowOrgDropdown] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.targetOrgId) return alert('Please select an organization');
     setLoading(true);
     try {
       await licensesApi.issue(form);
@@ -87,24 +91,65 @@ const IssueOrgLicenseModal = ({ onClose, onSave, orgs }: any) => {
     }
   };
 
+  const filteredOrgs = hierarchicalOrgs.filter((o: any) => o.name.toLowerCase().includes(orgSearch.toLowerCase()));
+  const selectedOrg = hierarchicalOrgs.find((o: any) => o.id === form.targetOrgId);
+
   return (
-    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[60] p-4 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[60] p-4 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-visible animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h3 className="font-bold text-slate-900 text-ellipsis whitespace-nowrap overflow-hidden">Issue Org License</h3>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-5 h-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 relative">
             <label className="text-sm font-semibold text-slate-700">Select Organization</label>
-            <select value={form.targetOrgId} onChange={e => setForm({...form, targetOrgId: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl" required>
-              <option value="">Choose partner...</option>
-              {hierarchicalOrgs.map((o: any) => (
-                <option key={o.id} value={o.id}>
-                  {'\u00A0'.repeat(o.depth * 4)}{o.depth > 0 ? 'â†³ ' : ''}{o.name} ({o.organizationType?.name})
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <div 
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer flex justify-between items-center transition-all hover:bg-slate-100"
+                onClick={() => setShowOrgDropdown(!showOrgDropdown)}
+              >
+                <span className={selectedOrg ? 'text-slate-900 font-medium' : 'text-slate-400'}>
+                  {selectedOrg ? `${selectedOrg.name} (${selectedOrg.organizationType?.name})` : 'Choose partner...'}
+                </span>
+                <svg className={`w-4 h-4 text-slate-400 transition-transform ${showOrgDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+              </div>
+              
+              {showOrgDropdown && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden max-h-60 flex flex-col">
+                  <div className="p-2 border-b border-slate-100">
+                    <input 
+                      type="text" 
+                      placeholder="Search organization..." 
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      value={orgSearch}
+                      onChange={e => setOrgSearch(e.target.value)}
+                      onClick={e => e.stopPropagation()}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="overflow-y-auto flex-1">
+                    {filteredOrgs.length === 0 ? (
+                      <div className="p-4 text-sm text-slate-500 text-center">No organizations found</div>
+                    ) : (
+                      filteredOrgs.map((o: any) => (
+                        <div 
+                          key={o.id}
+                          className={`px-4 py-2.5 text-sm cursor-pointer transition-colors ${form.targetOrgId === o.id ? 'bg-indigo-50 text-indigo-700 font-medium' : 'hover:bg-slate-50 text-slate-700'}`}
+                          onClick={() => {
+                            setForm({...form, targetOrgId: o.id});
+                            setShowOrgDropdown(false);
+                            setOrgSearch('');
+                          }}
+                        >
+                          {'\u00A0'.repeat(o.depth * 4)}{o.depth > 0 ? '↳ ' : ''}{o.name} <span className="text-xs text-slate-400">({o.organizationType?.name})</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5 overflow-hidden">
@@ -143,11 +188,16 @@ const IssueCreditsModal = ({ onClose, onSave, orgs, licenses }: any) => {
     licenseId: '',
   });
 
+  const [orgSearch, setOrgSearch] = useState('');
+  const [showOrgDropdown, setShowOrgDropdown] = useState(false);
+
   const availableLicenses = licenses?.filter((l: any) => l.ownerId === form.targetOrgId) || [];
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.targetOrgId) return alert('Please select an organization');
+    if (!form.licenseId) return alert('Please link a license');
     setLoading(true);
     try {
       await cutCreditsApi.issue(form);
@@ -159,9 +209,12 @@ const IssueCreditsModal = ({ onClose, onSave, orgs, licenses }: any) => {
     }
   };
 
+  const filteredOrgs = hierarchicalOrgs.filter((o: any) => o.name.toLowerCase().includes(orgSearch.toLowerCase()));
+  const selectedOrg = hierarchicalOrgs.find((o: any) => o.id === form.targetOrgId);
+
   return (
-    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[60] p-4 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[60] p-4 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-visible animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h3 className="font-bold text-slate-900">Assign Cut Credits</h3>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-5 h-5" /></button>
@@ -171,16 +224,54 @@ const IssueCreditsModal = ({ onClose, onSave, orgs, licenses }: any) => {
              <AlertCircle className="w-5 h-5 flex-shrink-0" />
              <p>Select the organization to receive these machine Cut Credits.</p>
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 relative">
             <label className="text-sm font-semibold text-slate-700">Target Organization</label>
-            <select value={form.targetOrgId} onChange={e => setForm({...form, targetOrgId: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl" required>
-              <option value="">Select recipient...</option>
-              {hierarchicalOrgs.map((o: any) => (
-                <option key={o.id} value={o.id}>
-                  {'\u00A0'.repeat(o.depth * 4)}{o.depth > 0 ? 'â†³ ' : ''}{o.name} ({o.organizationType?.name})
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <div 
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer flex justify-between items-center transition-all hover:bg-slate-100"
+                onClick={() => setShowOrgDropdown(!showOrgDropdown)}
+              >
+                <span className={selectedOrg ? 'text-slate-900 font-medium' : 'text-slate-400'}>
+                  {selectedOrg ? `${selectedOrg.name} (${selectedOrg.organizationType?.name})` : 'Select recipient...'}
+                </span>
+                <svg className={`w-4 h-4 text-slate-400 transition-transform ${showOrgDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+              </div>
+              
+              {showOrgDropdown && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden max-h-60 flex flex-col">
+                  <div className="p-2 border-b border-slate-100">
+                    <input 
+                      type="text" 
+                      placeholder="Search organization..." 
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      value={orgSearch}
+                      onChange={e => setOrgSearch(e.target.value)}
+                      onClick={e => e.stopPropagation()}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="overflow-y-auto flex-1">
+                    {filteredOrgs.length === 0 ? (
+                      <div className="p-4 text-sm text-slate-500 text-center">No organizations found</div>
+                    ) : (
+                      filteredOrgs.map((o: any) => (
+                        <div 
+                          key={o.id}
+                          className={`px-4 py-2.5 text-sm cursor-pointer transition-colors ${form.targetOrgId === o.id ? 'bg-indigo-50 text-indigo-700 font-medium' : 'hover:bg-slate-50 text-slate-700'}`}
+                          onClick={() => {
+                            setForm({...form, targetOrgId: o.id});
+                            setShowOrgDropdown(false);
+                            setOrgSearch('');
+                          }}
+                        >
+                          {'\u00A0'.repeat(o.depth * 4)}{o.depth > 0 ? '↳ ' : ''}{o.name} <span className="text-xs text-slate-400">({o.organizationType?.name})</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="space-y-1.5">

@@ -1482,11 +1482,16 @@ export class MigrationService {
           });
         }
 
-        const licenseName = String(lic.LicenseName || lic.Licensename || '').trim();
-        const batchIdx = licenseName.lastIndexOf('_');
-        const batchCode = batchIdx !== -1 && /^\d+$/.test(licenseName.substring(batchIdx + 1)) 
-          ? licenseName.substring(0, batchIdx) 
-          : (licenseName || 'LEGACY-MIGRATION');
+        const createdByStr = String(lic.CreatedBy || 'SYS').trim().substring(0, 8);
+        const createdDateStr = String(lic.CreatedDate || '').trim();
+        let batchCode = 'LEGACY-BATCH';
+        if (createdDateStr) {
+          const dt = new Date(createdDateStr);
+          if (!isNaN(dt.getTime())) {
+            const pad = (n: number) => n.toString().padStart(2, '0');
+            batchCode = `BATCH-${dt.getFullYear()}${pad(dt.getMonth()+1)}${pad(dt.getDate())}-${pad(dt.getHours())}${pad(dt.getMinutes())}${pad(dt.getSeconds())}-${createdByStr.toUpperCase()}`;
+          }
+        }
 
         let batch = batchCache.get(batchCode);
         if (!batch) {
