@@ -62,11 +62,12 @@ export class LicensesController {
     @Query('orgId') targetOrgId?: string,
     @Query('skip') skip?: number,
     @Query('take') take?: number,
-    @Query('search') search?: string
+    @Query('search') search?: string,
+    @Query('batchId') batchId?: string
   ) {
     const orgId = targetOrgId || req.user?.organizationId;
     const isSuperAdminForQuery = req.user?.isSuperAdmin && !targetOrgId;
-    return this.licensesService.getMyInventory(orgId, isSuperAdminForQuery, skip, take, search);
+    return this.licensesService.getMyInventory(orgId, isSuperAdminForQuery, skip, take, search, batchId);
   }
 
   @Get('transfers')

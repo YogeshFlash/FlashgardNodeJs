@@ -331,6 +331,8 @@ const LicensesPage = () => {
   const [modal, setModal] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [batches, setBatches] = useState<any[]>([]);
+  const [selectedBatch, setSelectedBatch] = useState<string>('');
 
   // Pagination State
   const [page, setPage] = useState(1);
@@ -350,17 +352,21 @@ const LicensesPage = () => {
     return () => clearTimeout(timer);
   }, [searchQuery, debouncedSearch]);
 
-  // Fetch orgs once on mount
+  // Fetch orgs and batches once on mount
   useEffect(() => {
     orgsApi.getAll().then(res => {
       setOrgs(Array.isArray(res) ? res : (res.data || res.items || []));
     }).catch(console.error);
+    
+    licensesApi.getBatches().then(res => {
+      setBatches(Array.isArray(res) ? res : (res.data || res.items || []));
+    }).catch(console.error);
   }, []);
 
-  // Refetch when tab, page, or search changes
+  // Refetch when tab, page, search, or batch filter changes
   useEffect(() => {
     fetchData();
-  }, [tab, page, debouncedSearch]);
+  }, [tab, page, debouncedSearch, selectedBatch]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -370,14 +376,14 @@ const LicensesPage = () => {
       const take = ITEMS_PER_PAGE;
 
       if (tab === 'licenses') {
-        const licRes: any = await licensesApi.getInventory(undefined, skip, take, debouncedSearch).catch(() => ({ data: [], total: 0 }));
+        const licRes: any = await licensesApi.getInventory(undefined, skip, take, debouncedSearch, selectedBatch).catch(() => ({ data: [], total: 0 }));
         if (Array.isArray(licRes)) {
            setOrgLicenses(licRes); setTotalItems(licRes.length);
         } else {
            setOrgLicenses(licRes.data || []); setTotalItems(licRes.total || 0);
         }
       } else if (tab === 'credits') {
-        const credRes: any = await cutCreditsApi.getInventory(undefined, skip, take, debouncedSearch).catch(() => ({ data: [], total: 0 }));
+        const credRes: any = await cutCreditsApi.getInventory(undefined, skip, take, debouncedSearch, selectedBatch).catch(() => ({ data: [], total: 0 }));
         if (Array.isArray(credRes)) {
            setCutCredits(credRes); setTotalItems(credRes.length);
         } else {
@@ -558,24 +564,42 @@ const LicensesPage = () => {
         <div className="flex justify-center py-20 animate-pulse text-slate-400">Loading entitlements...</div>
       ) : tab === 'licenses' ? (
         <div className="space-y-4">
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search licenses by key, batch code, service level, status or owner..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-10 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+          <div className="flex flex-col md:flex-row gap-4 max-w-2xl">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search licenses by key, batch code, service level, status or owner..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-10 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            
+            <div className="relative md:w-64">
+              <select
+                value={selectedBatch}
+                onChange={e => setSelectedBatch(e.target.value)}
+                className="w-full pl-4 pr-10 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all appearance-none"
               >
-                <X className="w-4 h-4" />
-              </button>
-            )}
+                <option value="">All Batches</option>
+                {batches.map(b => (
+                  <option key={b.id} value={b.id}>{b.batchCode} ({b.licenseType})</option>
+                ))}
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+              </div>
+            </div>
           </div>
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="overflow-x-auto">

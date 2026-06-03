@@ -1,0 +1,180 @@
+node.exe : FAIL src/inv
+entory/inventory.servic
+e.spec.ts
+At line:1 char:1
++ & "C:\Program 
+Files\nodejs/node.exe" 
+"C:\Users\yoges\AppData
+\Roaming\ ...
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+~~
+    + CategoryInfo     
+         : 
+NotSpecified: (F    
+AIL src/invent...serv  
+  ice.spec.ts:String) 
+[    ], RemoteException
+    + 
+FullyQualifiedError    
+Id : NativeCommandErr  
+  or
+ 
+  InventoryService
+    ??? should be 
+defined (7 ms)
+    closeWorkOrder
+      ??? should throw 
+if user is not HQ (11 
+ms)
+      ??? should throw 
+if work order is 
+already closed (2 ms)
+      ??? should throw 
+if source batch 
+quantity is 
+insufficient (1 ms)
+      ??? should 
+successfully close 
+work order and create 
+child batches (2 ms)
+    generateQRCodes
+      ?? should return 
+200 with message if 
+requiresQr is false (2 
+ms)
+      ?? should throw 
+DAILY_CAP_REACHED if 
+limit exceeded (1 ms)
+      ??? should 
+generate QRs 
+successfully (2 ms)
+
+  ??? InventoryService 
+??? generateQRCodes 
+??? should return 200 
+with message if 
+requiresQr is false
+
+    expect(jest.fn()).n
+ot.toHaveBeenCalled()
+
+    Expected number of 
+calls: 0
+    Received number of 
+calls: 1
+
+    1: [Function 
+anonymous]
+
+    [0m [90m 153 
+|[39m       
+[36mconst[39m result 
+[33m=[39m 
+[36mawait[39m service
+[33m.[39mgenerateQRCo
+des([32m'batch-1'[39m
+[33m,[39m { individua
+lCount[33m:[39m [35m
+10[39m[33m,[39m mast
+erBoxCount[33m:[39m 
+[35m0[39m 
+}[33m,[39m 
+mockUser)[33m;[39m
+     [90m 154 |[39m  
+     expect(result)[33
+m.[39mtoEqual({ 
+success[33m:[39m [36
+mtrue[39m[33m,[39m 
+message[33m:[39m 
+[32m'QR not required 
+for this SKU'[39m 
+})[33m;[39m
+    [31m[1m>[22m[39
+m[90m 155 |[39m      
+ expect(mockPrisma[33m
+.[39m$transaction)[33
+m.[39mnot[33m.[39mto
+HaveBeenCalled()[33m;
+[39m
+     [90m     |[39m  
+                       
+                  
+[31m[1m^[22m[39m
+     [90m 156 |[39m  
+   })[33m;[39m
+     [90m 157 |[39m
+     [90m 158 |[39m  
+   it([32m'should 
+throw 
+DAILY_CAP_REACHED if 
+limit exceeded'[39m[3
+3m,[39m 
+[36masync[39m () 
+[33m=>[39m {[0m
+
+      at 
+Object.<anonymous> (inv
+entory/inventory.servic
+e.spec.ts:155:43)
+
+  ??? InventoryService 
+??? generateQRCodes 
+??? should throw 
+DAILY_CAP_REACHED if 
+limit exceeded
+
+    expect(received).to
+BeInstanceOf(expected)
+
+    Expected 
+constructor: 
+InventoryException
+    Received 
+constructor: TypeError
+
+    [0m [90m 173 
+|[39m         
+fail([32m'Should have 
+thrown InventoryExcepti
+on'[39m)[33m;[39m
+     [90m 174 |[39m  
+     } [36mcatch[39m 
+(e[33m:[39m any) {
+    [31m[1m>[22m[39
+m[90m 175 |[39m      
+   expect(e)[33m.[39m
+toBeInstanceOf([33mInv
+entoryException[39m)[
+33m;[39m
+     [90m     |[39m  
+                 
+[31m[1m^[22m[39m
+     [90m 176 |[39m  
+       expect(e[33m.[
+39mgetResponse()[33m.
+[39merror_code)[33m.[
+39mtoBe([32m'DAILY_CAP
+_REACHED'[39m)[33m;[
+39m
+     [90m 177 |[39m  
+     }
+     [90m 178 |[39m  
+   })[33m;[39m[0m
+
+      at 
+Object.<anonymous> (inv
+entory/inventory.servic
+e.spec.ts:175:19)
+
+Test Suites: 1 failed, 
+1 total
+Tests:       2 failed, 
+6 passed, 8 total
+Snapshots:   0 total
+Time:        0.852 s
+Ran all test suites 
+matching src/inventory/
+inventory.service.spec.
+ts.

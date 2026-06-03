@@ -201,15 +201,27 @@ export class CutCreditsService {
     });
   }
 
-  async getMyInventory(orgId: string, isSuperAdmin = false, skip?: number, take?: number, search?: string) {
+  async getMyInventory(orgId: string, isSuperAdmin = false, skip?: number, take?: number, search?: string, batchId?: string) {
     const where: any = isSuperAdmin ? {} : { ownerId: orgId };
 
+    if (batchId) {
+      where.batchId = batchId;
+    }
+
     if (search) {
-      where.OR = [
-        { owner: { name: { contains: search, mode: 'insensitive' } } },
-        { batch: { batchCode: { contains: search, mode: 'insensitive' } } },
-        { status: { equals: search.toUpperCase() as any } },
-      ].filter(Boolean);
+      const searchFilter = {
+        OR: [
+          { owner: { name: { contains: search, mode: 'insensitive' } } },
+          { batch: { batchCode: { contains: search, mode: 'insensitive' } } },
+          { status: { equals: search.toUpperCase() as any } },
+        ].filter(Boolean)
+      };
+
+      if (where.OR) {
+        where.AND = [searchFilter];
+      } else {
+        Object.assign(where, searchFilter);
+      }
     }
 
     if (skip !== undefined || take !== undefined) {

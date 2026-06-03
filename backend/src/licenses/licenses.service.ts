@@ -210,7 +210,7 @@ export class LicensesService {
     return { ...updated, key: decryptLicenseKey(updated.key) };
   }
 
-  async getMyInventory(orgId: string, isSuperAdmin = false, skip?: number, take?: number, search?: string) {
+  async getMyInventory(orgId: string, isSuperAdmin = false, skip?: number, take?: number, search?: string, batchId?: string) {
     const where: any = isSuperAdmin ? {} : {
       OR: [
         { ownerId: orgId },
@@ -225,6 +225,10 @@ export class LicensesService {
         }
       ]
     };
+
+    if (batchId) {
+      where.batchId = batchId;
+    }
 
     if (search) {
       const searchFilter = {

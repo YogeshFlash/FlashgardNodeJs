@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS "model_cut_files" CASCADE;
+DROP TABLE IF EXISTS "cut_types" CASCADE;
+DROP TABLE IF EXISTS "cut_patterns" CASCADE;

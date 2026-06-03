@@ -368,12 +368,13 @@ export const licensesApi = {
   recallTransfer: (id: string) => request<any>(`/licenses/recall-transfer/${id}`, { method: 'POST' }),
   activate: (data: { key: string; fingerprint: any; geo: any }) => 
     request<any>('/licenses/activate', { method: 'POST', body: JSON.stringify(data) }),
-  getInventory: (orgId?: string, skip?: number, take?: number, search?: string) => {
+  getInventory: (orgId?: string, skip?: number, take?: number, search?: string, batchId?: string) => {
     const p = new URLSearchParams();
     if (orgId) p.append('orgId', orgId);
     if (skip !== undefined) p.append('skip', skip.toString());
     if (take !== undefined) p.append('take', take.toString());
     if (search) p.append('search', search);
+    if (batchId) p.append('batchId', batchId);
     return request<any>(`/licenses/inventory${p.toString() ? `?${p.toString()}` : ''}`);
   },
   getTransfers: (orgId?: string) => request<any[]>(`/licenses/transfers${orgId ? `?orgId=${orgId}` : ''}`),
@@ -391,12 +392,13 @@ export const cutCreditsApi = {
   recallTransfer: (id: string) => request<any>(`/cut-credits/recall-transfer/${id}`, { method: 'POST' }),
   activate: (data: { key: string; machineId: string; fingerprint: any; geo: any }) => 
     request<any>('/cut-credits/activate', { method: 'POST', body: JSON.stringify(data) }),
-  getInventory: (orgId?: string, skip?: number, take?: number, search?: string) => {
+  getInventory: (orgId?: string, skip?: number, take?: number, search?: string, batchId?: string) => {
     const p = new URLSearchParams();
     if (orgId) p.append('orgId', orgId);
     if (skip !== undefined) p.append('skip', skip.toString());
     if (take !== undefined) p.append('take', take.toString());
     if (search) p.append('search', search);
+    if (batchId) p.append('batchId', batchId);
     return request<any>(`/cut-credits/inventory${p.toString() ? `?${p.toString()}` : ''}`);
   },
   getTransfers: (orgId?: string) => request<any[]>(`/cut-credits/transfers${orgId ? `?orgId=${orgId}` : ''}`),
