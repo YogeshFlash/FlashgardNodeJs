@@ -19,27 +19,13 @@ export class CutCreditsController {
 
   @Post('dispatch')
   @RequirePermissions('credits:write')
-  dispatch(@Request() req: any, @Body() data: { creditIds: string[]; toOrgId: string }) {
+  dispatch(@Request() req: any, @Body() data: { amount: number; toOrgId: string; fromOrgId?: string; targetLicenseId?: string }) {
+    const fromOrgId = (req.user.isSuperAdmin && data.fromOrgId) ? data.fromOrgId : req.user.organizationId;
     return this.cutCreditsService.dispatch({
       ...data,
-      fromOrgId: req.user.organizationId,
+      fromOrgId,
       userId: req.user.userId,
       isSuperAdmin: req.user.isSuperAdmin,
-    });
-  }
-
-  @Post('accept-transfer/:id')
-  @RequirePermissions('credits:write')
-  acceptTransfer(@Request() req: any, @Param('id') transferId: string) {
-    return this.cutCreditsService.acceptTransfer(transferId, req.user.userId);
-  }
-
-  @Post('activate')
-  @RequirePermissions('credits:activate')
-  activate(@Request() req: any, @Body() data: { key: string, machineId: string, fingerprint: any, geo: any }) {
-    return this.cutCreditsService.activate({
-      ...data,
-      userId: req.user.userId
     });
   }
 
@@ -56,12 +42,11 @@ export class CutCreditsController {
     @Query('orgId') targetOrgId?: string,
     @Query('skip') skip?: number,
     @Query('take') take?: number,
-    @Query('search') search?: string,
-    @Query('batchId') batchId?: string
+    @Query('search') search?: string
   ) {
     const orgId = targetOrgId || req.user?.organizationId;
     const isSuperAdminForQuery = req.user?.isSuperAdmin && !targetOrgId;
-    return this.cutCreditsService.getMyInventory(orgId, isSuperAdminForQuery, skip, take, search, batchId);
+    return this.cutCreditsService.getMyInventory(orgId, isSuperAdminForQuery, skip, take, search);
   }
 
   @Get('transfers')
@@ -73,9 +58,5 @@ export class CutCreditsController {
     return this.cutCreditsService.getTransfers(req.user.organizationId, req.user.isSuperAdmin);
   }
 
-  @Get('batches')
-  @RequirePermissions('credits:admin')
-  getBatches() {
-    return this.cutCreditsService.getBatches();
-  }
+
 }

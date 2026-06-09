@@ -24,7 +24,7 @@ export class PermissionsController {
   }
 
   @Delete(':id')
-  @RequirePermissions('roles:delete')
+  @RequirePermissions('roles:write')
   remove(@Param('id') id: string, @Req() req?: any) {
     return this.permissionsService.remove(id, req?.user);
   }
@@ -36,7 +36,7 @@ export class PermissionsController {
   }
 
   @Delete(':id/purge')
-  @RequirePermissions('roles:delete')
+  @RequirePermissions('roles:write')
   purge(@Param('id') id: string, @Req() req?: any) {
     return this.permissionsService.purge(id, req?.user);
   }

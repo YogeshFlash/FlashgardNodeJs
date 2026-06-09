@@ -7,19 +7,19 @@ export class ModelsController {
   constructor(private readonly modelsService: ModelsService) {}
 
   @Post()
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   create(@Body() data: any) {
     return this.modelsService.create(data);
   }
 
   @Get('active-combinations')
-  @RequirePermissions('models:read')
+  @RequirePermissions('catalog:read')
   getActiveCombinations() {
     return this.modelsService.getActiveCombinations();
   }
 
   @Get()
-  @RequirePermissions('models:read')
+  @RequirePermissions('catalog:read')
   findAll(
     @Query('brandId') brandId?: string, 
     @Query('categoryId') categoryId?: string, 
@@ -32,31 +32,31 @@ export class ModelsController {
   }
 
   @Get(':id')
-  @RequirePermissions('models:read')
+  @RequirePermissions('catalog:read')
   findOne(@Param('id') id: string) {
     return this.modelsService.findOne(id);
   }
 
   @Patch(':id')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   update(@Param('id') id: string, @Body() data: any) {
     return this.modelsService.update(id, data);
   }
 
   @Delete(':id')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   remove(@Param('id') id: string) {
     return this.modelsService.remove(id);
   }
 
   @Patch(':id/restore')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   restore(@Param('id') id: string) {
     return this.modelsService.restore(id);
   }
 
   @Delete(':id/purge')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   purge(@Param('id') id: string, @Req() req?: any) {
     return this.modelsService.purge(id, req?.user);
   }

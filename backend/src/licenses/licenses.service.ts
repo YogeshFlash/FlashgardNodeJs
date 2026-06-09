@@ -73,10 +73,11 @@ export class LicensesService {
   async dispatch(data: { licenseIds: string[], fromOrgId: string, toOrgId: string, userId: string, tenantId?: string, isSuperAdmin?: boolean }) {
     console.log(`[LicensesService] Dispatching ${data.licenseIds.length} licenses. From: ${data.fromOrgId}, To: ${data.toOrgId}`);
     
-    const where: any = { id: { in: data.licenseIds }, status: OrgLicenseStatus.AVAILABLE };
-    if (!data.isSuperAdmin) {
-      where.ownerId = data.fromOrgId;
-    }
+    const where: any = { 
+      id: { in: data.licenseIds }, 
+      status: OrgLicenseStatus.AVAILABLE,
+      ownerId: data.fromOrgId 
+    };
 
     const licenses = await (this.prisma.orgLicense as any).findMany({ where });
 
@@ -84,6 +85,11 @@ export class LicensesService {
 
     if (licenses.length !== data.licenseIds.length) {
       throw new BadRequestException(`Some licenses are unavailable. Expected ${data.licenseIds.length}, found ${licenses.length}.`);
+    }
+
+    const owners = new Set(licenses.map((l: any) => l.ownerId));
+    if (owners.size > 1) {
+      throw new BadRequestException('Cannot dispatch licenses owned by multiple different organizations in a single transaction.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -227,9 +233,16 @@ export class LicensesService {
     return { ...updated, key: decryptLicenseKey(updated.key) };
   }
 
-  async getMyInventory(orgId: string, isSuperAdmin = false, skip?: number, take?: number, search?: string, batchId?: string) {
-    const where: any = isSuperAdmin ? {} : {
-      OR: [
+  async getMyInventory(orgId: string, isSuperAdmin = false, skip?: number, take?: number, search?: string, batchId?: string, status?: string, hideUnavailable?: boolean) {
+    const where: any = {};
+    
+    if (hideUnavailable) {
+      where.status = 'AVAILABLE';
+      if (!isSuperAdmin) {
+        where.ownerId = orgId;
+      }
+    } else if (!isSuperAdmin) {
+      where.OR = [
         { ownerId: orgId },
         {
           transferItems: {
@@ -240,11 +253,15 @@ export class LicensesService {
             }
           }
         }
-      ]
-    };
+      ];
+    }
 
     if (batchId) {
       where.batchId = batchId;
+    }
+
+    if (status && !hideUnavailable) {
+      where.status = status;
     }
 
     if (search) {
@@ -320,8 +337,28 @@ export class LicensesService {
     return transfers;
   }
 
-  async getBatches() {
+  async getBatches(tenantId?: string, orgId?: string) {
+    const where: any = tenantId ? { tenantId } : {};
+    if (orgId) {
+      where.licenses = {
+        some: {
+          OR: [
+            { ownerId: orgId },
+            {
+              transferItems: {
+                some: {
+                  transfer: {
+                    fromOrgId: orgId
+                  }
+                }
+              }
+            }
+          ]
+        }
+      };
+    }
     return (this.prisma.orgLicenseBatch as any).findMany({
+      where,
       include: { _count: { select: { licenses: true } } },
       orderBy: { createdAt: 'desc' },
     });

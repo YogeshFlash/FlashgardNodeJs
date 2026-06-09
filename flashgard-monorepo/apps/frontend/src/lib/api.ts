@@ -126,6 +126,8 @@ export const usersApi = {
     request<any[]>(`/users/${id}/permissions`),
   updateUserPermissions: (id: string, payload: { permissions: any[] }) =>
     request<void>(`/users/${id}/permissions`, { method: 'PUT', body: JSON.stringify(payload) }),
+  resetPassword: (id: string, newPassword: string) =>
+    request<any>(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ newPassword }) }),
 };
 
 // ─── Roles ──────────────────────────────────────────
@@ -368,13 +370,15 @@ export const licensesApi = {
   recallTransfer: (id: string) => request<any>(`/licenses/recall-transfer/${id}`, { method: 'POST' }),
   activate: (data: { key: string; fingerprint: any; geo: any }) => 
     request<any>('/licenses/activate', { method: 'POST', body: JSON.stringify(data) }),
-  getInventory: (orgId?: string, skip?: number, take?: number, search?: string, batchId?: string) => {
+  getInventory: (orgId?: string, skip?: number, take?: number, search?: string, batchId?: string, status?: string, hideUnavailable?: boolean) => {
     const p = new URLSearchParams();
     if (orgId) p.append('orgId', orgId);
     if (skip !== undefined) p.append('skip', skip.toString());
     if (take !== undefined) p.append('take', take.toString());
     if (search) p.append('search', search);
     if (batchId) p.append('batchId', batchId);
+    if (status) p.append('status', status);
+    if (hideUnavailable) p.append('hideUnavailable', 'true');
     return request<any>(`/licenses/inventory${p.toString() ? `?${p.toString()}` : ''}`);
   },
   getTransfers: (orgId?: string) => request<any[]>(`/licenses/transfers${orgId ? `?orgId=${orgId}` : ''}`),
@@ -383,22 +387,15 @@ export const licensesApi = {
 
 // ─── Cut Credits ─────────────────────────────────────
 export const cutCreditsApi = {
-  getBatches: () => request<any[]>('/cut-credits/batches'),
   issue: (data: any) => request<any>('/cut-credits/issue', { method: 'POST', body: JSON.stringify(data) }),
-  dispatch: (data: { creditIds: string[]; toOrgId: string }) => 
+  dispatch: (data: { amount: number; toOrgId: string; fromOrgId?: string; targetLicenseId?: string }) => 
     request<any>('/cut-credits/dispatch', { method: 'POST', body: JSON.stringify(data) }),
-  acceptTransfer: (id: string) => request<any>(`/cut-credits/accept-transfer/${id}`, { method: 'POST' }),
-  rejectTransfer: (id: string) => request<any>(`/cut-credits/reject-transfer/${id}`, { method: 'POST' }),
-  recallTransfer: (id: string) => request<any>(`/cut-credits/recall-transfer/${id}`, { method: 'POST' }),
-  activate: (data: { key: string; machineId: string; fingerprint: any; geo: any }) => 
-    request<any>('/cut-credits/activate', { method: 'POST', body: JSON.stringify(data) }),
-  getInventory: (orgId?: string, skip?: number, take?: number, search?: string, batchId?: string) => {
+  getInventory: (orgId?: string, skip?: number, take?: number, search?: string) => {
     const p = new URLSearchParams();
     if (orgId) p.append('orgId', orgId);
     if (skip !== undefined) p.append('skip', skip.toString());
     if (take !== undefined) p.append('take', take.toString());
     if (search) p.append('search', search);
-    if (batchId) p.append('batchId', batchId);
     return request<any>(`/cut-credits/inventory${p.toString() ? `?${p.toString()}` : ''}`);
   },
   getTransfers: (orgId?: string) => request<any[]>(`/cut-credits/transfers${orgId ? `?orgId=${orgId}` : ''}`),

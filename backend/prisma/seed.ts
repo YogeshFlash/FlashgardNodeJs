@@ -64,6 +64,15 @@ async function main() {
     
     // Analytics
     { action: 'reports:read', description: 'View system reports' },
+
+    // Navigation Visibility
+    { action: 'nav:dashboard', description: 'View Dashboard tab' },
+    { action: 'nav:organizations', description: 'View Organizations tab' },
+    { action: 'nav:models', description: 'View Models tab' },
+    { action: 'nav:inventory', description: 'View Inventory tab' },
+    { action: 'nav:licenses', description: 'View Licenses tab' },
+    { action: 'nav:migration', description: 'View Data Migration tab' },
+    { action: 'nav:settings', description: 'View Settings tab' },
   ];
 
   const permissions: any = {};
@@ -94,7 +103,8 @@ async function main() {
       rolePermissions: [
         'orgs:read', 'users:read', 'users:write', 'catalog:read', 
         'inventory:read', 'inventory:write', 'dispatch:read', 'dispatch:write',
-        'licenses:read', 'licenses:write', 'credits:read', 'credits:write', 'reports:read'
+        'licenses:read', 'licenses:write', 'credits:read', 'credits:write', 'reports:read',
+        'nav:dashboard', 'nav:organizations', 'nav:models', 'nav:inventory', 'nav:licenses', 'nav:settings'
       ].map(action => ({
         permissionId: permissions[action].id,
         dataScope: DataScope.team,
@@ -106,7 +116,8 @@ async function main() {
       isSystemRole: true,
       rolePermissions: [
         'users:read', 'users:write', 'catalog:read', 'inventory:read',
-        'licenses:read', 'licenses:write', 'credits:read', 'credits:write'
+        'licenses:read', 'licenses:write', 'credits:read', 'credits:write',
+        'nav:dashboard', 'nav:models', 'nav:inventory', 'nav:licenses', 'nav:settings'
       ].map(action => ({
         permissionId: permissions[action].id,
         dataScope: DataScope.team,
@@ -117,7 +128,8 @@ async function main() {
       description: 'Counter-level user for machine activations and cutting',
       isSystemRole: true,
       rolePermissions: [
-        'catalog:read', 'licenses:read', 'credits:read', 'licenses:write', 'credits:write'
+        'catalog:read', 'licenses:read', 'credits:read', 'licenses:write', 'credits:write',
+        'nav:dashboard', 'nav:models', 'nav:licenses'
       ].map(action => ({
         permissionId: permissions[action].id,
         dataScope: DataScope.own,
@@ -128,7 +140,8 @@ async function main() {
       description: 'Manages retailer location and machine activations',
       isSystemRole: true,
       rolePermissions: [
-        'users:read', 'users:write', 'catalog:read', 'licenses:read', 'licenses:write', 'credits:read', 'credits:write', 'orgs:read'
+        'users:read', 'users:write', 'catalog:read', 'licenses:read', 'licenses:write', 'credits:read', 'credits:write', 'orgs:read',
+        'nav:dashboard', 'nav:organizations', 'nav:models', 'nav:licenses', 'nav:settings'
       ].map(action => ({
         permissionId: permissions[action].id,
         dataScope: DataScope.team,

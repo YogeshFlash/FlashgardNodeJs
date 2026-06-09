@@ -63,11 +63,14 @@ export class LicensesController {
     @Query('skip') skip?: number,
     @Query('take') take?: number,
     @Query('search') search?: string,
-    @Query('batchId') batchId?: string
+    @Query('batchId') batchId?: string,
+    @Query('status') status?: string,
+    @Query('hideUnavailable') hideUnavailable?: string
   ) {
     const orgId = targetOrgId || req.user?.organizationId;
     const isSuperAdminForQuery = req.user?.isSuperAdmin && !targetOrgId;
-    return this.licensesService.getMyInventory(orgId, isSuperAdminForQuery, skip, take, search, batchId);
+    const hideUnav = hideUnavailable === 'true';
+    return this.licensesService.getMyInventory(orgId, isSuperAdminForQuery, skip, take, search, batchId, status, hideUnav);
   }
 
   @Get('transfers')
@@ -80,9 +83,10 @@ export class LicensesController {
   }
 
   @Get('batches')
-  @RequirePermissions('licenses:admin')
-  getBatches() {
-    return this.licensesService.getBatches();
+  @RequirePermissions('licenses:read')
+  getBatches(@Request() req: any) {
+    const orgId = req.user.isSuperAdmin ? undefined : req.user.organizationId;
+    return this.licensesService.getBatches(req.user.tenantId, orgId);
   }
 
   @Get('batches/:id')

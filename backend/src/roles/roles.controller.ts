@@ -31,19 +31,19 @@ export class RolesController {
   }
 
   @Delete(':id')
-  @RequirePermissions('roles:delete')
+  @RequirePermissions('roles:write')
   remove(@Param('id') id: string, @Req() req?: any) {
     return this.rolesService.remove(id, req?.user);
   }
 
   @Patch(':id/restore')
-  @RequirePermissions('roles:delete')
+  @RequirePermissions('roles:write')
   restore(@Param('id') id: string, @Req() req?: any) {
     return this.rolesService.restore(id, req?.user);
   }
 
   @Delete(':id/purge')
-  @RequirePermissions('roles:delete')
+  @RequirePermissions('roles:write')
   purge(@Param('id') id: string, @Req() req?: any) {
     return this.rolesService.purge(id, req?.user);
   }

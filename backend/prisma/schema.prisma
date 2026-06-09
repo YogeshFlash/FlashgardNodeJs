@@ -21,13 +21,11 @@ model Organization {
   addresses              Address[]
   contacts               Contact[]
   creditNotes            CreditNote[]
-  tenantTransactions     CreditTransaction[] @relation("TenantTransactions")
-  tenantCreditBatches    CutCreditBatch[]    @relation("TenantCreditBatches")
-  cutCredits             CutCredit[]         @relation("OwnerCutCredits")
+  tenantWallets          EntityWallet[]      @relation("TenantWallets")
+  ownerCutCredits        CutCredit[]         @relation("OwnerCutCredits")
   tenantCredits          CutCredit[]         @relation("TenantCredits")
   dispatchFrom           DispatchOrder[]     @relation("DispatchFrom")
   dispatchTo             DispatchOrder[]     @relation("DispatchTo")
-  tenantWallets          EntityWallet[]      @relation("TenantWallets")
   filmBatchesAsOwner     FilmBatch[]         @relation("OwnerBatches")
   filmBatchesAsVendor    FilmBatch[]         @relation("VendorBatches")
   filmTypes              FilmType[]          @relation("VendorFilms")
@@ -52,6 +50,7 @@ model Organization {
   userPermissions        UserPermission[]
   users                  User[]
   workOrders             WorkOrder[]
+  tenantTransactions     CreditTransaction[] @relation("TenantTransactions")
 
   @@map("organizations")
 }
@@ -278,94 +277,94 @@ model FilmType {
 }
 
 model ModelCategory {
-  id        String          @id @default(uuid()) @db.Uuid
-  parentId  String?         @map("parent_id") @db.Uuid
-  name      String          @db.VarChar(100)
+  id             String          @id @default(uuid()) @db.Uuid
+  parentId       String?         @map("parent_id") @db.Uuid
+  name           String          @db.VarChar(100)
   legacyId       Int?            @map("legacy_id")
   legacyParentId Int?            @map("legacy_parent_id")
   createdAt      DateTime        @default(now()) @map("created_at")
-  deletedAt DateTime?       @map("deleted_at")
-  isDeleted Boolean         @default(false) @map("is_deleted")
-  iconUrl   String?         @map("icon_url") @db.VarChar(255)
-  imageUrl  String?         @map("image_url") @db.VarChar(255)
-  sortOrder Int             @default(0) @map("sort_order")
-  parent    ModelCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  children  ModelCategory[] @relation("CategoryHierarchy")
-  models    Model[]
+  deletedAt      DateTime?       @map("deleted_at")
+  isDeleted      Boolean         @default(false) @map("is_deleted")
+  iconUrl        String?         @map("icon_url") @db.VarChar(255)
+  imageUrl       String?         @map("image_url") @db.VarChar(255)
+  sortOrder      Int             @default(0) @map("sort_order")
+  parent         ModelCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children       ModelCategory[] @relation("CategoryHierarchy")
+  models         Model[]
 
   @@unique([name, parentId])
   @@map("model_categories")
 }
 
 model Brand {
-  id        String    @id @default(uuid()) @db.Uuid
-  name      String    @unique @db.VarChar(100)
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String    @unique @db.VarChar(100)
   legacyId       Int?      @map("legacy_id")
   legacyParentId Int?      @map("legacy_parent_id")
   createdAt      DateTime  @default(now()) @map("created_at")
-  deletedAt DateTime? @map("deleted_at")
-  isDeleted Boolean   @default(false) @map("is_deleted")
-  imageUrl  String?   @map("image_url") @db.VarChar(255)
-  iconUrl   String?   @map("icon_url") @db.VarChar(255)
-  sortOrder Int       @default(0) @map("sort_order")
-  models    Model[]
+  deletedAt      DateTime? @map("deleted_at")
+  isDeleted      Boolean   @default(false) @map("is_deleted")
+  imageUrl       String?   @map("image_url") @db.VarChar(255)
+  iconUrl        String?   @map("icon_url") @db.VarChar(255)
+  sortOrder      Int       @default(0) @map("sort_order")
+  models         Model[]
 
   @@map("brands")
 }
 
 model Model {
-  id         String         @id @default(uuid()) @db.Uuid
-  name       String         @db.VarChar(100)
-  brandId    String?        @map("brand_id") @db.Uuid
-  createdAt  DateTime       @default(now()) @map("created_at")
-  deletedAt  DateTime?      @map("deleted_at")
-  isDeleted  Boolean        @default(false) @map("is_deleted")
-  imageUrl   String?        @map("image_url") @db.VarChar(255)
-  iconUrl    String?        @map("icon_url") @db.VarChar(255)
-  categoryId String         @map("category_id") @db.Uuid
+  id             String         @id @default(uuid()) @db.Uuid
+  name           String         @db.VarChar(100)
+  brandId        String?        @map("brand_id") @db.Uuid
+  createdAt      DateTime       @default(now()) @map("created_at")
+  deletedAt      DateTime?      @map("deleted_at")
+  isDeleted      Boolean        @default(false) @map("is_deleted")
+  imageUrl       String?        @map("image_url") @db.VarChar(255)
+  iconUrl        String?        @map("icon_url") @db.VarChar(255)
+  categoryId     String         @map("category_id") @db.Uuid
   legacyId       Int?           @map("legacy_id")
   legacyParentId Int?           @map("legacy_parent_id")
   cutFiles       ModelCutFile[]
-  brand      Brand?         @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  category   ModelCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  sortOrder  Int            @default(0) @map("sort_order")
+  brand          Brand?         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  category       ModelCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  sortOrder      Int            @default(0) @map("sort_order")
 
   @@unique([name, brandId, categoryId])
   @@map("models")
 }
 
 model CutPattern {
-  id           String         @id @default(uuid()) @db.Uuid
-  name         String         @unique @db.VarChar(100)
-  description  String?
+  id             String         @id @default(uuid()) @db.Uuid
+  name           String         @unique @db.VarChar(100)
+  description    String?
   legacyId       Int?           @map("legacy_id")
   legacyParentId Int?           @map("legacy_parent_id")
   isActive       Boolean        @default(true) @map("is_active")
-  canPrintNCut Boolean        @default(false) @map("can_print_n_cut")
-  canDecalCut  Boolean        @default(false) @map("can_decal_cut")
-  cutFor       Int            @default(0) @map("cut_for")
-  createdAt    DateTime       @default(now()) @map("created_at")
-  deletedAt    DateTime?      @map("deleted_at")
-  isDeleted    Boolean        @default(false) @map("is_deleted")
-  sortOrder    Int            @default(0) @map("sort_order")
-  modelFiles   ModelCutFile[]
+  canPrintNCut   Boolean        @default(false) @map("can_print_n_cut")
+  canDecalCut    Boolean        @default(false) @map("can_decal_cut")
+  cutFor         Int            @default(0) @map("cut_for")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  deletedAt      DateTime?      @map("deleted_at")
+  isDeleted      Boolean        @default(false) @map("is_deleted")
+  sortOrder      Int            @default(0) @map("sort_order")
+  modelFiles     ModelCutFile[]
 
   @@map("cut_patterns")
 }
 
 model ModelCutFile {
-  id               String   @id @default(uuid()) @db.Uuid
-  modelId          String   @map("model_id") @db.Uuid
-  cutPatternId     String   @map("cut_pattern_id") @db.Uuid
-  encryptedPltData Bytes    @map("encrypted_plt_data")
-  encryptionKeyId  String?  @map("encryption_key_id") @db.VarChar(100)
-  createdAt        DateTime @default(now()) @map("created_at")
-  designFilePath   String?  @map("design_file_path") @db.VarChar(255)
-  legacyId       Int?     @map("legacy_id")
-  legacyParentId Int?     @map("legacy_parent_id")
-  legacyModelSkinId Int?    @map("legacy_model_skin_id")
-  cutPattern     CutPattern @relation(fields: [cutPatternId], references: [id], onDelete: Cascade)
-  model            Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  id                String     @id @default(uuid()) @db.Uuid
+  modelId           String     @map("model_id") @db.Uuid
+  cutPatternId      String     @map("cut_pattern_id") @db.Uuid
+  encryptedPltData  Bytes      @map("encrypted_plt_data")
+  encryptionKeyId   String?    @map("encryption_key_id") @db.VarChar(100)
+  createdAt         DateTime   @default(now()) @map("created_at")
+  designFilePath    String?    @map("design_file_path") @db.VarChar(255)
+  legacyId          Int?       @map("legacy_id")
+  legacyParentId    Int?       @map("legacy_parent_id")
+  legacyModelSkinId Int?       @map("legacy_model_skin_id")
+  cutPattern        CutPattern @relation(fields: [cutPatternId], references: [id], onDelete: Cascade)
+  model             Model      @relation(fields: [modelId], references: [id], onDelete: Cascade)
 
   @@unique([modelId, cutPatternId])
   @@map("model_cut_files")
@@ -634,60 +633,55 @@ model LicensingTransferItem {
   id         String            @id @default(uuid()) @db.Uuid
   transferId String            @map("transfer_id") @db.Uuid
   licenseId  String?           @map("license_id") @db.Uuid
-  creditId   String?           @map("credit_id") @db.Uuid
-  credit     CutCredit?        @relation(fields: [creditId], references: [id])
   license    OrgLicense?       @relation(fields: [licenseId], references: [id])
   transfer   LicensingTransfer @relation(fields: [transferId], references: [id])
 
   @@map("licensing_transfer_items")
 }
 
-model CutCreditBatch {
-  id            String         @id @default(uuid()) @db.Uuid
-  batchCode     String         @unique @map("batch_code") @db.VarChar(50)
-  planType      CreditPlanType @map("plan_type")
-  totalCount    Int            @map("total_count")
-  creditsPerKey Int?           @map("credits_per_key")
-  validityDays  Int?           @map("validity_days")
-  createdAt     DateTime       @default(now()) @map("created_at")
-  createdBy     String         @map("created_by") @db.Uuid
-  tenantId      String?        @map("tenant_id") @db.Uuid
-  tenant        Organization?  @relation("TenantCreditBatches", fields: [tenantId], references: [id])
-  credits       CutCredit[]
-
-  @@map("cut_credit_batches")
-}
-
 model CutCredit {
-  id               String                  @id @default(uuid()) @db.Uuid
-  key              String                  @unique @db.VarChar(50)
-  batchId          String                  @map("batch_id") @db.Uuid
-  status           CreditStatus            @default(AVAILABLE)
-  ownerId          String                  @map("owner_id") @db.Uuid
-  machineId        String?                 @map("machine_id") @db.VarChar(100)
-  remainingCredits Int?                    @map("remaining_credits")
-  activatedAt      DateTime?               @map("activated_at")
-  createdAt        DateTime                @default(now()) @map("created_at")
-  deviceHash       String?                 @map("device_hash") @db.VarChar(255)
-  expiryDate       DateTime?               @map("expiry_date")
-  geoCity          String?                 @map("geo_city") @db.VarChar(100)
-  geoCountry       String?                 @map("geo_country") @db.VarChar(100)
-  macAddress       String?                 @map("mac_address") @db.VarChar(100)
-  startDate        DateTime?               @map("start_date")
-  tenantId         String?                 @map("tenant_id") @db.Uuid
-  licenseId        String?                 @map("license_id") @db.Uuid
-  batch            CutCreditBatch          @relation(fields: [batchId], references: [id])
-  license          OrgLicense?             @relation("LicenseCredits", fields: [licenseId], references: [id])
-  owner            Organization            @relation("OwnerCutCredits", fields: [ownerId], references: [id])
-  tenant           Organization?           @relation("TenantCredits", fields: [tenantId], references: [id])
-  transferItems    LicensingTransferItem[]
-  securityAlerts   SecurityAlert[]
+  id              String           @id @default(uuid()) @db.Uuid
+  planType        CreditPlanType   @default(USAGE) @map("plan_type")
+  credits         Int?             @map("credits")
+  validityDays    Int?             @map("validity_days")
+  isOffer         Boolean          @default(false) @map("is_offer")
+  notes           String?
+  ownerId         String           @map("owner_id") @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at")
+  tenantId        String?          @map("tenant_id") @db.Uuid
+  licenseId       String?          @map("license_id") @db.Uuid
+  license         OrgLicense?      @relation("LicenseCredits", fields: [licenseId], references: [id])
+  owner           Organization     @relation("OwnerCutCredits", fields: [ownerId], references: [id])
+  tenant          Organization?    @relation("TenantCredits", fields: [tenantId], references: [id])
+  legacyCutCredit LegacyCutCredit?
 
   @@index([ownerId])
-  @@index([status])
-  @@index([batchId])
   @@index([tenantId])
   @@map("cut_credits")
+}
+
+model LegacyCutCredit {
+  id            String @id @default(uuid()) @db.Uuid
+  cutCreditId   String @unique @map("cut_credit_id") @db.Uuid
+  legacyId      Int?   @map("legacy_id")
+  legacyCountId Int?   @map("legacy_count_id")
+
+  cutCredits       Int?     @map("cut_credits")
+  cutCreditType    String?  @map("cut_credit_type") @db.VarChar(100)
+  rate             Decimal? @db.Decimal(18, 2)
+  paidAmount       Decimal? @map("paid_amount") @db.Decimal(18, 2)
+  isOffer          Boolean? @map("is_offer")
+  description      String?  @db.VarChar(2000)
+  legacyDealerId   String?  @map("legacy_dealer_id") @db.VarChar(450)
+  legacyOwnerId    String?  @map("legacy_owner_id") @db.VarChar(900)
+  legacyAssignedTo String?  @map("legacy_assigned_to") @db.VarChar(900)
+
+  totalCutcredit Int? @map("total_cutcredit")
+  usedCutcredit  Int? @map("used_cutcredit")
+
+  cutCredit CutCredit @relation(fields: [cutCreditId], references: [id], onDelete: Cascade)
+
+  @@map("legacy_cut_credits")
 }
 
 model EntityWallet {
@@ -713,6 +707,8 @@ model CreditTransaction {
   amount    Int
   type      TransactionType
   source    String?         @db.VarChar(255)
+  isOffer   Boolean         @default(false) @map("is_offer")
+  notes     String?
   createdAt DateTime        @default(now()) @map("created_at")
   tenantId  String?         @map("tenant_id") @db.Uuid
   tenant    Organization?   @relation("TenantTransactions", fields: [tenantId], references: [id])
@@ -726,10 +722,10 @@ model MigrationLog {
   module           String   @db.VarChar(50)
   fileName         String   @map("file_name") @db.VarChar(255)
   status           String   @db.VarChar(20)
-  recordsProcessed Int      @map("records_processed") @default(0)
-  recordsCreated   Int      @map("records_created") @default(0)
-  recordsUpdated   Int      @map("records_updated") @default(0)
-  recordsFailed    Int      @map("records_failed") @default(0)
+  recordsProcessed Int      @default(0) @map("records_processed")
+  recordsCreated   Int      @default(0) @map("records_created")
+  recordsUpdated   Int      @default(0) @map("records_updated")
+  recordsFailed    Int      @default(0) @map("records_failed")
   errorMessage     String?  @map("error_message")
   logs             Json?
   createdAt        DateTime @default(now()) @map("created_at")
@@ -740,13 +736,11 @@ model MigrationLog {
 model SecurityAlert {
   id                   String        @id @default(uuid()) @db.Uuid
   licenseId            String?       @map("license_id") @db.Uuid
-  creditId             String?       @map("credit_id") @db.Uuid
   attemptedFingerprint Json          @map("attempted_fingerprint")
   storedFingerprint    Json?         @map("stored_fingerprint")
   ipAddress            String?       @map("ip_address") @db.VarChar(45)
   attemptedAt          DateTime      @default(now()) @map("attempted_at")
   tenantId             String?       @map("tenant_id") @db.Uuid
-  credit               CutCredit?    @relation(fields: [creditId], references: [id])
   license              OrgLicense?   @relation(fields: [licenseId], references: [id])
   tenant               Organization? @relation("TenantSecurityAlerts", fields: [tenantId], references: [id])
 

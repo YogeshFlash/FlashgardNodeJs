@@ -9,6 +9,7 @@ import { HasPermission, usePermissions } from '../components/HasPermission';
 import { useAuth } from '../contexts/AuthContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UserPermissionsModal } from '../components/UserPermissionsModal';
+import { ResetPasswordModal } from '../components/ResetPasswordModal';
 
 function buildOrgRows(orgs: any[], rootOrgId?: number) {
   const byParent = new Map<string, any[]>();
@@ -463,7 +464,7 @@ const RolesTabSettings = () => {
                             <HasPermission permission="roles:write">
                               <button onClick={() => setModal(role)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
                             </HasPermission>
-                            <HasPermission permission="roles:delete">
+                            <HasPermission permission="roles:write">
                               <button 
                                 onClick={() => handleDelete(role.id, role.name, role.isSystemRole)} 
                                 className={`p-1.5 rounded-lg transition-colors ${role.isSystemRole ? 'text-slate-200 cursor-not-allowed' : 'text-slate-400 hover:text-red-600 hover:bg-red-50'}`} 
@@ -752,6 +753,7 @@ const UsersTab = () => {
 
   const [modal, setModal] = useState<any>(null);
   const [permissionsModal, setPermissionsModal] = useState<any>(null);
+  const [resetPasswordModal, setResetPasswordModal] = useState<any>(null);
   const [confirm, setConfirm] = useState<{
     isOpen: boolean;
     title: string;
@@ -873,6 +875,15 @@ const UsersTab = () => {
     <div className="p-6 space-y-4">
       {modal && <UserModal user={modal === 'new' ? null : modal} roles={roles} orgs={orgs} currentOrgId={user?.organizationId} onClose={() => setModal(null)} onSave={() => { setModal(null); load(); }} />}
       {permissionsModal && <UserPermissionsModal user={permissionsModal} onClose={() => setPermissionsModal(null)} onSave={() => setPermissionsModal(null)} />}
+      <ResetPasswordModal 
+        isOpen={!!resetPasswordModal} 
+        userName={resetPasswordModal?.firstName ? `${resetPasswordModal.firstName} ${resetPasswordModal.lastName}` : resetPasswordModal?.email}
+        onClose={() => setResetPasswordModal(null)} 
+        onConfirm={async (newPassword) => {
+          if (!resetPasswordModal?.id) return;
+          await usersApi.resetPassword(resetPasswordModal.id, newPassword);
+        }}
+      />
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-slate-700">Users</h3>
@@ -957,11 +968,16 @@ const UsersTab = () => {
                             </button>
                           </HasPermission>
                           {user?.isSuperAdmin && (
-                            <button onClick={() => setPermissionsModal(u)} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" title="Permission Overrides">
-                              <Shield className="w-4 h-4" />
-                            </button>
+                            <>
+                              <button onClick={() => setPermissionsModal(u)} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" title="Permission Overrides">
+                                <Shield className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => setResetPasswordModal(u)} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Reset Password">
+                                <Key className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
-                          <HasPermission permission="users:delete">
+                          <HasPermission permission="users:write">
                             <button onClick={() => handleDelete(u.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete user">
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1762,7 +1778,7 @@ const SettingsPage = () => {
         {activeTab === 'orgTypes' && <OrganizationTypesTab />}
         {activeTab === 'materials' && <MaterialsTab />}
         {activeTab === 'Audit Logs' && (
-          <HasPermission permission="audit:read" fallback={<div className="p-12 text-center text-slate-500 font-medium">You don't have permission to view audit logs.</div>}>
+          <HasPermission permission="audit_logs:read" fallback={<div className="p-12 text-center text-slate-500 font-medium">You don't have permission to view audit logs.</div>}>
             <AuditLogsTab />
           </HasPermission>
         )}

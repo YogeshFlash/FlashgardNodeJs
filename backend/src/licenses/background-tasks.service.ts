@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
-import { OrgLicenseStatus, CreditStatus } from '@prisma/client';
+import { OrgLicenseStatus } from '@prisma/client';
 
 @Injectable()
 export class BackgroundTasksService {
@@ -27,17 +27,6 @@ export class BackgroundTasksService {
       this.logger.log(`Expired ${expiredLicenses.count} available licenses.`);
     }
 
-    // 2. Expire Credits
-    const expiredCredits = await (this.prisma.cutCredit as any).updateMany({
-      where: {
-        status: { in: [CreditStatus.AVAILABLE, CreditStatus.ALLOCATED] },
-        expiryDate: { lt: now },
-      },
-      data: { status: CreditStatus.EXPIRED },
-    });
 
-    if (expiredCredits.count > 0) {
-      this.logger.log(`Expired ${expiredCredits.count} available/allocated credits.`);
-    }
   }
 }

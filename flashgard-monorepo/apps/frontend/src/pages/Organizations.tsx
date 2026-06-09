@@ -1,14 +1,16 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { orgsApi, contactsApi, usersApi, addressesApi, licensesApi, cutCreditsApi, rolesApi, permissionsApi } from '../lib/api';
 import {
   Building2, Plus, Search, Edit2, Trash2, Loader2,
   Users, MapPin, Phone, Ticket, Key,
-  ChevronRight, ChevronLeft, Star, Check, ChevronDown, X
+  ChevronRight, ChevronLeft, Star, Check, ChevronDown, X, Gift
 } from 'lucide-react';
-import { orgsApi, contactsApi, usersApi, addressesApi, licensesApi, cutCreditsApi } from '../lib/api';
 import { HasPermission } from '../components/HasPermission';
 import { useAuth } from '../contexts/AuthContext';
 import { UserModal } from './UsersPage';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ResetPasswordModal } from '../components/ResetPasswordModal';
+import { TransferCreditsModal } from './LicensesPage';
 
 function buildOrgRows(orgs: any[]) {
   const byParent = new Map<string, any[]>();
@@ -108,7 +110,15 @@ const EmptyState = ({ icon: Icon, message, onAdd, addLabel }: any) => (
 // ─── Org Form Modal ───────────────────────────────────
 const OrgModal = ({ org, allOrgs, onClose, onSave }: any) => {
   const { user } = useAuth();
-  const [form, setForm] = useState(org || { name: '', type: 'distributor', isActive: true, parentId: '' });
+  const [form, setForm] = useState(() => {
+    if (org) {
+      return {
+        ...org,
+        type: org.type || org.organizationType?.name?.toLowerCase() || 'distributor',
+      };
+    }
+    return { name: '', type: 'distributor', isActive: true, parentId: '' };
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -374,7 +384,7 @@ const AddressModal = ({ address, orgId, onClose, onSave }: any) => {
 };
 
 // ─── Org Role Form Modal ──────────────────────────────
-const OrgRoleModal = ({ role, orgId, onClose, onSave }: any) => {
+export const OrgRoleModal = ({ role, orgId, onClose, onSave }: any) => {
   const [form, setForm] = useState(role || { name: '', description: '', isSystemRole: false, permissionIds: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -389,7 +399,7 @@ const OrgRoleModal = ({ role, orgId, onClose, onSave }: any) => {
     }
     permissionsApi.getAll()
       .then(setAllPerms)
-      .catch((e) => setError('Failed to load permissions: ' + e.message))
+      .catch((e: any) => setError('Failed to load permissions: ' + e.message))
       .finally(() => setPermsLoading(false));
   }, [role]);
 
@@ -482,12 +492,13 @@ const DetailsTab = ({ org, onEdit }: { org: any; onEdit: () => void }) => {
     retailer: 'bg-amber-100 text-amber-700',
     supplier: 'bg-rose-100 text-rose-700',
   };
+  const wallet = org.tenantWallets?.[0];
 
   return (
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-slate-700">Organization Details</h3>
-        <HasPermission permission="organizations:write">
+        <HasPermission permission="orgs:write">
           <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium">
             <Edit2 className="w-3.5 h-3.5" /> Edit
           </button>
@@ -499,6 +510,8 @@ const DetailsTab = ({ org, onEdit }: { org: any; onEdit: () => void }) => {
           { label: 'Type', value: <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${typeColors[org.type] || 'bg-slate-100 text-slate-600'}`}>{org.type}</span> },
           { label: 'Status', value: <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${org.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{org.isActive ? 'Active' : 'Inactive'}</span> },
           { label: 'Organization ID', value: `#${org.id}` },
+          { label: 'Available Credits', value: <span className="font-bold text-indigo-600">{wallet?.balance || 0}</span> },
+          { label: 'Used Credits', value: <span className="text-slate-600">{wallet?.usedCredits || 0}</span> },
         ].map(({ label, value }) => (
           <div key={label} className="p-4 bg-slate-50 rounded-lg">
             <p className="text-xs font-medium text-slate-500 mb-1">{label}</p>
@@ -549,7 +562,7 @@ const ContactsTab = ({ orgId }: { orgId: number }) => {
       {modal && <ContactModal contact={modal === 'new' ? null : modal} orgId={orgId} onClose={() => setModal(null)} onSave={() => { setModal(null); load(); }} />}
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-slate-700">Contacts</h3>
-        <HasPermission permission="contacts:write">
+        <HasPermission permission="orgs:write">
           <button onClick={() => setModal('new')} className="btn-primary text-sm flex items-center gap-1.5 py-1.5">
             <Plus className="w-3.5 h-3.5" /> Add Contact
           </button>
@@ -577,10 +590,10 @@ const ContactsTab = ({ orgId }: { orgId: number }) => {
                 </div>
               </div>
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <HasPermission permission="contacts:write">
+                <HasPermission permission="orgs:write">
                   <button onClick={() => setModal(c)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
                 </HasPermission>
-                <HasPermission permission="contacts:delete">
+                <HasPermission permission="orgs:write">
                   <button onClick={() => del(c.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </HasPermission>
               </div>
@@ -593,9 +606,11 @@ const ContactsTab = ({ orgId }: { orgId: number }) => {
 };
 
 const UsersTab = ({ orgId }: { orgId: string }) => {
+  const { user: currentUser } = useAuth();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<any>(null);
+  const [resetModal, setResetModal] = useState<any>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -610,6 +625,14 @@ const UsersTab = ({ orgId }: { orgId: string }) => {
   return (
     <div className="p-6">
       {modal && <UserModal user={modal === 'new' ? null : modal} defaultOrgId={orgId} onClose={() => setModal(null)} onSave={() => { setModal(null); load(); }} />}
+      <ResetPasswordModal 
+        isOpen={!!resetModal}
+        onClose={() => setResetModal(null)}
+        userName={resetModal ? [resetModal.firstName, resetModal.lastName].filter(Boolean).join(' ') || resetModal.email : undefined}
+        onConfirm={async (newPassword) => {
+          await usersApi.resetPassword(resetModal.id, newPassword);
+        }}
+      />
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-slate-700">Users</h3>
         <HasPermission permission="users:write">
@@ -638,8 +661,11 @@ const UsersTab = ({ orgId }: { orgId: string }) => {
               </span>
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
                 <HasPermission permission="users:write">
-                  <button onClick={() => setModal(u)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
+                  <button onClick={() => setModal(u)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Edit User"><Edit2 className="w-4 h-4" /></button>
                 </HasPermission>
+                {currentUser?.isSuperAdmin && (
+                  <button onClick={() => setResetModal(u)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Reset Password"><Key className="w-4 h-4" /></button>
+                )}
               </div>
             </div>
           ))}
@@ -682,7 +708,7 @@ const AddressesTab = ({ orgId }: { orgId: number }) => {
       {modal && <AddressModal address={modal === 'new' ? null : modal} orgId={orgId} onClose={() => setModal(null)} onSave={() => { setModal(null); load(); }} />}
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-slate-700">Addresses</h3>
-        <HasPermission permission="addresses:write">
+        <HasPermission permission="orgs:write">
           <button onClick={() => setModal('new')} className="btn-primary text-sm flex items-center gap-1.5 py-1.5">
             <Plus className="w-3.5 h-3.5" /> Add Address
           </button>
@@ -710,10 +736,10 @@ const AddressesTab = ({ orgId }: { orgId: number }) => {
                 </div>
               </div>
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <HasPermission permission="addresses:write">
+                <HasPermission permission="orgs:write">
                   <button onClick={() => setModal(a)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
                 </HasPermission>
-                <HasPermission permission="addresses:delete">
+                <HasPermission permission="orgs:write">
                   <button onClick={() => del(a.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </HasPermission>
               </div>
@@ -777,7 +803,7 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
   const [licenses, setLicenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
-  const [confirmState, setConfirmState] = useState<{isOpen: boolean; license?: any; newStatus?: string; loading: boolean}>({
+  const [confirmState, setConfirmState] = useState<{isOpen: boolean; license?: any; newStatus?: string; loading: boolean; error?: string}>({
     isOpen: false, loading: false
   });
 
@@ -792,20 +818,19 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
 
   const toggleStatus = async () => {
     if (!confirmState.license || !confirmState.newStatus) return;
-    setConfirmState(prev => ({ ...prev, loading: true }));
+    setConfirmState(prev => ({ ...prev, loading: true, error: undefined }));
     try {
       await licensesApi.updateStatus(confirmState.license.id, confirmState.newStatus);
       load();
       setConfirmState({ isOpen: false, loading: false });
     } catch (err: any) { 
-      alert(err.message); 
-      setConfirmState(prev => ({ ...prev, loading: false }));
+      setConfirmState(prev => ({ ...prev, loading: false, error: err.message || 'An error occurred' }));
     }
   };
 
   const handleToggleClick = (license: any) => {
     const newStatus = license.status === 'AVAILABLE' || license.status === 'ACTIVE' ? 'SUSPENDED' : 'AVAILABLE';
-    setConfirmState({ isOpen: true, license, newStatus, loading: false });
+    setConfirmState({ isOpen: true, license, newStatus, loading: false, error: undefined });
   };
 
   return (
@@ -818,13 +843,14 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
         confirmLabel={confirmState.newStatus === 'SUSPENDED' ? 'Suspend' : 'Activate'}
         variant={confirmState.newStatus === 'SUSPENDED' ? 'danger' : 'success'}
         isLoading={confirmState.loading}
+        errorMessage={confirmState.error}
         onConfirm={toggleStatus}
-        onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+        onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false, error: undefined }))}
       />
       
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-slate-700">Organization Licenses</h3>
-        <HasPermission permission="licenses:admin">
+        <HasPermission permission="licenses:write">
           <button onClick={() => setModal(true)} className="btn-primary text-sm flex items-center gap-1.5 py-1.5">
             <Plus className="w-3.5 h-3.5" /> Add Licenses
           </button>
@@ -857,7 +883,7 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
                     </span>
                   </td>
                   <td className="p-3 text-right">
-                    <HasPermission permission="licenses:admin">
+                    <HasPermission permission="licenses:write">
                       <button 
                         onClick={() => handleToggleClick(l)} 
                         className={`text-xs font-semibold px-2 py-1 rounded transition-colors ${l.status === 'AVAILABLE' || l.status === 'ACTIVE' ? 'text-amber-600 hover:bg-amber-50' : 'text-emerald-600 hover:bg-emerald-50'}`}
@@ -876,37 +902,87 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
   );
 };
 
-const CreditsTab = ({ orgId }: { orgId: string }) => {
-  const [credits, setCredits] = useState<any[]>([]);
+const CreditsTab = ({ orgId, org, orgs, reload }: { orgId: string, org: any, orgs: any[], reload: () => void }) => {
+  const [transfers, setTransfers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  
+  const wallet = org?.tenantWallets?.[0] || { balance: 0, usedCredits: 0, totalCredits: 0 };
+
   useEffect(() => {
     setLoading(true);
-    cutCreditsApi.getInventory(orgId).then((res: any) => {
-      setCredits(Array.isArray(res) ? res : (res.data || []));
+    cutCreditsApi.getTransfers(orgId).then((res: any) => {
+      const incoming = (res || []).filter((t: any) => t.type === 'CREDIT' && t.wallet?.tenantId === orgId);
+      setTransfers(incoming);
     }).catch(() => {}).finally(() => setLoading(false));
   }, [orgId]);
 
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>;
-  if (credits.length === 0) return <EmptyState icon={Ticket} message="No credits found for this organization." />;
+  
   return (
-    <div className="p-6 space-y-4">
-      <h3 className="font-semibold text-slate-700">Machine Cut Credits</h3>
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
-            <tr><th className="p-3">Key</th><th className="p-3">Type</th><th className="p-3">Status</th></tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {credits.map(c => (
-              <tr key={c.id}>
-                <td className="p-3 font-mono font-bold text-slate-800">{c.key}</td>
-                <td className="p-3">{c.batch?.planType}</td>
-                <td className="p-3">{c.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="p-6 space-y-6">
+      {/* Wallet Summary Card */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-5">
+          <p className="text-indigo-600 text-xs font-bold uppercase tracking-wider mb-1">Available Balance</p>
+          <p className="text-3xl font-black text-indigo-700">{wallet.balance}</p>
+        </div>
+        <div className="bg-slate-50 border border-slate-100 rounded-xl p-5">
+          <p className="text-slate-500 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-1 truncate" title="Used / Transferred Credits">Used / Transferred Credits</p>
+          <p className="text-3xl font-black text-slate-700">{(wallet.totalCredits || 0) - (wallet.balance || 0)}</p>
+        </div>
+        <div className="bg-slate-50 border border-slate-100 rounded-xl p-5">
+          <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Lifetime Total</p>
+          <p className="text-3xl font-black text-slate-700">{wallet.totalCredits}</p>
+        </div>
       </div>
+
+      <div className="flex justify-between items-center">
+        <h3 className="font-semibold text-slate-700">Assignment History</h3>
+        {(org?.type || org?.organizationType?.name)?.toLowerCase() !== 'retailer' && (
+          <HasPermission permission="licenses:write">
+            <button onClick={() => setModal(true)} className="btn-primary text-sm flex items-center gap-1.5 py-1.5 px-3">
+              <Plus className="w-3.5 h-3.5" /> Transfer Credits
+            </button>
+          </HasPermission>
+        )}
+      </div>
+      
+      {modal && <TransferCreditsModal initialOrgId={orgId} orgs={orgs} onClose={() => setModal(false)} onSave={() => { setModal(false); reload(); }} />}
+      
+      {transfers.length === 0 ? (
+        <EmptyState icon={Ticket} message="No credit assignments found for this organization." />
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+              <tr>
+                <th className="p-3">Assigned From</th>
+                <th className="p-3">Credits Assigned</th>
+                <th className="p-3">Date</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {transfers.map(t => (
+                <tr key={t.id}>
+                  <td className="p-3 font-semibold text-slate-700">{t.tenant?.name || 'System'}</td>
+                  <td className="p-3 font-bold text-emerald-600">
+                    <div className="flex flex-col">
+                      <span>+{t.amount} Cuts</span>
+                      {t.isOffer && (
+                        <div className="flex items-center gap-1 mt-1 text-[10px] text-purple-600 font-bold uppercase tracking-wider">
+                          <Gift className="w-3 h-3" /> Offer {t.notes ? `• ${t.notes}` : ''}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="p-3 text-slate-500">{new Date(t.createdAt).toLocaleDateString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };
@@ -954,7 +1030,7 @@ const Organizations = () => {
   const fetchOrgs = async (keepSelected?: boolean) => {
     setLoading(true);
     try {
-      const res = await orgsApi.getAll(debouncedSearch);
+      const res: any = await orgsApi.getAll(debouncedSearch);
       const data = Array.isArray(res) ? res : (res.data || res.items || []);
       setOrgs(data);
       
@@ -1049,7 +1125,7 @@ const Organizations = () => {
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
-            <HasPermission permission="organizations:write">
+            <HasPermission permission="orgs:write">
               <button onClick={() => setOrgModal('new')} className="w-7 h-7 shrink-0 rounded-lg bg-[var(--color-accent)] text-white flex items-center justify-center hover:bg-[var(--color-accent-dark)] transition-colors shadow-sm" title="New Organization">
                 <Plus className="w-4 h-4" />
               </button>
@@ -1120,7 +1196,7 @@ const Organizations = () => {
           </div>
           <h3 className="text-slate-600 font-semibold mb-1">Select an Organization</h3>
           <p className="text-sm text-slate-400">Click an organization from the list to view its details.</p>
-          <HasPermission permission="organizations:write">
+          <HasPermission permission="orgs:write">
             <button onClick={() => setOrgModal('new')} className="mt-4 btn-primary flex items-center gap-1.5">
               <Plus className="w-4 h-4" /> New Organization
             </button>
@@ -1143,12 +1219,12 @@ const Organizations = () => {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <HasPermission permission="organizations:write">
+              <HasPermission permission="orgs:write">
                 <button onClick={() => setOrgModal(selected)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
                   <Edit2 className="w-3.5 h-3.5" /> Edit
                 </button>
               </HasPermission>
-              <HasPermission permission="organizations:delete">
+              <HasPermission permission="orgs:write">
                 <button onClick={() => handleDelete(selected.id)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-100 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">
                   <Trash2 className="w-3.5 h-3.5" /> Delete
                 </button>
@@ -1166,7 +1242,7 @@ const Organizations = () => {
             {activeTab === 'Users' && <UsersTab orgId={selected.id} />}
             {activeTab === 'Addresses' && <AddressesTab orgId={selected.id} />}
             {activeTab === 'Licenses' && <LicensesTab orgId={selected.id} />}
-            {activeTab === 'Credits' && <CreditsTab orgId={selected.id} />}
+            {activeTab === 'Credits' && <CreditsTab orgId={selected.id} org={selected} orgs={orgs} reload={() => fetchOrgs(true)} />}
           </div>
         </div>
       )}

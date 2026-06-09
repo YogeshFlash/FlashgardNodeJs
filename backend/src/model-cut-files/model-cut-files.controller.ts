@@ -8,13 +8,13 @@ export class ModelCutFilesController {
   constructor(private readonly modelCutFilesService: ModelCutFilesService) {}
 
   @Post()
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   create(@Body() data: any) {
     return this.modelCutFilesService.create(data);
   }
 
   @Post('upload')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   @UseInterceptors(FileInterceptor('file'))
   upload(
     @UploadedFile() file: any,
@@ -25,13 +25,13 @@ export class ModelCutFilesController {
   }
 
   @Patch(':id/normalize')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   normalize(@Param('id') id: string) {
     return this.modelCutFilesService.normalize(id);
   }
 
   @Get()
-  @RequirePermissions('models:read')
+  @RequirePermissions('catalog:read')
   findAll(
     @Query('modelId') modelId?: string,
     @Query('skip') skip?: number,
@@ -42,13 +42,13 @@ export class ModelCutFilesController {
   }
 
   @Get(':id')
-  @RequirePermissions('models:read')
+  @RequirePermissions('catalog:read')
   findOne(@Param('id') id: string) {
     return this.modelCutFilesService.findOne(id);
   }
 
   @Delete(':id')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   remove(@Param('id') id: string) {
     return this.modelCutFilesService.remove(id);
   }

@@ -11,7 +11,7 @@ export class MigrationController {
   constructor(private readonly migrationService: MigrationService) {}
 
   @Post('legacy/catalog')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   @UseInterceptors(FileInterceptor('file', {
     limits: { fileSize: 4 * 1024 * 1024 * 1024 } // 4GB
   }))
@@ -20,7 +20,7 @@ export class MigrationController {
   }
 
   @Post('legacy/skins')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   @UseInterceptors(FileInterceptor('file', {
     limits: { fileSize: 4 * 1024 * 1024 * 1024 } // 4GB
   }))
@@ -29,7 +29,7 @@ export class MigrationController {
   }
 
   @Post('legacy/roles')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   @UseInterceptors(FileInterceptor('file', {
     limits: { fileSize: 1024 * 1024 * 1024 } // 1GB limit
   }))
@@ -38,7 +38,7 @@ export class MigrationController {
   }
 
   @Post('legacy/users')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   @UseInterceptors(FileFieldsInterceptor([
     { name: 'users', maxCount: 1 },
     { name: 'userRoles', maxCount: 1 }
@@ -60,7 +60,7 @@ export class MigrationController {
   }
 
   @Post('legacy/licenses')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   @UseInterceptors(FileFieldsInterceptor([
     { name: 'licenses', maxCount: 1 },
     { name: 'licenseDealers', maxCount: 1 }
@@ -82,7 +82,7 @@ export class MigrationController {
   }
 
   @Post('legacy/mobile-users')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   @UseInterceptors(FileFieldsInterceptor([
     { name: 'mobileUsers', maxCount: 1 }
   ], {
@@ -97,8 +97,27 @@ export class MigrationController {
     return this.migrationService.migrateMobileUsers(mobileUsersFile!);
   }
 
+  @Post('legacy/cut-credits')
+  @RequirePermissions('catalog:write')
+  @UseInterceptors(FileFieldsInterceptor([
+    { name: 'dealerAssign', maxCount: 1 },
+    { name: 'count', maxCount: 1 }
+  ], {
+    limits: { fileSize: 1024 * 1024 * 1024 } // 1GB limit
+  }))
+  migrateCutCredits(
+    @UploadedFiles() files: {
+      dealerAssign?: Express.Multer.File[];
+      count?: Express.Multer.File[];
+    }
+  ) {
+    const dealerAssignFile = files.dealerAssign?.[0];
+    const countFile = files.count?.[0];
+    return this.migrationService.migrateCutCredits(dealerAssignFile!, countFile);
+  }
+
   @Post('legacy/designs')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   @UseInterceptors(FileInterceptor('file', {
     storage: diskStorage({
       destination: './uploads/tmp',
@@ -128,7 +147,7 @@ export class MigrationController {
   }
 
   @Post('legacy/designs/local')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   async migrateLocalDesigns() {
     try {
         return await this.migrationService.migrateLocalDesigns();
@@ -140,31 +159,31 @@ export class MigrationController {
   }
 
   @Post('legacy/designs/generate-images')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   generateImages() {
     return this.migrationService.generateAllImages();
   }
 
   @Post('legacy/designs/generate-images/model/:modelId')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   generateImagesForModel(@Param('modelId') modelId: string) {
     return this.migrationService.generateImageForModel(modelId);
   }
 
   @Post('legacy/designs/generate-images/cut-file/:cutFileId')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   generateImageForCutFile(@Param('cutFileId') cutFileId: string) {
     return this.migrationService.generateImageForCutFile(cutFileId);
   }
 
   @Get('logs')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   getLogs() {
     return this.migrationService.getLogs();
   }
 
   @Get('logs/csv')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   async downloadLogsCsv(@Res() res: any) {
     const csv = await this.migrationService.downloadLogsCsv();
     res.set('Content-Type', 'text/csv');
@@ -173,7 +192,7 @@ export class MigrationController {
   }
 
   @Get('logs/:id/failures')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   async downloadFailuresCsv(@Param('id') id: string, @Res() res: any) {
     const csv = await this.migrationService.downloadFailuresCsv(id);
     if (!csv) {
@@ -185,19 +204,19 @@ export class MigrationController {
   }
 
   @Post('clean')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   cleanData(@Body('module') module: string) {
     return this.migrationService.cleanData(module);
   }
 
   @Post('db/connect')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   async dbConnect(@Body() credentials: any) {
     return this.migrationService.dbConnect(credentials);
   }
 
   @Post('db/run')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   async dbRun(
     @Body('credentials') credentials: any,
     @Body('moduleType') moduleType: string,

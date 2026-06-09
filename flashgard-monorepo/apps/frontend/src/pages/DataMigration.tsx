@@ -18,15 +18,17 @@ import {
   AlertTriangle,
   Search,
   Download,
-  Shield
+  Shield,
+  Ticket
 } from 'lucide-react';
 import { migrationApi, API_BASE } from '../lib/api';
+import { SearchableSelect } from '../components/SearchableSelect';
 
 type MainTab = 'legacy' | 'mssql' | 'bulk' | 'history';
-type LegacySubTab = 'catalog' | 'skins' | 'designs' | 'roles' | 'users' | 'licenses' | 'mobile-users' | 'orders';
+type LegacySubTab = 'catalog' | 'skins' | 'designs' | 'roles' | 'users' | 'licenses' | 'mobile-users' | 'cut-credits' | 'orders';
 
 const DataMigration: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<MainTab>('legacy');
+  const [activeTab, setActiveTab] = useState<MainTab>('mssql');
   const [legacySubTab, setLegacySubTab] = useState<LegacySubTab>('catalog');
 
   const [file1, setFile1] = useState<File | null>(null);
@@ -200,6 +202,7 @@ const DataMigration: React.FC = () => {
     { id: 'users', label: '5. Org & Users', icon: Users, description: 'Migrate legacy user credentials.', file1Label: 'Users CSV', file1Name: 'UserMaster.csv', file2Label: 'User Roles Map CSV', file2Name: 'UserRolesMaster.csv' },
     { id: 'licenses', label: '6. Licenses', icon: FileCode, description: 'Migrate legacy licenses and assign to dealers.', file1Label: 'Licenses CSV', file1Name: 'LicenseMaster.csv', file2Label: 'License Dealers CSV', file2Name: 'LicenseAssignDealer.csv' },
     { id: 'mobile-users', label: '7. Mobile Users', icon: Users, description: 'Migrate legacy mobile app users and links.', file1Label: 'Mobile Users CSV', file1Name: 'MobileAppUser.csv' },
+    { id: 'cut-credits', label: '8. Cut Credits', icon: Ticket, description: 'Migrate legacy cut credits and balances.', file1Label: 'CutCreditAssignDealer Table', file1Name: 's_CutCreditAssignDealer', file2Label: 'CutcreditDealerCount Table', file2Name: 's_CutcreditDealerCount' },
     { id: 'orders', label: 'Order History', icon: ShoppingCart, description: 'Sync past transactions.', file1Label: 'Orders CSV', file1Name: 'OrderMaster.csv' },
   ];
 
@@ -208,17 +211,30 @@ const DataMigration: React.FC = () => {
     setDbMapFile1('');
     setDbMapFile2('');
     if (currentTab && dbTables.length > 0) {
-      const t1 = currentTab.file1Name.replace('.csv', '');
-      const match1 = dbTables.find(t => t.toLowerCase() === t1.toLowerCase() || t.includes(t1));
-      if (match1) setDbMapFile1(match1);
-      
-      if (currentTab.file2Name) {
-        const t2 = currentTab.file2Name.replace('.csv', '');
-        const match2 = dbTables.find(t => t.toLowerCase() === t2.toLowerCase() || t.includes(t2));
+      if (currentTab.id === 'users') {
+        const match1 = dbTables.find(t => t.toLowerCase() === 'aspnetusers');
+        if (match1) setDbMapFile1(match1);
+        const match2 = dbTables.find(t => t.toLowerCase() === 'aspnetuserroles');
         if (match2) setDbMapFile2(match2);
+      } else if (currentTab.id === 'catalog') {
+        const match1 = dbTables.find(t => t.toLowerCase().includes('catalogue') || t.toLowerCase().includes('catalogmaster'));
+        if (match1) setDbMapFile1(match1);
+      } else if (currentTab.id === 'roles') {
+        const match1 = dbTables.find(t => t.toLowerCase() === 'aspnetroles');
+        if (match1) setDbMapFile1(match1);
+      } else {
+        const t1 = currentTab.file1Name.replace('.csv', '');
+        const match1 = dbTables.find(t => t.toLowerCase() === t1.toLowerCase() || t.includes(t1));
+        if (match1) setDbMapFile1(match1);
+        
+        if (currentTab.file2Name) {
+          const t2 = currentTab.file2Name.replace('.csv', '');
+          const match2 = dbTables.find(t => t.toLowerCase() === t2.toLowerCase() || t.includes(t2));
+          if (match2) setDbMapFile2(match2);
+        }
       }
     }
-  }, [legacySubTab, currentTab, dbTables]);
+  }, [legacySubTab, dbTables]);
 
   const handleDbConnect = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -305,7 +321,7 @@ const DataMigration: React.FC = () => {
           <div className="w-full md:w-80 shrink-0 space-y-6">
             {[
               { title: 'Models Management', ids: ['catalog', 'skins', 'designs'] },
-              { title: 'System & Core', ids: ['roles', 'users', 'licenses', 'mobile-users', 'orders'] }
+              { title: 'System & Core', ids: ['roles', 'users', 'licenses', 'mobile-users', 'cut-credits', 'orders'] }
             ].map((group) => (
               <div key={group.title} className="space-y-2">
                 <div className="px-4">
@@ -340,7 +356,7 @@ const DataMigration: React.FC = () => {
           <div className="flex-1 min-w-0">
             <div className="bg-white rounded-[2rem] border border-slate-200 shadow-xl overflow-hidden min-h-[550px] flex flex-col">
               
-              {['catalog', 'skins', 'designs', 'roles', 'users', 'licenses', 'mobile-users'].includes(legacySubTab) ? (
+              {['catalog', 'skins', 'designs', 'roles', 'users', 'licenses', 'mobile-users', 'cut-credits'].includes(legacySubTab) ? (
                 <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4">
                   <div className="p-8 bg-slate-50 border-b border-slate-100">
                     <div className="flex items-center gap-3 mb-1">
@@ -391,26 +407,30 @@ const DataMigration: React.FC = () => {
                               </div>
                               <div className="space-y-4">
                                 <div>
-                                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest">{currentTab?.file1Label} Table</label>
-                                  <select value={dbMapFile1} onChange={e => setDbMapFile1(e.target.value)} className="w-full p-4 rounded-xl border border-slate-200 mt-2 font-bold text-slate-700" required>
-                                    <option value="">-- Select Table --</option>
-                                    {dbTables.map(t => <option key={t} value={t}>{t}</option>)}
-                                  </select>
+                                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">{currentTab?.file1Label} Table</label>
+                                  <SearchableSelect
+                                    options={dbTables.map(t => ({ value: t, label: t }))}
+                                    value={dbMapFile1}
+                                    onChange={(v) => setDbMapFile1(v)}
+                                    placeholder="-- Select Table --"
+                                  />
                                 </div>
                                 {currentTab?.file2Name && (
                                   <div>
-                                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest">{currentTab?.file2Label} Table</label>
-                                    <select value={dbMapFile2} onChange={e => setDbMapFile2(e.target.value)} className="w-full p-4 rounded-xl border border-slate-200 mt-2 font-bold text-slate-700">
-                                      <option value="">-- Select Table (Optional) --</option>
-                                      {dbTables.map(t => <option key={t} value={t}>{t}</option>)}
-                                    </select>
+                                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">{currentTab?.file2Label} Table {currentTab.id !== 'users' && '(Optional)'}</label>
+                                    <SearchableSelect
+                                      options={dbTables.map(t => ({ value: t, label: t }))}
+                                      value={dbMapFile2}
+                                      onChange={(v) => setDbMapFile2(v)}
+                                      placeholder={`-- Select Table ${currentTab.id !== 'users' ? '(Optional) ' : ''}--`}
+                                    />
                                   </div>
                                 )}
                               </div>
                               <button
                                 onClick={handleDbMigration}
-                                disabled={!dbMapFile1 || isMigrating}
-                                className={`w-full flex items-center justify-center gap-3 py-4 rounded-xl font-black text-lg text-white transition-all transform ${!dbMapFile1 || isMigrating ? 'bg-slate-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-xl'}`}
+                                disabled={!dbMapFile1 || isMigrating || (currentTab?.id === 'users' && !dbMapFile2)}
+                                className={`w-full flex items-center justify-center gap-3 py-4 rounded-xl font-black text-lg text-white transition-all transform ${!dbMapFile1 || isMigrating || (currentTab?.id === 'users' && !dbMapFile2) ? 'bg-slate-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-xl'}`}
                               >
                                 {isMigrating ? <Loader2 className="w-6 h-6 animate-spin" /> : <RefreshCcw className="w-6 h-6" />}
                                 {isMigrating ? 'Syncing...' : 'Start DB Migration'}
@@ -562,7 +582,7 @@ const DataMigration: React.FC = () => {
                       )}
 
                       {/* Danger Zone / Clean Data */}
-                      {['catalog', 'skins', 'designs', 'roles', 'users', 'licenses', 'mobile-users'].includes(legacySubTab) && (
+                      {['catalog', 'skins', 'designs', 'roles', 'users', 'licenses', 'mobile-users', 'cut-credits'].includes(legacySubTab) && (
                         <div className="pt-6 border-t border-slate-100 mt-8 space-y-4">
                           <div className="flex items-center gap-2 text-rose-600 px-1">
                             <AlertTriangle className="w-4 h-4" />
@@ -579,6 +599,8 @@ const DataMigration: React.FC = () => {
                                     ? 'Catalog' 
                                     : legacySubTab === 'mobile-users'
                                     ? 'Mobile Users'
+                                    : legacySubTab === 'cut-credits'
+                                    ? 'Cut Credits'
                                     : legacySubTab.charAt(0).toUpperCase() + legacySubTab.slice(1)
                                 } Migration Data
                               </h4>
@@ -772,7 +794,7 @@ const DataMigration: React.FC = () => {
 };
 
 // --- Premium Status Modal Component ---
-const StatusModal: React.FC<{
+export const StatusModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
   title: string;

@@ -64,7 +64,16 @@ export class OrganizationsService {
 
   async create(data: any, currentUser: any) {
     try {
-      const { name, organizationTypeId, isActive, parentId } = data;
+      const { name, isActive, parentId, type } = data;
+      let { organizationTypeId } = data;
+      
+      if (type && !organizationTypeId) {
+        const orgType = await this.prisma.organizationType.findFirst({ 
+          where: { name: { equals: type, mode: 'insensitive' } } 
+        });
+        if (orgType) organizationTypeId = orgType.id;
+      }
+      
       this.logger.log(`Creating org: name=${name}, typeId=${organizationTypeId} by user=${currentUser.email}`);
       
       const allowedOrgIds = await this.getAllowedOrgIds(currentUser);
@@ -122,7 +131,7 @@ export class OrganizationsService {
 
     return this.prisma.organization.findMany({
       where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
-      include: { organizationType: true },
+      include: { organizationType: true, tenantWallets: true },
       orderBy: { name: 'asc' },
     });
   }
@@ -146,6 +155,7 @@ export class OrganizationsService {
         },
         addresses: true,
         roles: true,
+        tenantWallets: true,
       },
     });
   }
@@ -156,7 +166,18 @@ export class OrganizationsService {
        throw new InternalServerErrorException('You do not have permission to update this organization.');
     }
 
-    const { name, organizationTypeId, isActive, parentId } = data;
+    const { name, isActive, parentId, type } = data;
+    let { organizationTypeId } = data;
+
+    if (type) {
+      // Find the organization type ID using case-insensitive search
+      const orgType = await this.prisma.organizationType.findFirst({ 
+        where: { name: { equals: type, mode: 'insensitive' } } 
+      });
+      if (orgType) {
+        organizationTypeId = orgType.id;
+      }
+    }
     
     // Non-super-admins cannot move an org to the root.
     if (allowedOrgIds !== null && parentId === null) {

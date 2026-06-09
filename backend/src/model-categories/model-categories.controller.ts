@@ -7,13 +7,13 @@ export class ModelCategoriesController {
   constructor(private readonly modelCategoriesService: ModelCategoriesService) {}
 
   @Post()
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   create(@Body() data: any) {
     return this.modelCategoriesService.create(data);
   }
 
   @Get()
-  @RequirePermissions('models:read')
+  @RequirePermissions('catalog:read')
   findAll(
     @Query('parentId') parentId?: string,
     @Query('search') search?: string, 
@@ -24,31 +24,31 @@ export class ModelCategoriesController {
   }
 
   @Get(':id')
-  @RequirePermissions('models:read')
+  @RequirePermissions('catalog:read')
   findOne(@Param('id') id: string) {
     return this.modelCategoriesService.findOne(id);
   }
 
   @Patch(':id')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   update(@Param('id') id: string, @Body() data: any) {
     return this.modelCategoriesService.update(id, data);
   }
 
   @Delete(':id')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   remove(@Param('id') id: string) {
     return this.modelCategoriesService.remove(id);
   }
 
   @Patch(':id/restore')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   restore(@Param('id') id: string) {
     return this.modelCategoriesService.restore(id);
   }
 
   @Delete(':id/purge')
-  @RequirePermissions('models:write')
+  @RequirePermissions('catalog:write')
   purge(@Param('id') id: string, @Req() req?: any) {
     return this.modelCategoriesService.purge(id, req?.user);
   }

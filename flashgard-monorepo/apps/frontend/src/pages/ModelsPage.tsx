@@ -412,7 +412,7 @@ const ModelsPage: React.FC = () => {
 
         {!isSidebarCollapsed && (
           <div className="p-4 border-t border-slate-200 bg-white">
-            <HasPermission permission="models:write">
+            <HasPermission permission="catalog:write">
               <button 
                 onClick={() => setModal({ type: 'categories', data: null })}
                 className="w-full py-2.5 bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all"
@@ -441,7 +441,7 @@ const ModelsPage: React.FC = () => {
                   />
                 </div>
                 {activeTab !== 'designs' && (
-                  <HasPermission permission="models:write">
+                  <HasPermission permission="catalog:write">
                     <button 
                       onClick={() => setModal({ type: activeTab, data: null })}
                       className="px-4 py-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 whitespace-nowrap"
@@ -479,7 +479,7 @@ const ModelsPage: React.FC = () => {
                   <button onClick={() => setSelected(null)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-widest">
                     <ChevronLeft className="w-4 h-4" /> Back
                   </button>
-                  <HasPermission permission="models:write">
+                  <HasPermission permission="catalog:write">
                     <button onClick={() => setModal({ type: 'upload', data: selected })} className="btn-primary flex items-center gap-2">
                       <Upload className="w-4 h-4" /> Add Cut File
                     </button>
@@ -545,7 +545,7 @@ const ModelsPage: React.FC = () => {
                             <p className="text-[10px] text-slate-400 font-bold mt-0.5">LEGACY ID: {file.legacyId}</p>
                           </td>
                           <td className="px-8 py-4 text-right">
-                            <HasPermission permission="models:write">
+                            <HasPermission permission="catalog:write">
                               <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button 
                                   onClick={(e) => handleGenerateCutFilePreview(file.id, selected.id, e)} 

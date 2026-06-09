@@ -257,7 +257,7 @@ const RolesPage = () => {
                             <Edit2 className="w-4 h-4" />
                           </button>
                         </HasPermission>
-                        <HasPermission permission="roles:delete">
+                        <HasPermission permission="roles:write">
                           <button 
                             onClick={() => handleDelete(role.id, role.isSystemRole)} 
                             className={`p-1.5 rounded-lg transition-colors ${role.isSystemRole && !user?.isSuperAdmin ? 'text-slate-200 cursor-not-allowed' : 'text-slate-400 hover:text-red-600 hover:bg-red-50'}`}

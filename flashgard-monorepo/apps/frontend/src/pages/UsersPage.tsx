@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Plus, Search, Edit2, Trash2, Loader2, AlertCircle, X, Shield, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import { Users, Plus, Search, Edit2, Trash2, Loader2, AlertCircle, X, Shield, ChevronLeft, ChevronRight, ChevronDown, Key } from 'lucide-react';
 import { usersApi, rolesApi, orgsApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ResetPasswordModal } from '../components/ResetPasswordModal';
 
 const OrgComboBox = ({ value, onChange, disabled, orgs }: any) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -239,6 +240,7 @@ const UsersPage = () => {
 
   const [modal, setModal] = useState<any>(null);
   const [permissionsModal, setPermissionsModal] = useState<any>(null); // For the new shield modal
+  const [resetModal, setResetModal] = useState<any>(null);
   const [confirm, setConfirm] = useState<{
     isOpen: boolean;
     title: string;
@@ -309,6 +311,16 @@ const UsersPage = () => {
     <div className="space-y-6">
       {modal && <UserModal user={modal === 'new' ? null : modal} onClose={() => setModal(null)} onSave={() => { setModal(null); fetchUsers(); }} />}
       {permissionsModal && <UserPermissionsModal user={permissionsModal} onClose={() => setPermissionsModal(null)} onSave={() => { setPermissionsModal(null); }} />}
+      
+      <ResetPasswordModal 
+        isOpen={!!resetModal}
+        onClose={() => setResetModal(null)}
+        userName={resetModal ? [resetModal.firstName, resetModal.lastName].filter(Boolean).join(' ') || resetModal.email : undefined}
+        onConfirm={async (newPassword) => {
+          await usersApi.resetPassword(resetModal.id, newPassword);
+          // Optional: Add a success toast here if you have a toast system
+        }}
+      />
 
       <div className="flex items-center justify-between">
         <div>
@@ -385,7 +397,10 @@ const UsersPage = () => {
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => setModal(u)} className="p-1.5 rounded-lg text-slate-400 hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-colors" title="Edit User"><Edit2 className="w-4 h-4" /></button>
                           {currentUser?.isSuperAdmin && (
-                             <button onClick={() => setPermissionsModal(u)} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" title="Permission Overrides"><Shield className="w-4 h-4" /></button>
+                             <>
+                               <button onClick={() => setPermissionsModal(u)} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" title="Permission Overrides"><Shield className="w-4 h-4" /></button>
+                               <button onClick={() => setResetModal(u)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Reset Password"><Key className="w-4 h-4" /></button>
+                             </>
                           )}
                           <button onClick={() => handleDelete(u.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete User"><Trash2 className="w-4 h-4" /></button>
                         </div>

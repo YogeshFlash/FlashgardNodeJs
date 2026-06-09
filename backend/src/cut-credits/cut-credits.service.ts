@@ -1,195 +1,142 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreditStatus, CreditPlanType, TransferStatus, TransactionType } from '@prisma/client';
-import { resolveTransferPath } from '../utils/hierarchy.util';
-import { decryptLicenseKey } from '../utils/encryption';
+import { CreditPlanType, TransactionType } from '@prisma/client';
 
 @Injectable()
 export class CutCreditsService {
   constructor(private prisma: PrismaService) {}
 
-  private generateHierarchicalKey(type: string, batchCode: string, sequence: number): string {
-    const typeCode = type.substring(0, 3).toUpperCase();
-    const batchSuffix = batchCode.split('-').pop() || '000';
-    const seqStr = sequence.toString().padStart(4, '0');
-    return `${typeCode}-${batchSuffix}-${seqStr}`;
-  }
-
   async issueCutCredits(data: {
     targetOrgId: string;
     planType: CreditPlanType;
-    totalCount: number;
-    creditsPerKey?: number;
+    credits?: number;
     validityDays?: number;
     userId: string;
     tenantId?: string;
-    licenseId: string;
+    licenseId?: string;
+    isOffer?: boolean;
+    notes?: string;
   }) {
-    if (!data.licenseId) throw new BadRequestException('Credits must be linked to a machine license');
-
-    const targetOrg = await (this.prisma.organization as any).findUnique({
+    const targetOrg = await this.prisma.organization.findUnique({
       where: { id: data.targetOrgId }
     });
 
     if (!targetOrg) throw new NotFoundException('Target organization not found');
 
-    const existingCount = await (this.prisma.cutCredit as any).count({
-      where: { ownerId: data.targetOrgId, batch: { planType: data.planType } }
-    });
-
-    const startDate = new Date();
-    const expiryDate = data.validityDays ? new Date(startDate.getTime() + data.validityDays * 24 * 60 * 60 * 1000) : null;
-
-    const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\//g, '');
-    const orgPart = targetOrg.name.substring(0, 3).toUpperCase();
-    const batchCode = `CB-${dateStr}-${orgPart}-${Date.now().toString().slice(-6)}`;
-
-    const credits = Array.from({ length: data.totalCount }).map((_, index) => ({
-      key: this.generateHierarchicalKey(data.planType, batchCode, existingCount + index + 1),
-      ownerId: data.targetOrgId,
-      remainingCredits: data.planType === CreditPlanType.USAGE ? data.creditsPerKey : null,
-      status: CreditStatus.AVAILABLE,
-      startDate,
-      expiryDate,
-      tenantId: data.tenantId || data.targetOrgId,
-      licenseId: data.licenseId || null,
-    }));
+    if (targetOrg.parentId !== null && data.planType === CreditPlanType.USAGE && !data.isOffer) {
+      throw new BadRequestException('Usage credits can only be minted directly to Top Level organizations. For child organizations, please transfer credits from a parent.');
+    }
 
     return this.prisma.$transaction(async (tx) => {
-      const batch = await (tx as any).cutCreditBatch.create({
+      const grant = await (tx as any).cutCredit.create({
         data: {
-          batchCode,
           planType: data.planType,
-          totalCount: data.totalCount,
-          creditsPerKey: data.creditsPerKey,
-          validityDays: data.validityDays,
-          createdBy: data.userId,
+          credits: data.planType === CreditPlanType.USAGE ? data.credits : null,
+          validityDays: data.planType === CreditPlanType.UNLIMITED ? data.validityDays : null,
+          ownerId: data.targetOrgId,
           tenantId: data.tenantId || data.targetOrgId,
-          credits: { create: credits },
-        },
-        include: { credits: true },
-      });
-      return batch;
-    });
-  }
-
-  async dispatch(data: { creditIds: string[], fromOrgId: string, toOrgId: string, userId: string, tenantId?: string, isSuperAdmin?: boolean }) {
-    console.log(`[CutCreditsService] Dispatching ${data.creditIds.length} credits. From: ${data.fromOrgId}, To: ${data.toOrgId}`);
-    
-    const where: any = { id: { in: data.creditIds }, status: CreditStatus.AVAILABLE };
-    if (!data.isSuperAdmin) {
-      where.ownerId = data.fromOrgId;
-    }
-
-    const credits = await (this.prisma.cutCredit as any).findMany({ where });
-
-    console.log(`[CutCreditsService] Found ${credits.length} available credits to dispatch.`);
-
-    if (credits.length !== data.creditIds.length) {
-      throw new BadRequestException(`Some credits are unavailable. Expected ${data.creditIds.length}, found ${credits.length}.`);
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      const effectiveFromOrgId = data.fromOrgId || credits[0].ownerId;
-
-      const path = await resolveTransferPath(tx, effectiveFromOrgId, data.toOrgId);
-      
-      let finalTransfer = null;
-
-      // Loop through the path and create sequential transfers
-      for (let i = 0; i < path.length - 1; i++) {
-        const fromId = path[i];
-        const toId = path[i + 1];
-        const isLast = i === path.length - 2;
-
-        const transfer = await (tx as any).licensingTransfer.create({
-          data: {
-            fromOrgId: fromId,
-            toOrgId: toId,
-            status: isLast ? TransferStatus.PENDING : TransferStatus.COMPLETED,
-            resolvedAt: isLast ? null : new Date(),
-            resolvedBy: isLast ? null : data.userId,
-            tenantId: data.tenantId || effectiveFromOrgId,
-            items: { create: data.creditIds.map((id: any) => ({ creditId: id })) }
-          }
-        });
-
-        if (isLast) {
-          finalTransfer = transfer;
-        }
-      }
-      await (tx as any).cutCredit.updateMany({
-        where: { id: { in: data.creditIds } },
-        data: { status: CreditStatus.IN_TRANSIT }
-      });
-      return finalTransfer;
-    });
-  }
-
-  async acceptTransfer(transferId: string, userId: string) {
-    const transfer = await (this.prisma.licensingTransfer as any).findUnique({
-      where: { id: transferId },
-      include: { items: true }
-    });
-    if (!transfer || transfer.status !== TransferStatus.PENDING) throw new BadRequestException('Transfer not pending');
-    const creditIds = transfer.items.filter((i: any) => i.creditId).map((i: any) => i.creditId);
-
-    return this.prisma.$transaction(async (tx) => {
-      await (tx as any).cutCredit.updateMany({
-        where: { id: { in: creditIds } },
-        data: { ownerId: transfer.toOrgId, status: CreditStatus.AVAILABLE, tenantId: transfer.toOrgId }
-      });
-      return (tx as any).licensingTransfer.update({
-        where: { id: transferId },
-        data: { status: TransferStatus.COMPLETED, resolvedAt: new Date(), resolvedBy: userId }
-      });
-    });
-  }
-
-  async activate(data: { key: string, machineId: string, fingerprint: any, geo: any, userId: string }) {
-    const credit = await (this.prisma.cutCredit as any).findUnique({
-      where: { key: data.key },
-      include: { batch: true }
-    });
-
-    if (!credit) throw new NotFoundException('Credit key not found.');
-    if (credit.status !== CreditStatus.AVAILABLE) throw new BadRequestException(`Key status is ${credit.status}`);
-
-    if (credit.deviceHash && credit.deviceHash !== data.fingerprint.deviceHash) {
-      await (this.prisma.securityAlert as any).create({
-        data: {
-          creditId: credit.id,
-          attemptedFingerprint: data.fingerprint,
-          storedFingerprint: { deviceHash: credit.deviceHash, macAddress: credit.macAddress },
-          ipAddress: data.geo.ip,
-          tenantId: credit.tenantId
-        }
-      });
-      throw new BadRequestException('Machine fingerprint mismatch!');
-    }
-
-    const creditsToDeposit = credit.remainingCredits || 0;
-
-    return this.prisma.$transaction(async (tx) => {
-      await (tx as any).cutCredit.update({
-        where: { id: credit.id },
-        data: {
-          status: CreditStatus.CONSUMED,
-          activatedAt: new Date(),
-          machineId: data.machineId,
-          macAddress: data.fingerprint.macAddress,
-          deviceHash: data.fingerprint.deviceHash,
-          geoCity: data.geo.city,
-          geoCountry: data.geo.country
+          licenseId: data.licenseId || null,
+          isOffer: data.isOffer || false,
+          notes: data.notes || null,
         }
       });
 
-      let wallet = await (tx as any).entityWallet.findUnique({ where: { machineId: data.machineId } });
+      let wallet = await (tx as any).entityWallet.findUnique({ where: { orgId: data.targetOrgId } });
       if (!wallet) {
         wallet = await (tx as any).entityWallet.create({
           data: {
-            machineId: data.machineId,
-            tenantId: credit.tenantId,
+            orgId: data.targetOrgId,
+            tenantId: data.tenantId || data.targetOrgId,
+            balance: 0,
+            totalCredits: 0
+          }
+        });
+      }
+
+      if (data.planType === CreditPlanType.USAGE && data.credits) {
+        await (tx as any).entityWallet.update({
+          where: { id: wallet.id },
+          data: {
+            balance: { increment: data.credits },
+            totalCredits: { increment: data.credits },
+            lastRechargedAt: new Date()
+          }
+        });
+
+        await (tx as any).creditTransaction.create({
+          data: {
+            walletId: wallet.id,
+            amount: data.credits,
+            type: TransactionType.CREDIT,
+            source: grant.id,
+            tenantId: data.tenantId || data.targetOrgId,
+            isOffer: data.isOffer || false,
+            notes: data.notes || null,
+          }
+        });
+      }
+
+      return grant;
+    });
+  }
+
+  async dispatch(data: { amount: number, fromOrgId: string, toOrgId: string, userId: string, tenantId?: string, isSuperAdmin?: boolean }) {
+    if (data.amount <= 0) throw new BadRequestException('Amount must be positive');
+
+    return this.prisma.$transaction(async (tx) => {
+      let fromWallet = await (tx as any).entityWallet.findUnique({ where: { orgId: data.fromOrgId } });
+      if (!fromWallet || fromWallet.balance < data.amount) {
+        throw new BadRequestException('Insufficient credits to dispatch.');
+      }
+
+      // Check unassigned credits (credits assigned to a license cannot be transferred)
+      const unassignedCredits = await (tx as any).cutCredit.aggregate({
+        where: { ownerId: data.fromOrgId, planType: CreditPlanType.USAGE, licenseId: null },
+        _sum: { credits: true }
+      });
+      const availableToTransfer = unassignedCredits._sum.credits || 0;
+
+      if (availableToTransfer < data.amount) {
+        throw new BadRequestException('Insufficient unassigned credits to dispatch. Credits assigned to a license cannot be transferred.');
+      }
+
+      // Deduct from wallet
+      await (tx as any).entityWallet.update({
+        where: { id: fromWallet.id },
+        data: { balance: { decrement: data.amount } }
+      });
+      await (tx as any).creditTransaction.create({
+        data: {
+          walletId: fromWallet.id,
+          amount: -data.amount,
+          type: TransactionType.DEBIT,
+          tenantId: data.tenantId || data.fromOrgId
+        }
+      });
+
+      // Deduct from unassigned CutCredit rows
+      let remainingToDeduct = data.amount;
+      const usageCredits = await (tx as any).cutCredit.findMany({
+        where: { ownerId: data.fromOrgId, planType: CreditPlanType.USAGE, credits: { gt: 0 }, licenseId: null },
+        orderBy: { createdAt: 'asc' }
+      });
+      for (const uc of usageCredits) {
+        if (remainingToDeduct <= 0) break;
+        const deduct = Math.min(uc.credits, remainingToDeduct);
+        await (tx as any).cutCredit.update({
+          where: { id: uc.id },
+          data: { credits: { decrement: deduct } }
+        });
+        remainingToDeduct -= deduct;
+      }
+
+      // Add to target wallet
+      let toWallet = await (tx as any).entityWallet.findFirst({ where: { OR: [{ orgId: data.toOrgId }, { tenantId: data.toOrgId }] } });
+      if (!toWallet) {
+        toWallet = await (tx as any).entityWallet.create({
+          data: {
+            orgId: data.toOrgId, // Legacy fallback
+            tenantId: data.toOrgId, // This is the actual relation to Organization
             balance: 0,
             totalCredits: 0
           }
@@ -197,49 +144,45 @@ export class CutCreditsService {
       }
 
       await (tx as any).entityWallet.update({
-        where: { id: wallet.id },
+        where: { id: toWallet.id },
         data: {
-          balance: { increment: creditsToDeposit },
-          totalCredits: { increment: creditsToDeposit },
+          balance: { increment: data.amount },
+          totalCredits: { increment: data.amount },
           lastRechargedAt: new Date()
         }
       });
 
       await (tx as any).creditTransaction.create({
         data: {
-          walletId: wallet.id,
-          amount: creditsToDeposit,
+          walletId: toWallet.id,
+          amount: data.amount,
           type: TransactionType.CREDIT,
-          source: credit.id,
-          tenantId: credit.tenantId
+          tenantId: data.tenantId || data.fromOrgId
         }
       });
 
-      return (tx as any).entityWallet.findUnique({ where: { id: wallet.id } });
+      // Create a CutCredit row for the recipient
+      await (tx as any).cutCredit.create({
+        data: {
+          planType: CreditPlanType.USAGE,
+          credits: data.amount,
+          ownerId: data.toOrgId,
+          tenantId: data.tenantId || data.fromOrgId,
+        }
+      });
+
+      return toWallet;
     });
   }
 
-  async getMyInventory(orgId: string, isSuperAdmin = false, skip?: number, take?: number, search?: string, batchId?: string) {
-    const where: any = isSuperAdmin ? {} : { ownerId: orgId };
-
-    if (batchId) {
-      where.batchId = batchId;
+  async getMyInventory(orgId: string, isSuperAdmin = false, skip?: number, take?: number, search?: string) {
+    const where: any = {};
+    if (!isSuperAdmin) {
+      where.ownerId = orgId;
     }
 
     if (search) {
-      const searchFilter = {
-        OR: [
-          { owner: { name: { contains: search, mode: 'insensitive' } } },
-          { batch: { batchCode: { contains: search, mode: 'insensitive' } } },
-          { status: { equals: search.toUpperCase() as any } },
-        ].filter(Boolean)
-      };
-
-      if (where.OR) {
-        where.AND = [searchFilter];
-      } else {
-        Object.assign(where, searchFilter);
-      }
+      where.owner = { name: { contains: search, mode: 'insensitive' } };
     }
 
     if (skip !== undefined || take !== undefined) {
@@ -247,7 +190,6 @@ export class CutCreditsService {
         (this.prisma.cutCredit as any).findMany({
           where,
           include: { 
-            batch: true,
             owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } }
           },
           orderBy: { createdAt: 'desc' },
@@ -262,7 +204,6 @@ export class CutCreditsService {
     return (this.prisma.cutCredit as any).findMany({
       where,
       include: { 
-        batch: true,
         owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } }
       },
       orderBy: { createdAt: 'desc' },
@@ -270,33 +211,20 @@ export class CutCreditsService {
   }
 
   async getTransfers(orgId: string, isSuperAdmin = false) {
-    const where: any = isSuperAdmin ? {} : { OR: [ { fromOrgId: orgId }, { toOrgId: orgId } ] };
-    const transfers = await (this.prisma.licensingTransfer as any).findMany({
+    const where: any = {};
+    if (!isSuperAdmin) {
+      where.OR = [
+        { wallet: { tenantId: orgId } },
+        { tenantId: orgId }
+      ];
+    }
+    return (this.prisma.creditTransaction as any).findMany({
       where,
-      include: {
-        fromOrg: { select: { name: true } },
-        toOrg: { select: { name: true } },
-        items: { include: { license: true, credit: true } }
+      include: { 
+        wallet: { include: { tenant: { select: { name: true } } } },
+        tenant: { select: { name: true } }
       },
       orderBy: { createdAt: 'desc' }
-    });
-
-    for (const t of transfers) {
-      if (t.items) {
-        for (const item of t.items) {
-          if (item.license && item.license.key) {
-            item.license.key = decryptLicenseKey(item.license.key);
-          }
-        }
-      }
-    }
-    return transfers;
-  }
-
-  async getBatches() {
-    return (this.prisma.cutCreditBatch as any).findMany({
-      include: { _count: { select: { credits: true } } },
-      orderBy: { createdAt: 'desc' },
     });
   }
 

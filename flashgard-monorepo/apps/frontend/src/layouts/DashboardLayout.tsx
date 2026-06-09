@@ -6,16 +6,17 @@ import {
   UserCircle, Menu, X, Boxes, Warehouse, Key, Database
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { usePermissions } from '../components/HasPermission';
 import logo from '../assets/logo.png';
 
 const navItems = [
-  { name: 'Dashboard', path: '/', icon: LayoutDashboard, exact: true },
-  { name: 'Organizations', path: '/organizations', icon: Building2 },
-  { name: 'Models', path: '/models', icon: Boxes },
-  { name: 'Inventory', path: '/inventory', icon: Warehouse },
-  { name: 'Licenses', path: '/licenses', icon: Key },
-  { name: 'Data Migration', path: '/migration', icon: Database },
-  { name: 'Settings', path: '/settings', icon: Settings },
+  { name: 'Dashboard', path: '/', icon: LayoutDashboard, exact: true, permission: 'nav:dashboard' },
+  { name: 'Organizations', path: '/organizations', icon: Building2, permission: 'nav:organizations' },
+  { name: 'Models', path: '/models', icon: Boxes, permission: 'nav:models' },
+  { name: 'Inventory', path: '/inventory', icon: Warehouse, permission: 'nav:inventory' },
+  { name: 'Licenses', path: '/licenses', icon: Key, permission: 'nav:licenses' },
+  { name: 'Data Migration', path: '/migration', icon: Database, permission: 'nav:migration' },
+  { name: 'Settings', path: '/settings', icon: Settings, permission: 'nav:settings' },
 ];
 
 const Sidebar = ({ 
@@ -30,6 +31,10 @@ const Sidebar = ({
   onToggle?: () => void;
 }) => {
   const { user } = useAuth();
+  const { hasPermission } = usePermissions();
+  
+  const visibleNavItems = navItems.filter(item => hasPermission(item.permission));
+
   return (
     <aside className={`${mobile ? 'w-full' : `${collapsed ? 'w-20' : 'w-64'} transition-all duration-300 fixed left-0 top-0 h-screen`} bg-zinc-950 text-slate-300 flex flex-col z-20`}>
       <div className={`h-16 flex items-center px-6 border-b border-zinc-900 bg-zinc-950 ${collapsed ? 'justify-center px-0' : 'justify-between'}`}>
@@ -51,7 +56,7 @@ const Sidebar = ({
       </div>
 
       <nav className={`flex-1 py-6 space-y-1 overflow-y-auto ${collapsed ? 'px-2' : 'px-4'}`}>
-        {navItems.map((item) => (
+        {visibleNavItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}

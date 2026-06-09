@@ -2,6 +2,7 @@ import { Injectable, InternalServerErrorException, ForbiddenException } from '@n
 import { PrismaService } from '../prisma/prisma.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { RolesService } from '../roles/roles.service';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -27,17 +28,6 @@ export class UsersService {
       throw new InternalServerErrorException('Only existing Super Admins can create new Super Admins.');
     }
 
-    // Authorization Check for Organization
-    const allowedOrgIds = currentUser ? await this.orgsService.getAllowedOrgIds(currentUser) : null;
-    if (allowedOrgIds !== null) {
-      if (!organizationId) {
-         throw new InternalServerErrorException('Organization must be specified.');
-      }
-      if (!allowedOrgIds.includes(organizationId)) {
-        throw new InternalServerErrorException('You do not have permission to create a user in this organization.');
-      }
-    }
-
     let orgsCreatePayload: any[] = [];
     if (organizations && Array.isArray(organizations)) {
         orgsCreatePayload = organizations.map((org: any) => ({
@@ -47,6 +37,24 @@ export class UsersService {
         }));
     } else if (organizationId && roleId) {
         orgsCreatePayload = [{ organizationId, roleId, isPrimary: true }];
+    }
+
+    // Authorization Check for Organization
+    const allowedOrgIds = currentUser ? await this.orgsService.getAllowedOrgIds(currentUser) : null;
+    if (allowedOrgIds !== null) {
+      if (orgsCreatePayload.length === 0) {
+         throw new InternalServerErrorException('Organization must be specified.');
+      }
+      for (const org of orgsCreatePayload) {
+        if (!allowedOrgIds.includes(org.organizationId)) {
+          throw new InternalServerErrorException('You do not have permission to create a user in this organization.');
+        }
+      }
+    }
+
+    const existingUser = await this.prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      throw new InternalServerErrorException('A user with this email already exists.');
     }
 
     const bcrypt = await import('bcrypt');
@@ -149,6 +157,16 @@ export class UsersService {
     const existingUser = await this.prisma.user.findUnique({ where: { id } });
     if (!existingUser) throw new InternalServerErrorException('User not found.');
 
+    // Handle specific single org updates (legacy) or full sync (new behavior)
+    let orgsCreatePayload: any[] = [];
+    if (organizations && Array.isArray(organizations)) {
+      orgsCreatePayload = organizations.map((org: any) => ({
+            organizationId: org.organizationId,
+            roleId: org.roleId,
+            isPrimary: org.isPrimary || false
+      }));
+    }
+
     if (allowedOrgIds !== null) {
        // Cannot modify super admins
        if (existingUser.isSuperAdmin) {
@@ -165,6 +183,12 @@ export class UsersService {
        // Cannot move user to an org outside their allowed orgs
        if (organizationId && !allowedOrgIds.includes(organizationId)) {
           throw new InternalServerErrorException('Permission denied to move user to specified organization.');
+       }
+       // Cannot move user to orgs via array outside their allowed orgs
+       for (const org of orgsCreatePayload) {
+         if (!allowedOrgIds.includes(org.organizationId)) {
+           throw new InternalServerErrorException('Permission denied to move user to specified organization.');
+         }
        }
     }
 
@@ -183,15 +207,9 @@ export class UsersService {
       isActive,
     };
     
-    // Handle specific single org updates (legacy) or full sync (new behavior)
-    if (organizations && Array.isArray(organizations)) {
-      const orgsCreatePayload = organizations.map((org: any) => ({
-            organizationId: org.organizationId,
-            roleId: org.roleId,
-            isPrimary: org.isPrimary || false
-      }));
-      updateData.organizationId = orgsCreatePayload.length > 0 ? orgsCreatePayload[0].organizationId : null;
-      updateData.roleId = orgsCreatePayload.length > 0 ? orgsCreatePayload[0].roleId : null;
+    if (orgsCreatePayload.length > 0) {
+      updateData.organizationId = orgsCreatePayload[0].organizationId;
+      updateData.roleId = orgsCreatePayload[0].roleId;
       updateData.organizations = {
          deleteMany: {},
          create: orgsCreatePayload
@@ -315,6 +333,23 @@ export class UsersService {
       }
 
       return { success: true };
+    });
+  }
+
+  async resetPassword(userId: string, newPassword: string, currentUser: any) {
+    if (!currentUser.isSuperAdmin) {
+      throw new ForbiddenException('Only Super Admins can reset passwords directly.');
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      throw new Error('Password must be at least 6 characters long.');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash }
     });
   }
 }

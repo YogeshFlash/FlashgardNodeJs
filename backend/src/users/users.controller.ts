@@ -40,19 +40,19 @@ export class UsersController {
   }
 
   @Delete(':id')
-  @RequirePermissions('users:delete')
+  @RequirePermissions('users:write')
   remove(@Param('id') id: string, @Req() req?: any) {
     return this.usersService.remove(id, req?.user);
   }
 
   @Patch(':id/restore')
-  @RequirePermissions('users:delete') // Re-using delete permission for restore/purge
+  @RequirePermissions('users:write') // Re-using delete permission for restore/purge
   restore(@Param('id') id: string, @Req() req?: any) {
     return this.usersService.restore(id, req?.user);
   }
 
   @Delete(':id/purge')
-  @RequirePermissions('users:delete')
+  @RequirePermissions('users:write')
   purge(@Param('id') id: string, @Req() req?: any) {
     return this.usersService.purge(id, req?.user);
   }
@@ -67,5 +67,11 @@ export class UsersController {
   @RequirePermissions('users:write')
   updatePermissions(@Param('id') id: string, @Body() body: any, @Req() req?: any) {
     return this.usersService.updatePermissions(id, body, req?.user);
+  }
+
+  @Post(':id/reset-password')
+  @RequirePermissions('users:write')
+  resetPassword(@Param('id') id: string, @Body() body: any, @Req() req?: any) {
+    return this.usersService.resetPassword(id, body.newPassword, req?.user);
   }
 }

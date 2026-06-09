@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ShieldCheck, Plus, Send, X, AlertCircle, Activity,
-  Laptop, RotateCcw, Search, ChevronLeft, ChevronRight
+  ShieldCheck, Plus, Send, X, AlertCircle, RotateCcw, Search, ChevronLeft, ChevronRight, Gift
 } from 'lucide-react';
 import { licensesApi, cutCreditsApi, orgsApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -36,7 +35,6 @@ const buildHierarchy = (orgsInput: any[]): any[] => {
     byParent.set(parentKey, arr);
   }
 
-  // Find actual roots for the current user's view (if parent isn't in the list)
   const roots = (byParent.get('__root__') || []).slice();
   for (const org of orgs) {
     if (org?.parentId && !byId.has(org.parentId)) {
@@ -52,7 +50,6 @@ const buildHierarchy = (orgsInput: any[]): any[] => {
     visiting.add(node.id);
     rows.push({ ...node, depth });
     const kids = byParent.get(node.id) || [];
-    // Sort kids alphabetically
     kids.sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')));
     for (const child of kids) walk(child, depth + 1);
     visiting.delete(node.id);
@@ -73,35 +70,44 @@ const IssueOrgLicenseModal = ({ onClose, onSave, orgs }: any) => {
     description: '',
   });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [orgSearch, setOrgSearch] = useState('');
-  const [showOrgDropdown, setShowOrgDropdown] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.targetOrgId) return alert('Please select an organization');
+    setError(null);
+    if (!form.targetOrgId) {
+      setError('Please select an organization');
+      return;
+    }
     setLoading(true);
     try {
       await licensesApi.issue(form);
       onSave();
     } catch (err: any) {
-      alert(err.message);
+      setError(err.message || 'An error occurred while issuing the license.');
     } finally {
       setLoading(false);
     }
   };
 
   const filteredOrgs = hierarchicalOrgs.filter((o: any) => o.name.toLowerCase().includes(orgSearch.toLowerCase()));
-  const selectedOrg = hierarchicalOrgs.find((o: any) => o.id === form.targetOrgId);
 
   return (
     <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[60] p-4 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-visible animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h3 className="font-bold text-slate-900 text-ellipsis whitespace-nowrap overflow-hidden">Issue Org License</h3>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-5 h-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex gap-3 text-red-600 text-sm animate-in slide-in-from-top-2">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <p>{error}</p>
+            </div>
+          )}
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-slate-700">Select Organization</label>
             <div className="border border-slate-200 rounded-xl overflow-hidden flex flex-col bg-slate-50 max-h-64">
@@ -157,53 +163,87 @@ const IssueOrgLicenseModal = ({ onClose, onSave, orgs }: any) => {
   );
 };
 
-const IssueCreditsModal = ({ onClose, onSave, orgs, licenses }: any) => {
+const IssueCreditsModal = ({ onClose, onSave, orgs }: any) => {
   const hierarchicalOrgs = buildHierarchy(orgs);
   const [form, setForm] = useState({
     targetOrgId: '',
     planType: 'USAGE',
-    totalCount: 1,
-    creditsPerKey: 100,
+    credits: 100,
     validityDays: 365,
     licenseId: '',
   });
 
   const [orgSearch, setOrgSearch] = useState('');
-  const [showOrgDropdown, setShowOrgDropdown] = useState(false);
+  const [availableLicenses, setAvailableLicenses] = useState<any[]>([]);
+  const [licenseSearch, setLicenseSearch] = useState('');
 
-  const availableLicenses = licenses?.filter((l: any) => l.ownerId === form.targetOrgId) || [];
+  const [debouncedLicenseSearch, setDebouncedLicenseSearch] = useState('');
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedLicenseSearch(licenseSearch);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [licenseSearch]);
+
+  useEffect(() => {
+    if (!form.targetOrgId) {
+      setAvailableLicenses([]);
+      setForm(prev => ({ ...prev, licenseId: '' }));
+      return;
+    }
+    licensesApi.getInventory(form.targetOrgId, 0, 100, debouncedLicenseSearch || undefined, undefined, undefined, false)
+      .then((res: any) => {
+        const data = Array.isArray(res) ? res : (res.data || []);
+        setAvailableLicenses(data.filter((l: any) => l.ownerId === form.targetOrgId));
+      })
+      .catch(console.error);
+  }, [form.targetOrgId, debouncedLicenseSearch]);
+
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.targetOrgId) return alert('Please select an organization');
-    if (!form.licenseId) return alert('Please link a license');
+    setError(null);
+    if (!form.targetOrgId) {
+      setError('Please select an organization');
+      return;
+    }
     setLoading(true);
     try {
       await cutCreditsApi.issue(form);
       onSave();
     } catch (err: any) {
-      alert(err.message);
+      setError(err.message || 'An error occurred while assigning credits.');
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredOrgs = hierarchicalOrgs.filter((o: any) => o.name.toLowerCase().includes(orgSearch.toLowerCase()));
-  const selectedOrg = hierarchicalOrgs.find((o: any) => o.id === form.targetOrgId);
+  const filteredOrgs = hierarchicalOrgs
+    .filter((o: any) => o.depth === 0)
+    .filter((o: any) => o.name.toLowerCase().includes(orgSearch.toLowerCase()))
+    .slice(0, 100);
 
   return (
     <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[60] p-4 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-visible animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h3 className="font-bold text-slate-900">Assign Cut Credits</h3>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-5 h-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-amber-700 text-sm flex gap-3">
-             <AlertCircle className="w-5 h-5 flex-shrink-0" />
-             <p>Select the organization to receive these machine Cut Credits.</p>
-          </div>
+          {error ? (
+            <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex gap-3 text-red-600 text-sm animate-in slide-in-from-top-2">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <p>{error}</p>
+            </div>
+          ) : (
+            <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-amber-700 text-sm flex gap-3">
+               <AlertCircle className="w-5 h-5 flex-shrink-0" />
+               <p>Select the organization to receive these machine Cut Credits.</p>
+            </div>
+          )}
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-slate-700">Target Organization</label>
             <div className="border border-slate-200 rounded-xl overflow-hidden flex flex-col bg-slate-50 max-h-64">
@@ -235,17 +275,20 @@ const IssueCreditsModal = ({ onClose, onSave, orgs, licenses }: any) => {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-slate-700">Link to License <span className="text-red-500">*</span></label>
-            <select value={form.licenseId} onChange={e => setForm({...form, licenseId: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl disabled:opacity-50" disabled={!form.targetOrgId} required>
-              <option value="">{!form.targetOrgId ? 'Select organization first' : 'Select a license...'}</option>
+            <label className="text-sm font-semibold text-slate-700">Link to License <span className="text-slate-400 font-normal">(Optional)</span></label>
+            {form.targetOrgId && (
+              <input type="text" placeholder="Search licenses by key or type..." value={licenseSearch} onChange={e => setLicenseSearch(e.target.value)} className="w-full px-4 py-2 mb-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+            )}
+            <select value={form.licenseId} onChange={e => setForm({...form, licenseId: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl disabled:opacity-50" disabled={!form.targetOrgId}>
+              <option value="">{!form.targetOrgId ? 'Select organization first' : 'Unlinked (Direct to Org)'}</option>
               {availableLicenses.map((l: any) => (
                 <option key={l.id} value={l.id}>
-                  {l.key} ({l.batch.licenseType})
+                  {l.key} ({l.batch?.licenseType || 'N/A'})
                 </option>
               ))}
             </select>
             {form.targetOrgId && availableLicenses.length === 0 && (
-              <p className="text-[10px] text-red-400 italic">No available licenses found! Credits MUST be linked to a license.</p>
+              <p className="text-[10px] text-slate-400 italic">No available licenses found. Credits can be assigned directly to the organization.</p>
             )}
           </div>
 
@@ -258,22 +301,16 @@ const IssueCreditsModal = ({ onClose, onSave, orgs, licenses }: any) => {
                 <option value="LIFETIME">Lifetime</option>
               </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-slate-700">Key Qty</label>
-              <input type="number" min="1" value={form.totalCount} onChange={e => setForm({...form, totalCount: parseInt(e.target.value)})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl" required />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
             {form.planType === 'USAGE' && (
               <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-slate-700">Credits / Key</label>
-                <input type="number" value={form.creditsPerKey} onChange={e => setForm({...form, creditsPerKey: parseInt(e.target.value)})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl" required />
+                <label className="text-sm font-semibold text-slate-700">Number of Credits</label>
+                <input type="number" min="1" value={form.credits || 0} onChange={e => setForm({...form, credits: parseInt(e.target.value)})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl" required />
               </div>
             )}
             {form.planType === 'UNLIMITED' && (
               <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-slate-700">Days / Key</label>
-                <input type="number" value={form.validityDays} onChange={e => setForm({...form, validityDays: parseInt(e.target.value)})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl" required />
+                <label className="text-sm font-semibold text-slate-700">Validity Days</label>
+                <input type="number" min="1" value={form.validityDays || 0} onChange={e => setForm({...form, validityDays: parseInt(e.target.value)})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl" required />
               </div>
             )}
           </div>
@@ -289,21 +326,292 @@ const IssueCreditsModal = ({ onClose, onSave, orgs, licenses }: any) => {
   );
 };
 
-const DispatchModal = ({ onClose, onSave, orgs, type, selectedIds }: any) => {
+export const TransferCreditsModal = ({ onClose, onSave, orgs, initialOrgId }: any) => {
   const { user } = useAuth();
   const hierarchicalOrgs = buildHierarchy(orgs);
-  // Strictly downwards: exclude the current user's organization so they can only dispatch to children/descendants.
-  const validOrgs = hierarchicalOrgs.filter((o: any) => o.id !== user?.organizationId);
-  const [targetOrgId, setTargetOrgId] = useState('');
+  
+  const ownerIndex = hierarchicalOrgs.findIndex((o: any) => o.id === user?.organizationId);
+  const ownerDepth = ownerIndex !== -1 ? hierarchicalOrgs[ownerIndex].depth : -1;
+  
+  const validOrgs = [];
+  if (user?.isSuperAdmin) {
+    hierarchicalOrgs.forEach((o: any) => {
+      const typeStr = o.type || o.organizationType?.name;
+      if (o.id !== user?.organizationId && typeStr?.toLowerCase() !== 'retailer') validOrgs.push(o);
+    });
+  } else if (ownerIndex !== -1) {
+    for (let i = ownerIndex + 1; i < hierarchicalOrgs.length; i++) {
+      if (hierarchicalOrgs[i].depth <= ownerDepth) break;
+      const typeStr = hierarchicalOrgs[i].type || hierarchicalOrgs[i].organizationType?.name;
+      if (typeStr?.toLowerCase() !== 'retailer') validOrgs.push(hierarchicalOrgs[i]);
+    }
+  }
+
+  const [form, setForm] = useState({
+    targetOrgId: initialOrgId || '',
+    planType: 'USAGE',
+    amount: 100,
+    validityDays: 30,
+    isOffer: false,
+    notes: ''
+  });
+
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   const filteredOrgs = validOrgs.filter((o: any) => o.name.toLowerCase().includes(search.toLowerCase()));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    if (!form.targetOrgId) {
+      setError('Please select an organization');
+      return;
+    }
+    if (form.planType === 'USAGE' && form.amount <= 0) {
+      setError('Amount must be positive');
+      return;
+    }
+    if (form.planType === 'UNLIMITED' && form.validityDays <= 0) {
+      setError('Validity days must be positive');
+      return;
+    }
+    setLoading(true);
+    try {
+      const selectedOrg = hierarchicalOrgs.find((o: any) => o.id === form.targetOrgId);
+      
+      if (form.isOffer) {
+        // Offer always mints directly
+        await cutCreditsApi.issue({
+          targetOrgId: form.targetOrgId,
+          planType: form.planType,
+          credits: form.planType === 'USAGE' ? form.amount : undefined,
+          validityDays: form.planType === 'UNLIMITED' ? form.validityDays : undefined,
+          isOffer: true,
+          notes: form.notes || undefined
+        });
+      } else if (form.planType === 'USAGE') {
+        if (!selectedOrg.parentId) {
+          // Top Org, Mint USAGE directly
+          await cutCreditsApi.issue({ targetOrgId: form.targetOrgId, planType: 'USAGE', credits: form.amount });
+        } else {
+          // Child Org, dispatch from parent
+          const fromOrgId = (user?.isSuperAdmin) ? selectedOrg.parentId : user?.organizationId;
+          await cutCreditsApi.dispatch({ amount: form.amount, toOrgId: form.targetOrgId, fromOrgId });
+        }
+      } else {
+        // UNLIMITED or LIFETIME, mint directly
+        await cutCreditsApi.issue({
+          targetOrgId: form.targetOrgId,
+          planType: form.planType,
+          validityDays: form.planType === 'UNLIMITED' ? form.validityDays : undefined
+        });
+      }
+      onSave();
+    } catch (err: any) {
+      setError(err.message || 'An error occurred while transferring credits.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[60] p-4 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h3 className="font-bold text-slate-900">Transfer Credits</h3>
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-5 h-5" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error ? (
+            <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex gap-3 text-red-600 text-sm animate-in slide-in-from-top-2">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <p>{error}</p>
+            </div>
+          ) : (
+            <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-700 text-sm flex gap-3">
+               <Send className="w-5 h-5 flex-shrink-0" />
+               <p>Transfer available credits from your wallet to a child organization.</p>
+            </div>
+          )}
+          
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-slate-700">Target Recipient</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search organizations..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all"
+              />
+            </div>
+            <div className="border border-slate-200 rounded-xl overflow-y-auto bg-slate-50 max-h-48">
+              {filteredOrgs.length === 0 ? (
+                <div className="p-4 text-sm text-slate-500 text-center">No organizations match your search.</div>
+              ) : filteredOrgs.map((o: any) => (
+                <div
+                  key={o.id}
+                  onClick={() => setForm({...form, targetOrgId: o.id})}
+                  className={`px-3 py-2.5 text-sm cursor-pointer hover:bg-white border-b border-slate-100 last:border-0 transition-colors ${form.targetOrgId === o.id ? 'bg-indigo-50 text-indigo-700 font-bold hover:bg-indigo-50' : 'text-slate-700'}`}
+                >
+                  {'\u00A0'.repeat(search ? 0 : o.depth * 4)}{!search && o.depth > 0 ? '↳ ' : ''}{o.name} <span className="ml-1 text-xs text-slate-400">({o.organizationType?.name})</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {user?.isSuperAdmin && (
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-slate-700">Plan Type</label>
+              <div className="flex bg-slate-100 p-1 rounded-xl">
+                {['USAGE', 'UNLIMITED', 'LIFETIME'].map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setForm({...form, planType: type})}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${form.planType === type ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    {type === 'USAGE' ? 'No. of Credits' : type === 'UNLIMITED' ? 'Unlimited' : 'Lifetime'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {form.planType === 'USAGE' && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-slate-700">Number of Credits to Transfer</label>
+              <input
+                type="number"
+                min="1"
+                value={form.amount}
+                onChange={e => setForm({...form, amount: parseInt(e.target.value) || 0})}
+                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all font-mono"
+              />
+            </div>
+          )}
+
+          {form.planType === 'UNLIMITED' && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-slate-700">Validity (Days)</label>
+              <input
+                type="number"
+                min="1"
+                value={form.validityDays}
+                onChange={e => setForm({...form, validityDays: parseInt(e.target.value) || 0})}
+                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all font-mono"
+              />
+            </div>
+          )}
+
+          {user?.isSuperAdmin && (
+            <div className="space-y-3 pt-2 border-t border-slate-100">
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <div className="relative flex items-center justify-center">
+                  <input
+                    type="checkbox"
+                    checked={form.isOffer}
+                    onChange={e => setForm({...form, isOffer: e.target.checked})}
+                    className="peer sr-only"
+                  />
+                  <div className="w-10 h-6 bg-slate-200 rounded-full peer-checked:bg-purple-500 transition-colors duration-300"></div>
+                  <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform duration-300 peer-checked:translate-x-4 shadow-sm"></div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-700 group-hover:text-slate-900 transition-colors">Promotional Offer</span>
+                  <div className="bg-purple-100 text-purple-600 p-1 rounded-full"><Gift className="w-3.5 h-3.5" /></div>
+                </div>
+              </label>
+
+              {form.isOffer && (
+                <div className="space-y-1.5 animate-in slide-in-from-top-2 fade-in">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Offer Description (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Festive Bonus, Compensation"
+                    value={form.notes}
+                    onChange={e => setForm({...form, notes: e.target.value})}
+                    className="w-full px-4 py-2 bg-purple-50/50 border border-purple-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:bg-white transition-all text-purple-900 placeholder:text-purple-300"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="pt-4 flex gap-3">
+            <button type="button" onClick={onClose} className="flex-1 px-6 py-2.5 border border-slate-200 font-bold rounded-xl whitespace-nowrap">Cancel</button>
+            <button type="submit" disabled={loading} className="flex-1 px-6 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 whitespace-nowrap">
+                {loading ? 'Transferring...' : 'Transfer Credits'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const DispatchModal = ({ onClose, onSave, orgs, type, selectedIds, items }: any) => {
+  const { user } = useAuth();
+  const hierarchicalOrgs = buildHierarchy(orgs);
+  
+  const selectedItems = items?.filter((i: any) => selectedIds.includes(i.id)) || [];
+  const ownerId = selectedItems[0]?.ownerId || user?.organizationId;
+
+  const ownerIndex = hierarchicalOrgs.findIndex((o: any) => o.id === ownerId);
+  const ownerDepth = ownerIndex !== -1 ? hierarchicalOrgs[ownerIndex].depth : -1;
+  
+  const validOrgs = [];
+  if (ownerIndex !== -1) {
+    for (let i = ownerIndex + 1; i < hierarchicalOrgs.length; i++) {
+      if (hierarchicalOrgs[i].depth <= ownerDepth) break;
+      validOrgs.push(hierarchicalOrgs[i]);
+    }
+  } else {
+    hierarchicalOrgs.forEach((o: any) => {
+      if (o.id !== user?.organizationId) validOrgs.push(o);
+    });
+  }
+
+  const [targetOrgId, setTargetOrgId] = useState('');
+  const [targetLicenseId, setTargetLicenseId] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [availableLicenses, setAvailableLicenses] = useState<any[]>([]);
+  const [licenseSearch, setLicenseSearch] = useState('');
+
+  const filteredOrgs = validOrgs.filter((o: any) => o.name.toLowerCase().includes(search.toLowerCase()));
+
+  const [debouncedLicenseSearch, setDebouncedLicenseSearch] = useState('');
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedLicenseSearch(licenseSearch);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [licenseSearch]);
+
+  useEffect(() => {
+    if (!targetOrgId || type !== 'credits') {
+      setAvailableLicenses([]);
+      setTargetLicenseId('');
+      return;
+    }
+    licensesApi.getInventory(targetOrgId, 0, 100, debouncedLicenseSearch || undefined, undefined, undefined, false)
+      .then((res: any) => {
+        const data = Array.isArray(res) ? res : (res.data || []);
+        setAvailableLicenses(data.filter((l: any) => l.ownerId === targetOrgId));
+      })
+      .catch(console.error);
+  }, [targetOrgId, type, debouncedLicenseSearch]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
     if (!targetOrgId) {
-      alert('Please select a target recipient.');
+      setError('Please select a target recipient.');
       return;
     }
     setLoading(true);
@@ -311,11 +619,11 @@ const DispatchModal = ({ onClose, onSave, orgs, type, selectedIds }: any) => {
       if (type === 'licenses') {
         await licensesApi.dispatch({ licenseIds: selectedIds, toOrgId: targetOrgId });
       } else {
-        await cutCreditsApi.dispatch({ creditIds: selectedIds, toOrgId: targetOrgId });
+        await cutCreditsApi.dispatch({ amount: selectedIds.length, toOrgId: targetOrgId, targetLicenseId: targetLicenseId || undefined });
       }
       onSave();
     } catch (err: any) {
-      alert(err.message);
+      setError(err.message || 'Failed to dispatch items.');
     } finally {
       setLoading(false);
     }
@@ -323,16 +631,23 @@ const DispatchModal = ({ onClose, onSave, orgs, type, selectedIds }: any) => {
 
   return (
     <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h3 className="font-bold text-slate-900">Dispatch {selectedIds.length} {type === 'licenses' ? 'Licenses' : 'Credits'}</h3>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-700 text-sm flex gap-3">
-             <Send className="w-5 h-5 flex-shrink-0" />
-             <p>Transfer ownership of the selected items to a child organization.</p>
-          </div>
+          {error ? (
+            <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex gap-3 text-red-600 text-sm animate-in slide-in-from-top-2">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <p>{error}</p>
+            </div>
+          ) : (
+            <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-700 text-sm flex gap-3">
+               <Send className="w-5 h-5 flex-shrink-0" />
+               <p>Transfer ownership of the selected items to a child organization.</p>
+            </div>
+          )}
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700">Target Recipient</label>
             <div className="relative">
@@ -359,6 +674,22 @@ const DispatchModal = ({ onClose, onSave, orgs, type, selectedIds }: any) => {
               ))}
             </div>
           </div>
+          {type === 'credits' && (
+            <div className="space-y-1.5 pt-2 border-t border-slate-100">
+              <label className="text-sm font-semibold text-slate-700">Link to License <span className="text-slate-400 font-normal">(Optional)</span></label>
+              {targetOrgId && (
+                <input type="text" placeholder="Search licenses by key or type..." value={licenseSearch} onChange={e => setLicenseSearch(e.target.value)} className="w-full px-4 py-2 mb-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+              )}
+              <select value={targetLicenseId} onChange={e => setTargetLicenseId(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl disabled:opacity-50" disabled={!targetOrgId}>
+                <option value="">{!targetOrgId ? 'Select organization first' : 'Unlinked (Direct to Org)'}</option>
+                {availableLicenses.map((l: any) => (
+                  <option key={l.id} value={l.id}>
+                    {l.key} ({l.batch?.licenseType || 'N/A'})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="pt-4 flex gap-3">
             <button type="button" onClick={onClose} className="flex-1 px-6 py-2.5 border border-slate-200 font-bold rounded-xl whitespace-nowrap">Cancel</button>
             <button type="submit" disabled={loading} className="flex-1 px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700">
@@ -373,7 +704,7 @@ const DispatchModal = ({ onClose, onSave, orgs, type, selectedIds }: any) => {
 
 const LicensesPage = () => {
   const { user } = useAuth();
-  const [tab, setTab] = useState<'licenses' | 'credits' | 'history' | 'pending'>('licenses');
+  const [tab, setTab] = useState<'licenses' | 'credits' | 'history'>('licenses');
   const [orgLicenses, setOrgLicenses] = useState<any[]>([]);
   const [cutCredits, setCutCredits] = useState<any[]>([]);
   const [transfers, setTransfers] = useState<any[]>([]);
@@ -381,75 +712,67 @@ const LicensesPage = () => {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [myOrg, setMyOrg] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [batches, setBatches] = useState<any[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<string>('');
-
-  // Pagination State
   const [page, setPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const ITEMS_PER_PAGE = 50;
   const totalPages = Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE));
 
-  // Debounce search
-  const [debouncedSearch, setDebouncedSearch] = useState('');
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (debouncedSearch !== searchQuery) {
-        setDebouncedSearch(searchQuery);
-        setPage(1); // Reset to page 1 on new search
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [searchQuery, debouncedSearch]);
+    orgsApi.getAll().then((res: any) => setOrgs(Array.isArray(res) ? res : (res.data || res.items || []))).catch(console.error);
+    licensesApi.getBatches().then((res: any) => setBatches(Array.isArray(res) ? res : (res.data || res.items || []))).catch(console.error);
+    if (user?.organizationId) {
+      orgsApi.getOne(user.organizationId).then((res: any) => setMyOrg(res)).catch(console.error);
+    }
+  }, [user]);
 
-  // Fetch orgs and batches once on mount
-  useEffect(() => {
-    orgsApi.getAll().then(res => {
-      setOrgs(Array.isArray(res) ? res : (res.data || res.items || []));
-    }).catch(console.error);
-    
-    licensesApi.getBatches().then(res => {
-      setBatches(Array.isArray(res) ? res : (res.data || res.items || []));
-    }).catch(console.error);
-  }, []);
-
-  // Refetch when tab, page, search, or batch filter changes
   useEffect(() => {
     fetchData();
-  }, [tab, page, debouncedSearch, selectedBatch]);
+  }, [tab, page, searchQuery, selectedBatch]);
 
   const fetchData = async () => {
     setLoading(true);
     setSelectedIds([]);
     try {
       const skip = (page - 1) * ITEMS_PER_PAGE;
-      const take = ITEMS_PER_PAGE;
-
       if (tab === 'licenses') {
-        const licRes: any = await licensesApi.getInventory(undefined, skip, take, debouncedSearch, selectedBatch).catch(() => ({ data: [], total: 0 }));
-        if (Array.isArray(licRes)) {
-           setOrgLicenses(licRes); setTotalItems(licRes.length);
-        } else {
-           setOrgLicenses(licRes.data || []); setTotalItems(licRes.total || 0);
-        }
+        const res: any = await licensesApi.getInventory(undefined, skip, ITEMS_PER_PAGE, searchQuery, selectedBatch).catch(() => ({ data: [], total: 0 }));
+        setOrgLicenses(res.data || []); setTotalItems(res.total || 0);
       } else if (tab === 'credits') {
-        const credRes: any = await cutCreditsApi.getInventory(undefined, skip, take, debouncedSearch, selectedBatch).catch(() => ({ data: [], total: 0 }));
-        if (Array.isArray(credRes)) {
-           setCutCredits(credRes); setTotalItems(credRes.length);
-        } else {
-           setCutCredits(credRes.data || []); setTotalItems(credRes.total || 0);
-        }
-      } else if (tab === 'history' || tab === 'pending') {
-        const [transferLicRes, transferCredRes] = await Promise.all([
-          licensesApi.getTransfers().catch(() => []),
-          cutCreditsApi.getTransfers().catch(() => [])
-        ]);
+        const res: any = await cutCreditsApi.getInventory(undefined, skip, ITEMS_PER_PAGE, searchQuery).catch(() => ({ data: [], total: 0 }));
+        setCutCredits(res.data || []); setTotalItems(res.total || 0);
+      } else if (tab === 'history') {
+        const transferLicRes = await licensesApi.getTransfers().catch(() => []);
+        const transferCredRes = await cutCreditsApi.getTransfers().catch(() => []);
+        
         const transferMap = new Map();
         (transferLicRes || []).forEach((t: any) => transferMap.set(t.id, { ...t, itemType: 'License' }));
-        (transferCredRes || []).forEach((t: any) => {
-          if (!transferMap.has(t.id)) transferMap.set(t.id, { ...t, itemType: 'Credits' });
+        (transferCredRes || []).filter((t: any) => t.type === 'CREDIT').forEach((t: any) => {
+          // Determine relative direction
+          let displayType = 'CREDIT';
+          let displayAmount = t.amount;
+          if (user && t.tenantId === user.organizationId && t.wallet?.tenantId !== user.organizationId) {
+            displayType = 'DEBIT';
+            displayAmount = -t.amount;
+          }
+
+          transferMap.set(t.id, {
+            id: t.id,
+            itemType: 'Credit',
+            amount: displayAmount,
+            type: displayType,
+            status: 'COMPLETED',
+            createdAt: t.createdAt,
+            fromOrg: { name: t.tenant?.name || 'System' },
+            toOrg: { name: t.wallet?.tenant?.name || 'Unknown' },
+            isOffer: t.isOffer,
+            notes: t.notes,
+          });
         });
+
         const allTransfers = Array.from(transferMap.values())
           .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
         setTransfers(allTransfers);
@@ -498,39 +821,9 @@ const LicensesPage = () => {
     return acc;
   }, {});
 
-  const groupedCredits = cutCredits.reduce((acc: any, item) => {
-    const batchId = item.batchId || 'unbatched';
-    if (!acc[batchId]) acc[batchId] = { info: item.batch || { batchCode: 'Unbatched', createdAt: item.createdAt }, items: [] };
-    acc[batchId].items.push(item);
-    return acc;
-  }, {});
 
-  const pendingInbound = transfers.filter(t => {
-    const isReceiver = String(t.toOrgId).toLowerCase() === String(user?.organizationId).toLowerCase();
-    return t.status === 'PENDING' && (user?.isSuperAdmin ? true : isReceiver);
-  });
 
-  const pendingOutbound = transfers.filter(t => {
-    const isSender = String(t.fromOrgId).toLowerCase() === String(user?.organizationId).toLowerCase();
-    return t.status === 'PENDING' && (user?.isSuperAdmin ? true : isSender);
-  });
 
-  const handleTransferAction = async (id: string, action: 'accept' | 'reject' | 'recall', type: 'License' | 'Credits') => {
-    try {
-      if (type === 'License') {
-        if (action === 'accept') await licensesApi.acceptTransfer(id);
-        else if (action === 'reject') await licensesApi.rejectTransfer(id);
-        else await licensesApi.recallTransfer(id);
-      } else {
-        if (action === 'accept') await cutCreditsApi.acceptTransfer(id);
-        else if (action === 'reject') await cutCreditsApi.rejectTransfer(id);
-        else await cutCreditsApi.recallTransfer(id);
-      }
-      fetchData();
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
 
   const renderPagination = () => {
     if (totalPages <= 1) return null;
@@ -597,7 +890,12 @@ const LicensesPage = () => {
            </button>
         )}
 
-        {selectedIds.length > 0 && (
+        {tab === 'credits' && (user?.isSuperAdmin || user?.organization?.type?.toLowerCase() !== 'retailer') && (
+          <button onClick={() => setModal('transfer-credits')} className="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-xl animate-in slide-in-from-right-4 transition-all">
+            <Send className="w-4 h-4" /> Transfer Credits
+          </button>
+        )}
+        {tab === 'licenses' && selectedIds.length > 0 && (
           <button onClick={() => setModal('dispatch')} className="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-xl animate-in slide-in-from-right-4 transition-all">
             <Send className="w-4 h-4" /> Dispatch Selected ({selectedIds.length})
           </button>
@@ -726,75 +1024,93 @@ const LicensesPage = () => {
           </div>
         </div>
       ) : tab === 'credits' ? (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="space-y-4">
+          <div className="flex flex-col md:flex-row gap-4 max-w-2xl">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search credits by serial, batch, status or owner..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-10 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            
+          </div>
+          
+          {myOrg && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-6">
+                <p className="text-indigo-600 text-xs font-bold uppercase tracking-wider mb-1">Available Balance</p>
+                <p className="text-4xl font-black text-indigo-700">{myOrg.tenantWallets?.[0]?.balance || 0}</p>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                <p className="text-slate-500 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-1 truncate" title="Used / Transferred Credits">Used / Transferred Credits</p>
+                <p className="text-4xl font-black text-slate-700">{(myOrg.tenantWallets?.[0]?.totalCredits || 0) - (myOrg.tenantWallets?.[0]?.balance || 0)}</p>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Lifetime Total</p>
+                <p className="text-4xl font-black text-slate-700">{myOrg.tenantWallets?.[0]?.totalCredits || 0}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase border-b border-slate-100">
-                  <th className="px-6 py-4 w-10"></th>
-                  <th className="px-6 py-4">Credit Serial</th>
                   <th className="px-6 py-4">Plan Type</th>
-                  <th className="px-6 py-4">Status</th>
                   {user?.isSuperAdmin && <th className="px-6 py-4">Current Owner</th>}
-                  <th className="px-6 py-4">Machine Lock</th>
+                  <th className="px-6 py-4">Date Assigned</th>
                   <th className="px-6 py-4">Balance / Details</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
                 {cutCredits.length === 0 ? (
-                  <tr><td colSpan={user?.isSuperAdmin ? 7 : 6} className="px-6 py-12 text-center text-slate-400 italic">No cut credits present.</td></tr>
-                ) : Object.entries(groupedCredits).map(([batchId, group]: [string, any]) => (
-                  <React.Fragment key={batchId}>
-                    <tr className="bg-slate-50/50 border-y border-slate-100">
-                      <td className="px-6 py-3 text-center">
-                        <input 
-                          type="checkbox" 
-                          checked={group.items.filter((i: any) => i.status === 'AVAILABLE').every((i: any) => selectedIds.includes(i.id)) && group.items.filter((i: any) => i.status === 'AVAILABLE').length > 0}
-                          onChange={() => selectFullBatch(cutCredits, batchId)}
-                          className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
-                        />
-                      </td>
-                      <td colSpan={user?.isSuperAdmin ? 6 : 5} className="px-6 py-3">
-                         <div className="flex items-center gap-3">
-                          <span className="font-bold text-slate-700 text-xs uppercase tracking-wider">Batch: {group.info.batchCode}</span>
-                          <span className="text-slate-400 text-xs">â€¢</span>
-                          <span className="text-slate-500 text-xs">{group.items.length} units</span>
-                          <span className="text-slate-400 text-xs">â€¢</span>
-                          <span className="text-slate-500 text-xs">Assigned {new Date(group.info.createdAt).toLocaleDateString()}</span>
+                  <tr><td colSpan={user?.isSuperAdmin ? 4 : 3} className="px-6 py-12 text-center text-slate-400 italic">No cut credits present.</td></tr>
+                ) : cutCredits.map((item: any) => (
+                  <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 font-semibold text-slate-700">
+                      <div className="flex flex-col gap-1">
+                        <span>{item.planType}</span>
+                        {item.isOffer && (
+                          <div className="flex items-center gap-1 text-[10px] uppercase font-bold text-purple-600 bg-purple-50 border border-purple-100 w-fit px-1.5 py-0.5 rounded-md">
+                            <Gift className="w-3 h-3" /> Offer
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    {user?.isSuperAdmin && (
+                      <td className="px-6 py-4">
+                         <div className="flex flex-col">
+                          <span className="font-bold text-slate-900">{item.owner?.name}</span>
+                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{item.owner?.organizationType?.name}</span>
                         </div>
                       </td>
-                    </tr>
-                    {group.items.map((item: any) => (
-                      <tr key={item.id} className={`hover:bg-slate-50 transition-colors ${selectedIds.includes(item.id) ? 'bg-amber-50/50' : ''}`}>
-                        <td className="px-6 py-4 text-center">
-                          {item.status === 'AVAILABLE' && (
-                            <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelect(item.id)} className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer" />
-                          )}
-                        </td>
-                        <td className="px-6 py-4 font-mono font-bold text-slate-900">{item.key}</td>
-                        <td className="px-6 py-4 font-semibold text-slate-700">{item.batch.planType}</td>
-                        <td className="px-6 py-4">{getStatusBadge(item.status)}</td>
-                        {user?.isSuperAdmin && (
-                          <td className="px-6 py-4">
-                             <div className="flex flex-col">
-                              <span className="font-bold text-slate-900">{item.owner?.name}</span>
-                              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{item.owner?.organizationType?.name}</span>
-                            </div>
-                          </td>
-                        )}
-                        <td className="px-6 py-4 text-slate-500">{item.machineId ? <span className="flex items-center gap-1"><Laptop className="w-4 h-4" /> {item.machineId}</span> : 'â€”'}</td>
-                        <td className="px-6 py-4 font-bold text-slate-900">
-                          {item.batch.planType === 'USAGE' ? `${item.remainingCredits} Cuts` : item.batch.planType === 'UNLIMITED' ? (item.expiresAt ? new Date(item.expiresAt).toLocaleDateString() : `${item.batch.validityDays} Days`) : 'Lifetime'}
-                        </td>
-                      </tr>
-                    ))}
-                  </React.Fragment>
+                    )}
+                    <td className="px-6 py-4 text-slate-500">{new Date(item.createdAt).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 font-bold text-slate-900">
+                      {item.planType === 'USAGE' ? `${item.credits} Cuts` : item.planType === 'UNLIMITED' ? `${item.validityDays} Days` : 'Lifetime'}
+                    </td>
+                  </tr>
                 ))}
               </tbody>
             </table>
           </div>
           {renderPagination()}
         </div>
+      </div>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
@@ -820,7 +1136,19 @@ const LicensesPage = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 font-mono font-bold text-slate-900">
-                      {t.items.length === 1 ? (t.items[0].license?.key || t.items[0].credit?.key) : `${t.items.length} Multiple Items`}
+                      {t.itemType === 'Credit' 
+                        ? (
+                          <div className="flex flex-col">
+                            <span className={t.type === 'CREDIT' ? 'text-emerald-600' : 'text-red-600'}>{t.amount > 0 ? '+' : ''}{t.amount} Credits</span>
+                            {t.isOffer && (
+                              <div className="flex items-center gap-1 mt-1 text-[10px] text-purple-600 font-bold uppercase tracking-wider">
+                                <Gift className="w-3 h-3" /> Offer {t.notes ? `• ${t.notes}` : ''}
+                              </div>
+                            )}
+                          </div>
+                        )
+                        : (t.items?.length === 1 ? (t.items[0].license?.key || t.items[0].credit?.key) : `${t.items?.length || 0} Multiple Items`)
+                      }
                     </td>
                     <td className="px-6 py-4 text-slate-600">{t.fromOrg?.name}</td>
                     <td className="px-6 py-4 text-slate-900 font-semibold">{t.toOrg?.name}</td>
@@ -838,7 +1166,8 @@ const LicensesPage = () => {
 
       {modal === 'org-license' && <IssueOrgLicenseModal orgs={orgs} onClose={() => setModal(null)} onSave={() => { setModal(null); fetchData(); }} />}
       {modal === 'cut-credits' && <IssueCreditsModal orgs={orgs} licenses={orgLicenses} onClose={() => setModal(null)} onSave={() => { setModal(null); fetchData(); }} />}
-      {modal === 'dispatch' && <DispatchModal type={tab === 'history' ? 'licenses' : tab} selectedIds={selectedIds} orgs={orgs} onClose={() => setModal(null)} onSave={() => { setModal(null); fetchData(); }} />}
+      {modal === 'transfer-credits' && <TransferCreditsModal orgs={orgs} onClose={() => setModal(null)} onSave={() => { setModal(null); fetchData(); }} />}
+      {modal === 'dispatch' && <DispatchModal type={tab === 'history' ? 'licenses' : tab} selectedIds={selectedIds} items={tab === 'credits' ? cutCredits : orgLicenses} orgs={orgs} onClose={() => setModal(null)} onSave={() => { setModal(null); fetchData(); }} />}
     </div>
   );
 };

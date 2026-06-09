@@ -579,8 +579,8 @@ export class MigrationService {
     return result;
   }
 
-  // 3. Migrate Designs (Link Designs to existing Models via legacyId)
-  async migrateDesigns(inputStream: Readable, totalBytes?: number) {
+  // 3. Migrate Designs (Models and Cut Files)
+  async migrateDesigns(inputStream: Readable | any[], totalBytes?: number) {
     const models = await this.prisma.model.findMany({ where: { legacyId: { not: null } } });
     const modelCache = new Map<number, string>();
     models.forEach(m => modelCache.set(m.legacyId!, m.id));
@@ -600,28 +600,46 @@ export class MigrationService {
     let processedRows = 0;
     const failures: any[] = [];
 
-    // Create a transformation stream to handle UTF-16LE or strip null bytes
-    const { Transform } = require('stream');
-    const encodingTransform = new Transform({
-        transform(chunk: any, encoding: string, callback: Function) {
-            // If the chunk contains many null bytes, it's likely UTF-16 being read as UTF-8
-            // We strip them to normalize to UTF-8
-            const sanitized = Buffer.from(chunk.filter((b: number) => b !== 0));
-            this.push(sanitized);
-            callback();
-        }
-    });
+    let iterator: any;
+    if (Array.isArray(inputStream)) {
+        iterator = inputStream.map(r => {
+            if (Array.isArray(r)) return r;
+            // Map DB object to expected CSV array format
+            return [
+                r.ModelID || r.ID || r.ModelMasterID, // 0: legacyId
+                `Catalog ${r.CatalogID}`,             // 1: ModelName (used for logging only)
+                r.ReferenceName || r.Name || '',      // 2: PatternName (fallback match)
+                r.Instruction || '',                  // 3: InstructionHex (PLT base64)
+                r.CatalogID,                          // 4: legacyCatalogID
+                r.ModelSkinID                         // 5: legacyModelSkinId
+            ];
+        });
+    } else {
+        // Create a transformation stream to handle UTF-16LE or strip null bytes
+        const { Transform } = require('stream');
+        const encodingTransform = new Transform({
+            transform(chunk: any, encoding: string, callback: Function) {
+                // If the chunk contains many null bytes, it's likely UTF-16 being read as UTF-8
+                // We strip them to normalize to UTF-8
+                const sanitized = Buffer.from(chunk.filter((b: number) => b !== 0));
+                this.push(sanitized);
+                callback();
+            }
+        });
 
-    const csvStream = inputStream.pipe(encodingTransform).pipe(csv({ 
-        headers: false, 
-        maxRowBytes: 1024 * 1024 * 1024 // 1GB
-    }));
+        const csvStream = inputStream.pipe(encodingTransform).pipe(csv({ 
+            headers: false, 
+            maxRowBytes: 1024 * 1024 * 1024 // 1GB
+        }));
 
-    csvStream.on('error', (err: any) => {
-        this.logger.error(`CSV Stream Error: ${err.message}`);
-    });
+        csvStream.on('error', (err: any) => {
+            this.logger.error(`CSV Stream Error: ${err.message}`);
+        });
 
-    for await (const row of csvStream) {
+        iterator = csvStream;
+    }
+
+    for await (const row of iterator) {
         try {
             processedRows++;
             
@@ -661,17 +679,17 @@ export class MigrationService {
                 continue; 
             }
 
-            const legacyModelSkinId = parseInt(row[5]?.trim()) || 0;
+            const legacyModelSkinId = parseInt((row[5] || '').toString().trim()) || 0;
             let cutPatternId = legacyModelSkinId > 0 ? cutPatternLegacyCache.get(legacyModelSkinId) : null;
             
             // FALLBACK: Match by Name if ID matching fails (Source IDs are inconsistent)
             if (!cutPatternId) {
-                const skinName = (row[2] || '').trim();
+                const skinName = (row[2] || '').toString().trim();
                 cutPatternId = cutPatternCache.get(skinName.toLowerCase());
             }
             
             if (!cutPatternId) {
-                const skinName = (row[2] || '').trim();
+                const skinName = (row[2] || '').toString().trim();
                 this.logger.warn(`Skipping design: Cut Pattern "${skinName}" (LegacyID: ${legacyModelSkinId}) not found in database.`);
                 skippedRows++;
                 failures.push({ 
@@ -683,17 +701,15 @@ export class MigrationService {
             }
 
             const instructionHex = row[3];
-            if (!instructionHex) { 
-                skippedRows++; 
-                failures.push({ 
-                    model: row[1], 
-                    pattern: row[2], 
-                    error: 'Missing PLT data (column 5)' 
-                });
-                continue; 
+            let decryptedPlt: string | null = null;
+            
+            if (!instructionHex || instructionHex.toString().trim() === '') { 
+                this.logger.warn(`Design missing PLT data, importing as empty: "${row[2]}"`);
+                decryptedPlt = ''; // Empty string for missing PLT data
+            } else {
+                decryptedPlt = this.getDecryptedModel(instructionHex);
             }
 
-            const decryptedPlt = this.getDecryptedModel(instructionHex);
             if (!decryptedPlt) { 
                 decryptionFailed++; 
                 failures.push({ 
@@ -718,7 +734,7 @@ export class MigrationService {
                 continue;
             }
 
-            const legacyId = parseInt(row[0]?.trim());
+            const legacyId = parseInt((row[0] || '').toString().trim());
             const legacyParentId = legacyCatalogID; // The model ID is the parent for the cut file
             const existingFile = await this.prisma.modelCutFile.findFirst({
                 where: { modelId, cutPatternId: cutPatternId! }
@@ -977,7 +993,7 @@ export class MigrationService {
     const failures: any[] = [];
 
     // Parse CSVs
-    const usersData = usersFile ? this.parseUsersCsvRobustly((usersFile as Express.Multer.File).buffer) : [];
+    const usersData = usersFile ? (Array.isArray(usersFile) ? usersFile : this.parseUsersCsvRobustly((usersFile as Express.Multer.File).buffer)) : [];
     const userRolesData = userRolesFile ? (Array.isArray(userRolesFile) ? userRolesFile : await this.parseCsvBuffer((userRolesFile as Express.Multer.File).buffer)) : [];
 
     // Cache to map legacyRoleId -> newRoleId
@@ -1981,6 +1997,253 @@ export class MigrationService {
     return result;
   }
 
+  async migrateCutCredits(dealerAssignFile: Express.Multer.File | any[], countFile?: Express.Multer.File | any[], sourceName?: string) {
+    let importedCredits = 0;
+    let updatedCredits = 0;
+    let skippedRows = 0;
+    const failures: any[] = [];
+
+    if (!dealerAssignFile) {
+      throw new Error('CutCreditAssignDealer file is required');
+    }
+
+    const assignData = Array.isArray(dealerAssignFile) ? dealerAssignFile : await this.parseCsvBuffer((dealerAssignFile as Express.Multer.File).buffer);
+    const countData = countFile ? (Array.isArray(countFile) ? countFile : await this.parseCsvBuffer((countFile as Express.Multer.File).buffer)) : [];
+
+    const countMap = new Map<string, any>();
+    countData.forEach(c => {
+      const dealerId = String(c.DealerID || '').trim();
+      if (dealerId && !countMap.has(dealerId)) {
+        countMap.set(dealerId, c);
+      }
+    });
+
+    const processedDealersForCount = new Set<string>();
+
+    const orgs = await this.prisma.organization.findMany({
+      where: { legacyId: { not: null } },
+      select: { id: true, legacyId: true }
+    });
+    const orgLegacyMap = new Map<string, string>();
+    orgs.forEach(o => orgLegacyMap.set(o.legacyId!, o.id));
+
+    const dbUsers = await this.prisma.user.findMany({
+      where: { organizationId: { not: null } },
+      select: { id: true, organizationId: true }
+    });
+    const userOrgMap = new Map<string, string>();
+    dbUsers.forEach(u => userOrgMap.set(u.id, u.organizationId!));
+
+    const resolveOrgId = (legacyUserId: string): string | undefined => {
+      if (!legacyUserId) return undefined;
+      const directOrgId = orgLegacyMap.get(legacyUserId);
+      if (directOrgId) return directOrgId;
+      const dbUserId = this.parseOrCreateUuid(legacyUserId);
+      return userOrgMap.get(dbUserId);
+    };
+
+    let rootOrg = await this.prisma.organization.findFirst({
+      where: { name: { contains: 'Flashgard', mode: 'insensitive' } }
+    });
+    if (!rootOrg) {
+      const orgTypes = await this.prisma.organizationType.findMany();
+      const parentType = orgTypes.find(o => o.name === 'parent') || orgTypes[0];
+      if (parentType) {
+        rootOrg = await this.prisma.organization.create({
+          data: { name: 'Flashgard', organizationTypeId: parentType.id }
+        });
+      }
+    }
+
+    const sysAdmin = await this.prisma.user.findFirst({
+      where: { isSuperAdmin: true }
+    });
+
+    for (const assign of assignData) {
+      try {
+        const legacyId = parseInt(assign.Id) || null;
+        if (!legacyId) {
+          skippedRows++;
+          failures.push({ row: assign, error: 'Legacy Id missing' });
+          continue;
+        }
+
+        const dealerId = String(assign.DealerId || assign.DealerID || '').trim();
+        const ownerId = String(assign.OwnerId || assign.OwnerID || '').trim();
+        
+        const orgId = resolveOrgId(dealerId) || resolveOrgId(ownerId) || rootOrg?.id;
+        const fromOrgId = resolveOrgId(ownerId) || rootOrg?.id;
+        if (!orgId) {
+          skippedRows++;
+          failures.push({ row: assign, error: 'Failed to resolve organization' });
+          continue;
+        }
+
+        const countInfo = countMap.get(dealerId) || {};
+        const createdDate = this.safeDate(assign.CreatedDate);
+        
+        const allocatedCredits = parseInt(assign.CutCredits) || 0;
+        
+        let legacyLicenseId: string | undefined = undefined;
+        if (assign.LicenseId) {
+          const l = await (this.prisma as any).orgLicense.findFirst({ where: { legacyId: String(assign.LicenseId) }});
+          if (l) legacyLicenseId = l.id;
+        }
+
+        const cutCreditId = this.parseOrCreateUuid(`cutcredit-${legacyId}`);
+        const existingCredit = await (this.prisma as any).cutCredit.findUnique({ where: { id: cutCreditId } });
+        
+        const creditData = {
+          planType: 'USAGE',
+          credits: allocatedCredits,
+          validityDays: null,
+          ownerId: orgId,
+          tenantId: fromOrgId,
+          licenseId: legacyLicenseId || null,
+          createdAt: createdDate
+        };
+
+        if (!existingCredit) {
+          await this.prisma.$transaction(async (tx) => {
+            const grant = await (tx as any).cutCredit.create({
+              data: {
+                id: cutCreditId,
+                ...creditData,
+                legacyCutCredit: {
+                  create: {
+                    legacyId,
+                    legacyCountId: parseInt(countInfo.CutcreditAssignCountID) || null,
+                    cutCredits: parseInt(assign.CutCredits) || null,
+                    cutCreditType: assign.CutCreditType || null,
+                    rate: assign.Rate ? parseFloat(assign.Rate) : null,
+                    paidAmount: assign.PaidAmount ? parseFloat(assign.PaidAmount) : null,
+                    isOffer: assign.IsOffer === 'true' || assign.IsOffer === '1',
+                    description: assign.Description || null,
+                    legacyDealerId: dealerId,
+                    legacyOwnerId: ownerId,
+                    legacyAssignedTo: String(assign.AssignedUserId || '').trim(),
+                    totalCutcredit: parseInt(countInfo.TotalCutcredit) || null,
+                    usedCutcredit: parseInt(countInfo.UsedCutcredit) || null
+                  }
+                }
+              }
+            });
+
+            if (allocatedCredits > 0) {
+              let wallet = await (tx as any).entityWallet.findUnique({ where: { orgId: orgId } });
+              if (!wallet) {
+                wallet = await (tx as any).entityWallet.create({
+                  data: {
+                    orgId: orgId,
+                    tenantId: rootOrg?.id || orgId,
+                    balance: 0,
+                    totalCredits: 0
+                  }
+                });
+              }
+
+              await (tx as any).entityWallet.update({
+                where: { id: wallet.id },
+                data: {
+                  balance: { increment: allocatedCredits },
+                  totalCredits: { increment: allocatedCredits },
+                  lastRechargedAt: createdDate || new Date()
+                }
+              });
+
+              await (tx as any).creditTransaction.create({
+                data: {
+                  walletId: wallet.id,
+                  amount: allocatedCredits,
+                  type: 'CREDIT',
+                  source: grant.id,
+                  tenantId: fromOrgId,
+                  isOffer: assign.IsOffer === 'true' || assign.IsOffer === '1',
+                  notes: assign.Description || null
+                }
+              });
+
+              // Apply aggregated used credits once per dealer
+              if (countInfo.DealerID && !processedDealersForCount.has(dealerId)) {
+                processedDealersForCount.add(dealerId);
+                const totalUsed = parseInt(countInfo.UsedCutcredit) || 0;
+                if (totalUsed > 0) {
+                  await (tx as any).entityWallet.update({
+                    where: { id: wallet.id },
+                    data: {
+                      balance: { decrement: totalUsed },
+                      usedCredits: { increment: totalUsed }
+                    }
+                  });
+                  await (tx as any).creditTransaction.create({
+                    data: {
+                      walletId: wallet.id,
+                      amount: totalUsed,
+                      type: 'DEBIT',
+                      source: 'LEGACY-USAGE',
+                      notes: 'Aggregated legacy usage',
+                      tenantId: orgId
+                    }
+                  });
+                }
+              }
+            }
+          });
+          importedCredits++;
+        } else {
+          await (this.prisma as any).cutCredit.update({
+            where: { id: cutCreditId },
+            data: {
+              ...creditData,
+              legacyCutCredit: {
+                update: {
+                  legacyId,
+                  legacyCountId: parseInt(countInfo.CutcreditAssignCountID) || null,
+                  cutCredits: parseInt(assign.CutCredits) || null,
+                  cutCreditType: assign.CutCreditType || null,
+                  rate: assign.Rate ? parseFloat(assign.Rate) : null,
+                  paidAmount: assign.PaidAmount ? parseFloat(assign.PaidAmount) : null,
+                  isOffer: assign.IsOffer === 'true' || assign.IsOffer === '1',
+                  description: assign.Description || null,
+                  legacyDealerId: dealerId,
+                  legacyOwnerId: ownerId,
+                  legacyAssignedTo: String(assign.AssignedUserId || '').trim(),
+                  totalCutcredit: parseInt(countInfo.TotalCutcredit) || null,
+                  usedCutcredit: parseInt(countInfo.UsedCutcredit) || null
+                }
+              }
+            }
+          });
+          updatedCredits++;
+        }
+      } catch (err: any) {
+        this.logger.error(`Error migrating cut credit: ${err.message}`);
+        skippedRows++;
+        failures.push({ row: assign, error: err.message });
+      }
+    }
+
+    const result = {
+      importedCredits,
+      updatedCredits,
+      skippedRows,
+      failures: failures.slice(0, 1000)
+    };
+
+    await this.logMigration({
+      module: 'cut-credits',
+      fileName: sourceName || (!Array.isArray(dealerAssignFile) ? (dealerAssignFile as Express.Multer.File).originalname : 'Uploaded Cut Credits CSV File'),
+      status: skippedRows === 0 ? 'SUCCESS' : (importedCredits > 0 ? 'PARTIAL' : 'FAILED'),
+      processed: assignData.length,
+      created: importedCredits,
+      updated: updatedCredits,
+      failed: skippedRows,
+      details: result
+    });
+
+    return result;
+  }
+
   async migrateRoles(rolesFile: Express.Multer.File | any[], sourceName?: string) {
     let importedRoles = 0;
     let updatedRoles = 0;
@@ -2146,6 +2409,15 @@ export class MigrationService {
       await (this.prisma as any).orgLicenseBatch.deleteMany({});
     }
 
+    if (module === 'cut-credits' || module === 'all') {
+      await (this.prisma as any).legacyCutCredit?.deleteMany({});
+      
+      // Cut credits no longer use licensing transfers or batches
+      await (this.prisma as any).creditTransaction?.deleteMany({});
+      await (this.prisma as any).entityWallet?.deleteMany({});
+      await (this.prisma as any).cutCredit?.deleteMany({});
+    }
+
     if (module === 'mobile-users' || module === 'all') {
       const mobileUserRole = await (this.prisma.role as any).findFirst({
         where: { name: { in: ['MobileUser', 'Mobile User'] } }
@@ -2239,7 +2511,8 @@ export class MigrationService {
         const rows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
         return await this.migrateRoles(rows, "MSSQL: " + tableMap.file1);
       } else if (moduleType === 'designs') {
-        throw new Error('Direct DB migration for designs is not supported. Use Local Scan instead.');
+        const rows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
+        return await this.migrateDesigns(rows, rows.length);
       } else if (moduleType === 'mobile-users') {
         const rows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
         return await this.migrateMobileUsers(rows, "MSSQL: " + tableMap.file1);
@@ -2251,6 +2524,10 @@ export class MigrationService {
         const licenseRows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
         const assignRows = tableMap.file2 ? (await pool.request().query("SELECT * FROM [" + tableMap.file2 + "]")).recordset : [];
         return await this.migrateLicenses(licenseRows, assignRows, "MSSQL: " + tableMap.file1);
+      } else if (moduleType === 'cut-credits') {
+        const assignRows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
+        const countRows = tableMap.file2 ? (await pool.request().query("SELECT * FROM [" + tableMap.file2 + "]")).recordset : [];
+        return await this.migrateCutCredits(assignRows, countRows, "MSSQL: " + tableMap.file1);
       } else {
         throw new BadRequestException('Unsupported module type for DB migration: ' + moduleType);
       }
