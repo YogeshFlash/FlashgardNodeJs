@@ -383,7 +383,7 @@ const DataMigration: React.FC = () => {
           <div className="w-full md:w-80 shrink-0 space-y-6">
             {[
               { title: 'Models Management', ids: ['catalog', 'skins', 'designs'] },
-              { title: 'System & Core', ids: ['roles', 'users', 'licenses', 'mobile-users', 'cut-credits', 'mobile-app-cuts', 'dealer-master-qrs', 'plotter-masters', 'orders'] }
+              { title: 'System & Core', ids: ['roles', 'users', 'licenses', 'mobile-users', 'cut-credits', 'mobile-app-cuts', 'dealer-master-qrs', 'plotter-masters', 'materials', 'orders'] }
             ].map((group) => (
               <div key={group.title} className="space-y-2">
                 <div className="px-4">
