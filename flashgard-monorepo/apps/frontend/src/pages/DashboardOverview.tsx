@@ -1,42 +1,89 @@
-
+import { useState, useEffect } from 'react';
 import { 
   Building2, Users, ShieldCheck, 
-  TrendingUp, ArrowRight, Activity 
+  Activity, Clock
 } from 'lucide-react';
+import { dashboardApi } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
+import { Link } from 'react-router-dom';
+
+const Badge = ({ children, variant = 'gray' }: any) => {
+  const styles: any = {
+    gray: 'bg-slate-100 text-slate-600 border-slate-200',
+    green: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+    blue: 'bg-blue-50 text-blue-600 border-blue-100',
+    amber: 'bg-amber-50 text-amber-600 border-amber-100',
+    red: 'bg-red-50 text-red-600 border-red-100',
+  };
+  return (
+    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${styles[variant]}`}>
+      {children}
+    </span>
+  );
+};
 
 const DashboardOverview = () => {
-  const stats = [
+  const { user } = useAuth();
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    dashboardApi.getStats()
+      .then(res => {
+        setData(res);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to load dashboard statistics:', err);
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 animate-pulse text-slate-400 space-y-4">
+        <Activity className="w-12 h-12 text-slate-300 animate-spin" />
+        <p className="text-sm font-semibold tracking-wide">Loading dashboard data...</p>
+      </div>
+    );
+  }
+
+  const statCards = [
     {
       title: 'Total Organizations',
-      value: '124',
-      change: '+12%',
-      trend: 'up',
+      value: data?.stats?.totalOrgs ?? 0,
+      unit: '',
       icon: Building2,
-      color: 'bg-[var(--color-primary)]',
+      color: 'bg-indigo-50 text-indigo-600 border-indigo-100',
+      iconBg: 'bg-indigo-100 text-indigo-600',
+      link: '/organizations'
     },
     {
       title: 'Active Users',
-      value: '849',
-      change: '+5.4%',
-      trend: 'up',
+      value: data?.stats?.activeUsers ?? 0,
+      unit: '',
       icon: Users,
-      color: 'bg-emerald-500',
+      color: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+      iconBg: 'bg-emerald-100 text-emerald-600',
+      link: '/users'
     },
     {
       title: 'Custom Roles',
-      value: '32',
-      change: '+2',
-      trend: 'neutral',
+      value: data?.stats?.totalRoles ?? 0,
+      unit: '',
       icon: ShieldCheck,
-      color: 'bg-[var(--color-primary)]',
+      color: 'bg-blue-50 text-blue-600 border-blue-100',
+      iconBg: 'bg-blue-100 text-blue-600',
+      link: '/roles'
     },
     {
-      title: 'System Health',
-      value: '99.9%',
-      change: 'All systems operational',
-      trend: 'up',
+      title: data?.stats?.fourthCardTitle ?? 'Active Licenses',
+      value: data?.stats?.fourthCardValue ?? 0,
+      unit: data?.stats?.fourthCardUnit ?? '',
       icon: Activity,
-      color: 'bg-amber-500',
+      color: 'bg-amber-50 text-amber-600 border-amber-100',
+      iconBg: 'bg-amber-100 text-amber-600',
+      link: '/licenses'
     }
   ];
 
@@ -44,43 +91,37 @@ const DashboardOverview = () => {
     <div className="space-y-6">
       
       {/* Header Section */}
-      <div className="flex items-end justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard Overview</h1>
-          <p className="text-slate-500 mt-1">Welcome back, Platform Admin. Here's what's happening today.</p>
+          <p className="text-slate-500 mt-1">
+            Welcome back, <span className="font-bold text-slate-700">{user?.email || 'User'}</span>. Here's a quick summary of your platform's activity.
+          </p>
         </div>
-        <button className="btn-primary flex items-center gap-2">
-          Generate Report
-          <ArrowRight className="w-4 h-4" />
-        </button>
+        <div className="text-xs font-semibold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200/50 flex items-center gap-1.5 self-start sm:self-auto">
+          <Clock className="w-3.5 h-3.5" />
+          {new Date().toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+        </div>
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
-        {stats.map((stat) => (
-          <div key={stat.title} className="card p-6 border-slate-200/60 bg-white hover:border-slate-300 transition-colors cursor-pointer group">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
+        {statCards.map((stat) => (
+          <Link key={stat.title} to={stat.link} className="card p-6 border border-slate-200/60 bg-white hover:border-slate-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${stat.color} bg-opacity-10 mb-4 group-hover:scale-110 transition-transform`}>
-                <stat.icon className={`w-6 h-6 ${stat.color.replace('bg-', 'text-')}`} />
+              <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">{stat.title}</span>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stat.iconBg} group-hover:scale-110 transition-transform`}>
+                <stat.icon className="w-5 h-5" />
               </div>
-              {stat.trend === 'up' && (
-                <span className="flex items-center text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
-                  <TrendingUp className="w-3 h-3 mr-1" />
-                  {stat.change}
-                </span>
-              )}
-               {stat.trend === 'neutral' && (
-                <span className="flex items-center text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-1 rounded-full">
-                  {stat.change}
-                </span>
-              )}
             </div>
             
-            <div>
-              <p className="text-slate-500 text-sm font-medium">{stat.title}</p>
-              <h3 className="text-3xl font-bold text-slate-800 tracking-tight mt-1">{stat.value}</h3>
+            <div className="mt-4">
+              <h3 className="text-3xl font-black text-slate-900 tracking-tight">
+                {stat.value}
+                {stat.unit && <span className="text-sm font-semibold text-slate-500 ml-1">{stat.unit}</span>}
+              </h3>
             </div>
-          </div>
+          </Link>
         ))}
       </div>
 
@@ -88,37 +129,96 @@ const DashboardOverview = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
         
         {/* Recent Organizations Table */}
-        <div className="lg:col-span-2 card bg-white">
-          <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-slate-800">Recent Organizations</h2>
-            <button className="text-sm font-medium text-[var(--color-primary)] hover:text-[var(--color-primary-hover)]">View All</button>
-          </div>
-          <div className="p-6">
-            <div className="flex flex-col items-center justify-center h-48 text-center border-2 border-dashed border-slate-200 rounded-lg bg-slate-50">
-              <Building2 className="w-8 h-8 text-slate-400 mb-3" />
-              <p className="text-slate-600 font-medium text-sm">No organizations connected to API yet.</p>
-              <p className="text-slate-400 text-xs mt-1">Once you add dealers or distributors, they will appear here.</p>
+        <div className="lg:col-span-2 card bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between">
+          <div>
+            <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center">
+              <h2 className="text-base font-bold text-slate-900">Recent Organizations</h2>
+              <Link to="/organizations" className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors uppercase tracking-wider">View All</Link>
+            </div>
+            <div className="overflow-x-auto">
+              {!data?.recentOrgs || data.recentOrgs.length === 0 ? (
+                <div className="p-12 text-center flex flex-col items-center justify-center text-slate-400 italic">
+                  <Building2 className="w-10 h-10 text-slate-300 mb-3" />
+                  <p className="text-sm">No organizations connected yet.</p>
+                </div>
+              ) : (
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase border-b border-slate-100">
+                      <th className="px-6 py-3">Organization Name</th>
+                      <th className="px-6 py-3">Type</th>
+                      <th className="px-6 py-3">Parent Organization</th>
+                      <th className="px-6 py-3">Status</th>
+                      <th className="px-6 py-3">Joined Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {data.recentOrgs.map((org: any) => (
+                      <tr key={org.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4 font-bold text-slate-900">{org.name}</td>
+                        <td className="px-6 py-4">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-600">
+                            {org.organizationType?.name}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-slate-600">
+                          {org.parent?.name || <span className="text-slate-400 italic">—</span>}
+                        </td>
+                        <td className="px-6 py-4">
+                          {org.isActive ? (
+                            <Badge variant="green">Active</Badge>
+                          ) : (
+                            <Badge variant="red">Inactive</Badge>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-slate-500">
+                          {new Date(org.createdAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>
 
         {/* System Activity Feed */}
-        <div className="card bg-white">
+        <div className="card bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col">
           <div className="px-6 py-5 border-b border-slate-100">
-            <h2 className="text-lg font-semibold text-slate-800">Activity Log</h2>
+            <h2 className="text-base font-bold text-slate-900">Activity Log</h2>
           </div>
-          <div className="p-6">
-            <div className="space-y-6">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex gap-4">
-                  <div className="w-2 h-2 mt-2 rounded-full bg-[var(--color-primary)] ring-4 bg-[var(--color-primary)]/10" />
-                  <div>
-                    <p className="text-sm font-medium text-slate-800">System Initialization completed</p>
-                    <p className="text-xs text-slate-400 mt-0.5">2 hours ago</p>
+          <div className="p-6 flex-1 overflow-y-auto">
+            {!data?.recentActivities || data.recentActivities.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-400 italic text-center py-12">
+                <Clock className="w-10 h-10 text-slate-300 mb-3" />
+                <p className="text-sm">No activity recorded yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {data.recentActivities.map((log: any) => (
+                  <div key={log.id} className="flex gap-4 items-start">
+                    <div className="w-2.5 h-2.5 mt-1.5 rounded-full bg-indigo-500 ring-4 ring-indigo-50" />
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">
+                        {log.action} {log.entity}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        By {log.user ? `${log.user.firstName || ''} ${log.user.lastName || ''}`.trim() || log.user.email : 'System'}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-wider">
+                        {new Date(log.createdAt).toLocaleString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

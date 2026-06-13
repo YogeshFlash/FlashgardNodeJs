@@ -100,4 +100,27 @@ export class LicensesController {
   updateStatus(@Request() req: any, @Param('id') id: string, @Body() body: { status: any }) {
     return this.licensesService.updateStatus(id, body.status, req.user.userId);
   }
+
+  @Get('master-qrs')
+  @RequirePermissions('licenses:read')
+  getMasterQRs(
+    @Request() req: any,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
+    @Query('search') search?: string,
+    @Query('orgId') orgId?: string
+  ) {
+    const skipVal = skip ? parseInt(skip) : 0;
+    const takeVal = take ? parseInt(take) : 50;
+    const targetOrgId = req.user.isSuperAdmin ? orgId : (orgId || req.user.organizationId);
+
+    return this.licensesService.getMasterQRs({
+      orgId: targetOrgId,
+      isSuperAdmin: req.user.isSuperAdmin,
+      skip: skipVal,
+      take: takeVal,
+      search
+    });
+  }
 }
+

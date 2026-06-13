@@ -6,6 +6,7 @@ import DashboardLayout from './layouts/DashboardLayout';
 import Login from './pages/Login';
 import DashboardOverview from './pages/DashboardOverview';
 import Organizations from './pages/Organizations';
+import ReportsPage from './pages/ReportsPage';
 import UsersPage from './pages/UsersPage';
 import RolesPage from './pages/RolesPage';
 import ProfilePage from './pages/ProfilePage';
@@ -34,6 +35,7 @@ function App() {
           >
             <Route index element={<DashboardOverview />} />
             <Route path="organizations" element={<Organizations />} />
+            <Route path="reports" element={<ReportsPage />} />
             <Route path="models" element={<ModelsPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="roles" element={<RolesPage />} />

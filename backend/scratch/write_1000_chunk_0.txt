@@ -1,0 +1,3 @@
+        const cleanMachineId = mobileRow.MachineID ? String(mobileRow.MachineID).replace(/\0/g, '') : null;
+        const cleanMacAddress = mobileRow.BluetoothMac ? String(mobileRow.BluetoothMac).replace(/\0/g, '') : null;
+        let licenseKey = String(mobileRow.LicenseKey || '').replace(/\0/g, '').trim();

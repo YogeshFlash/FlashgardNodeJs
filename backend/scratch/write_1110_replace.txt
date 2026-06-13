@@ -1,0 +1,1 @@
+"          this.logger.log(`Fetching chunk for mobile-app-cuts: OFFSET ${offset} LIMIT ${limit}`);\n          let rows: any = (await pool.request().query(`SELECT * FROM [${tableMap.file1}] ORDER BY MobileAppCutsID OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`)).recordset;"

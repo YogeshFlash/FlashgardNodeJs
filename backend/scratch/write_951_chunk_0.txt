@@ -1,0 +1,5 @@
+        await (this.prisma as any).licensingTransfer.create({
+          data: {
+            fromOrgId: transferData.fromOrgId,
+            toOrgId: transferData.toOrgId,
+            status: 'COMPLETED',

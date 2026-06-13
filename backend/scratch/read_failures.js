@@ -3,7 +3,7 @@ const prisma = new PrismaClient();
 
 async function main() {
   const log = await prisma.migrationLog.findFirst({
-    where: { module: 'users' },
+    where: { module: 'dealer-master-qrs' },
     orderBy: { createdAt: 'desc' }
   });
   if (!log) {

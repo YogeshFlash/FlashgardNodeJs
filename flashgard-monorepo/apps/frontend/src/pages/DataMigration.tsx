@@ -208,16 +208,15 @@ const DataMigration: React.FC = () => {
           file1
         );
       } else if (legacySubTab === 'materials') {
-        if (!file2 || !file3 || !file4 || !file5 || !file6) {
-          throw new Error('All 6 files are required for Materials system migration');
+        if (!file2 || !file3 || !file4) {
+          throw new Error('All 4 files are required for Materials system migration');
         }
         data = await migrationApi.migrateMaterials(
           file1,
           file2,
           file3,
-          file4,
-          file5,
-          file6
+          file2,
+          file4
         );
       }
       
@@ -243,7 +242,7 @@ const DataMigration: React.FC = () => {
     { id: 'mobile-app-cuts', label: '9. Mobile App Cuts', icon: Scissors, description: 'Migrate legacy mobile app cuts to machine cut logs.', file1Label: 'MobileAppCuts Table', file1Name: 'MobileAppCuts' },
     { id: 'dealer-master-qrs', label: '10. Dealer Master QRs', icon: FileSpreadsheet, description: 'Migrate legacy DealerMasterQR table to database.', file1Label: 'DealerMasterQR CSV', file1Name: 'DealerMasterQR' },
     { id: 'plotter-masters', label: '11. Plotter Masters', icon: Cpu, description: 'Migrate legacy PlotterMaster configuration to database.', file1Label: 'PlotterMaster CSV', file1Name: 'PlotterMaster' },
-    { id: 'materials', label: '12. Materials System', icon: Layers, description: 'Migrate legacy ProductType, Material, Categories & config.', file1Label: 'ProductType CSV', file1Name: 'ProductTypeMaster.csv', file2Label: 'MaterialMaster CSV', file2Name: 'MaterialMaster.csv', file3Label: 'FilmCategory CSV', file3Name: 'ReportCategoryMaster.csv', file4Label: 'ProductDisplayMaster CSV', file4Name: 'ProductDisplayMaster.csv', file5Label: 'CutTypeConfig CSV', file5Name: 'MaterialCutTypeConfig.csv', file6Label: 'CutPattern CSV', file6Name: 'ModelSkinMaster.csv' },
+    { id: 'materials', label: '12. Materials System', icon: Layers, description: 'Migrate legacy ProductType, Material, Categories & config.', file1Label: 'ProductType CSV', file1Name: 'ProductTypeMaster.csv', file2Label: 'MaterialMaster CSV', file2Name: 'MaterialMaster.csv', file3Label: 'FilmCategory CSV', file3Name: 'ReportCategoryMaster.csv', file4Label: 'ProductDisplayMaster CSV', file4Name: 'ProductDisplayMaster.csv' },
     { id: 'orders', label: 'Order History', icon: ShoppingCart, description: 'Sync past transactions.', file1Label: 'Orders CSV', file1Name: 'OrderMaster.csv' },
   ];
 
@@ -524,8 +523,8 @@ const DataMigration: React.FC = () => {
                               </div>
                               <button
                                 onClick={handleDbMigration}
-                                disabled={!dbMapFile1 || isMigrating || (currentTab?.id === 'users' && !dbMapFile2) || (currentTab?.id === 'materials' && (!dbMapFile2 || !dbMapFile3 || !dbMapFile4 || !dbMapFile5))}
-                                className={`w-full flex items-center justify-center gap-3 py-4 rounded-xl font-black text-lg text-white transition-all transform ${!dbMapFile1 || isMigrating || (currentTab?.id === 'users' && !dbMapFile2) || (currentTab?.id === 'materials' && (!dbMapFile2 || !dbMapFile3 || !dbMapFile4 || !dbMapFile5)) ? 'bg-slate-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-xl'}`}
+                                disabled={!dbMapFile1 || isMigrating || (currentTab?.id === 'users' && !dbMapFile2) || (currentTab?.id === 'materials' && (!dbMapFile2 || !dbMapFile3 || !dbMapFile4))}
+                                className={`w-full flex items-center justify-center gap-3 py-4 rounded-xl font-black text-lg text-white transition-all transform ${!dbMapFile1 || isMigrating || (currentTab?.id === 'users' && !dbMapFile2) || (currentTab?.id === 'materials' && (!dbMapFile2 || !dbMapFile3 || !dbMapFile4)) ? 'bg-slate-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-xl'}`}
                               >
                                 {isMigrating ? <Loader2 className="w-6 h-6 animate-spin" /> : <RefreshCcw className="w-6 h-6" />}
                                 {isMigrating ? 'Syncing...' : 'Start DB Migration'}

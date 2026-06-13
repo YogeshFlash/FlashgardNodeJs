@@ -259,8 +259,7 @@ export class MigrationController {
     { name: 'categories', maxCount: 1 },
     { name: 'filmCategories', maxCount: 1 },
     { name: 'products', maxCount: 1 },
-    { name: 'displayMaster', maxCount: 1 },
-    { name: 'cutConfigs', maxCount: 1 }
+    { name: 'displayMaster', maxCount: 1 }
   ], {
     limits: { fileSize: 1024 * 1024 * 1024 } // 1GB limit
   }))
@@ -271,7 +270,6 @@ export class MigrationController {
       filmCategories?: Express.Multer.File[];
       products?: Express.Multer.File[];
       displayMaster?: Express.Multer.File[];
-      cutConfigs?: Express.Multer.File[];
     }
   ) {
     return this.migrationService.migrateMaterialsSystem(
@@ -279,8 +277,7 @@ export class MigrationController {
       files.categories?.[0]!,
       files.filmCategories?.[0]!,
       files.products?.[0]!,
-      files.displayMaster?.[0]!,
-      files.cutConfigs?.[0]!
+      files.displayMaster?.[0]!
     );
   }
 }

@@ -1,0 +1,1 @@
+"        const createdAt = this.safeDate(row.CreatedDate || row.CreatedAt);\n        if (!createdAt || createdAt.getFullYear() !== 2026) {\n          skippedRows++;\n          continue;\n        }"

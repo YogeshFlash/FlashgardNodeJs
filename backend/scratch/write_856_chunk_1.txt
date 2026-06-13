@@ -1,0 +1,2 @@
+        legacyLastName.trim().startsWith('-') ||
+        /^\d+$/.test(legacyFirstName.trim()));

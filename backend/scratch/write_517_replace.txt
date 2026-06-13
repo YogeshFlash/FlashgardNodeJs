@@ -1,0 +1,1 @@
+"      await (this.prisma as any).creditTransaction.deleteMany({});"

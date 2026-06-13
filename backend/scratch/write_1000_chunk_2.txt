@@ -1,0 +1,9 @@
+            if (cleanMachineId) {
+              await (this.prisma as any).entityWallet.upsert({
+                where: { machineId: cleanMachineId },
+                update: {
+                  tenantId: orgId
+                },
+                create: {
+                  machineId: cleanMachineId,
+                  tenantId: orgId,

@@ -1,0 +1,2 @@
+      await this.prisma.creditTransaction.deleteMany({});
+      await this.prisma.entityWallet.deleteMany({});

@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
   Building2, LayoutDashboard,
   LogOut, Bell, Search, Settings, ChevronDown,
-  UserCircle, Menu, X, Boxes, Warehouse, Key, Database
+  UserCircle, Menu, X, Boxes, Warehouse, Key, Database, BarChart2
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../components/HasPermission';
@@ -12,6 +12,7 @@ import logo from '../assets/logo.png';
 const navItems = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard, exact: true, permission: 'nav:dashboard' },
   { name: 'Organizations', path: '/organizations', icon: Building2, permission: 'nav:organizations' },
+  { name: 'Reports', path: '/reports', icon: BarChart2, permission: 'nav:reports' },
   { name: 'Models', path: '/models', icon: Boxes, permission: 'nav:models' },
   { name: 'Inventory', path: '/inventory', icon: Warehouse, permission: 'nav:inventory' },
   { name: 'Licenses', path: '/licenses', icon: Key, permission: 'nav:licenses' },

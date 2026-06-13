@@ -539,8 +539,7 @@ export const migrationApi = {
     categories: File,
     filmCategories: File,
     products: File,
-    displayMaster: File,
-    cutConfigs: File
+    displayMaster: File
   ) => {
     const formData = new FormData();
     formData.append('productTypes', productTypes);
@@ -548,7 +547,6 @@ export const migrationApi = {
     formData.append('filmCategories', filmCategories);
     formData.append('products', products);
     formData.append('displayMaster', displayMaster);
-    formData.append('cutConfigs', cutConfigs);
     return request<any>('/migration/legacy/materials', { method: 'POST', body: formData });
   },
 };
@@ -616,11 +614,5 @@ export const materialsApi = {
   purge: (id: string) => request<void>(`/materials/${id}/purge`, { method: 'DELETE' }),
 };
 
-export const materialCutConfigsApi = {
-  getAll: () => request<any[]>('/material-cut-configs'),
-  getOne: (id: string) => request<any>(`/material-cut-configs/${id}`),
-  create: (data: any) => request<any>('/material-cut-configs', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: any) => request<any>(`/material-cut-configs/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  remove: (id: string) => request<void>(`/material-cut-configs/${id}`, { method: 'DELETE' }),
-};
+
 

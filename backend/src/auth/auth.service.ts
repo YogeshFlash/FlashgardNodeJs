@@ -40,6 +40,13 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ 
       where: { email },
       include: {
+        role: {
+          include: {
+            permissions: {
+              include: { permission: true }
+            }
+          }
+        },
         organizations: {
           include: {
             organization: {
@@ -97,6 +104,13 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
+        role: {
+          include: {
+            permissions: {
+              include: { permission: true }
+            }
+          }
+        },
         organizations: {
           include: {
             organization: {
@@ -141,7 +155,7 @@ export class AuthService {
       activeOrgLink = user.organizations?.find((org: any) => org.isPrimary) || user.organizations?.[0];
     }
 
-    const activeRole = activeOrgLink?.role;
+    const activeRole = activeOrgLink?.role || user.role;
     const activeOrg = activeOrgLink?.organization;
 
     // Load user permission overrides for the ACTIVE organization

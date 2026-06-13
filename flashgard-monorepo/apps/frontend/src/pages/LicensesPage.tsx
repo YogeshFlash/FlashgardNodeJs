@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, Plus, Send, X, AlertCircle, RotateCcw, Search, ChevronLeft, ChevronRight, Gift
 } from 'lucide-react';
-import { licensesApi, cutCreditsApi, orgsApi } from '../lib/api';
+import { licensesApi, cutCreditsApi, orgsApi, modelCategoriesApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 
 const Badge = ({ children, variant = 'gray' }: any) => {
@@ -326,7 +326,7 @@ const IssueCreditsModal = ({ onClose, onSave, orgs }: any) => {
   );
 };
 
-export const TransferCreditsModal = ({ onClose, onSave, orgs, initialOrgId }: any) => {
+export const TransferCreditsModal = ({ onClose, onSave, orgs, initialOrgId, isAssignMode }: any) => {
   const { user } = useAuth();
   const hierarchicalOrgs = buildHierarchy(orgs);
   
@@ -416,11 +416,14 @@ export const TransferCreditsModal = ({ onClose, onSave, orgs, initialOrgId }: an
     }
   };
 
+  const selectedOrg = hierarchicalOrgs.find((o: any) => o.id === form.targetOrgId);
+  const isTopLevelOrg = selectedOrg && !selectedOrg.parentId;
+
   return (
     <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[60] p-4 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h3 className="font-bold text-slate-900">Transfer Credits</h3>
+          <h3 className="font-bold text-slate-900">{isTopLevelOrg ? 'Issue Credit' : (isAssignMode ? 'Assign Credit' : 'Transfer Credits')}</h3>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-5 h-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -431,39 +434,47 @@ export const TransferCreditsModal = ({ onClose, onSave, orgs, initialOrgId }: an
             </div>
           ) : (
             <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-700 text-sm flex gap-3">
-               <Send className="w-5 h-5 flex-shrink-0" />
-               <p>Transfer available credits from your wallet to a child organization.</p>
+               {isTopLevelOrg ? <Plus className="w-5 h-5 flex-shrink-0" /> : <Send className="w-5 h-5 flex-shrink-0" />}
+               <p>{isTopLevelOrg ? 'Issue credits directly to this parent organization.' : (isAssignMode ? 'Assign credits by transferring from the parent organization.' : 'Transfer available credits from your wallet to a child organization.')}</p>
             </div>
           )}
           
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700">Target Recipient</label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search organizations..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all"
-              />
-            </div>
-            <div className="border border-slate-200 rounded-xl overflow-y-auto bg-slate-50 max-h-48">
-              {filteredOrgs.length === 0 ? (
-                <div className="p-4 text-sm text-slate-500 text-center">No organizations match your search.</div>
-              ) : filteredOrgs.map((o: any) => (
-                <div
-                  key={o.id}
-                  onClick={() => setForm({...form, targetOrgId: o.id})}
-                  className={`px-3 py-2.5 text-sm cursor-pointer hover:bg-white border-b border-slate-100 last:border-0 transition-colors ${form.targetOrgId === o.id ? 'bg-indigo-50 text-indigo-700 font-bold hover:bg-indigo-50' : 'text-slate-700'}`}
-                >
-                  {'\u00A0'.repeat(search ? 0 : o.depth * 4)}{!search && o.depth > 0 ? '↳ ' : ''}{o.name} <span className="ml-1 text-xs text-slate-400">({o.organizationType?.name})</span>
+            {isAssignMode ? (
+              <div className="w-full px-4 py-2 bg-slate-100 border border-slate-200 rounded-xl text-sm text-slate-700 font-medium">
+                {hierarchicalOrgs.find((o: any) => o.id === form.targetOrgId)?.name || 'Selected Organization'}
+              </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search organizations..."
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all"
+                  />
                 </div>
-              ))}
-            </div>
+                <div className="border border-slate-200 rounded-xl overflow-y-auto bg-slate-50 max-h-48">
+                  {filteredOrgs.length === 0 ? (
+                    <div className="p-4 text-sm text-slate-500 text-center">No organizations match your search.</div>
+                  ) : filteredOrgs.map((o: any) => (
+                    <div
+                      key={o.id}
+                      onClick={() => setForm({...form, targetOrgId: o.id})}
+                      className={`px-3 py-2.5 text-sm cursor-pointer hover:bg-white border-b border-slate-100 last:border-0 transition-colors ${form.targetOrgId === o.id ? 'bg-indigo-50 text-indigo-700 font-bold hover:bg-indigo-50' : 'text-slate-700'}`}
+                    >
+                      {'\u00A0'.repeat(search ? 0 : o.depth * 4)}{!search && o.depth > 0 ? '↳ ' : ''}{o.name} <span className="ml-1 text-xs text-slate-400">({o.organizationType?.name})</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
-          {user?.isSuperAdmin && (
+          {user?.isSuperAdmin && isTopLevelOrg && (
             <div className="space-y-2">
               <label className="text-sm font-semibold text-slate-700">Plan Type</label>
               <div className="flex bg-slate-100 p-1 rounded-xl">
@@ -481,9 +492,25 @@ export const TransferCreditsModal = ({ onClose, onSave, orgs, initialOrgId }: an
             </div>
           )}
 
-          {form.planType === 'USAGE' && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-slate-700">Number of Credits to Transfer</label>
+          {form.planType === 'USAGE' && (() => {
+            const parentOrg = selectedOrg?.parentId ? hierarchicalOrgs.find((o: any) => o.id === selectedOrg.parentId) : null;
+            
+            return (
+              <div className="space-y-3">
+                {user?.isSuperAdmin && parentOrg && (
+                  <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider mb-0.5">Deducting From Parent Org</p>
+                      <p className="text-sm font-bold text-blue-900">{parentOrg.name}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider mb-0.5">Available Balance</p>
+                      <p className="text-lg font-black text-blue-700">{parentOrg.tenantWallets?.[0]?.balance || 0}</p>
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-slate-700">Number of Credits to Transfer</label>
               <input
                 type="number"
                 min="1"
@@ -492,7 +519,9 @@ export const TransferCreditsModal = ({ onClose, onSave, orgs, initialOrgId }: an
                 className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all font-mono"
               />
             </div>
-          )}
+            </div>
+            );
+          })()}
 
           {form.planType === 'UNLIMITED' && (
             <div className="space-y-1.5">
@@ -507,7 +536,7 @@ export const TransferCreditsModal = ({ onClose, onSave, orgs, initialOrgId }: an
             </div>
           )}
 
-          {user?.isSuperAdmin && (
+          {user?.isSuperAdmin && isTopLevelOrg && (
             <div className="space-y-3 pt-2 border-t border-slate-100">
               <label className="flex items-center gap-3 cursor-pointer group">
                 <div className="relative flex items-center justify-center">
@@ -544,7 +573,7 @@ export const TransferCreditsModal = ({ onClose, onSave, orgs, initialOrgId }: an
           <div className="pt-4 flex gap-3">
             <button type="button" onClick={onClose} className="flex-1 px-6 py-2.5 border border-slate-200 font-bold rounded-xl whitespace-nowrap">Cancel</button>
             <button type="submit" disabled={loading} className="flex-1 px-6 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 whitespace-nowrap">
-                {loading ? 'Transferring...' : 'Transfer Credits'}
+                {loading ? (isTopLevelOrg ? 'Issuing...' : (isAssignMode ? 'Assigning...' : 'Transferring...')) : (isTopLevelOrg ? 'Issue Credit' : (isAssignMode ? 'Assign Credit' : 'Transfer Credits'))}
             </button>
           </div>
         </form>
@@ -704,16 +733,23 @@ const DispatchModal = ({ onClose, onSave, orgs, type, selectedIds, items }: any)
 
 const LicensesPage = () => {
   const { user } = useAuth();
-  const [tab, setTab] = useState<'licenses' | 'credits' | 'history'>('licenses');
+  const [tab, setTab] = useState<'licenses' | 'credits' | 'cut-logs' | 'master-qrs' | 'history'>('licenses');
   const [orgLicenses, setOrgLicenses] = useState<any[]>([]);
   const [cutCredits, setCutCredits] = useState<any[]>([]);
   const [transfers, setTransfers] = useState<any[]>([]);
+  const [cutLogs, setCutLogs] = useState<any[]>([]);
+  const [masterQRs, setMasterQRs] = useState<any[]>([]);
   const [orgs, setOrgs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [myOrg, setMyOrg] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchText, setSearchText] = useState('');
+  const [categories, setCategories] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedPlanType, setSelectedPlanType] = useState<string>('');
+  const [selectedIsPositiveCut, setSelectedIsPositiveCut] = useState<string>('');
   const [batches, setBatches] = useState<any[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<string>('');
   const [page, setPage] = useState(1);
@@ -724,14 +760,26 @@ const LicensesPage = () => {
   useEffect(() => {
     orgsApi.getAll().then((res: any) => setOrgs(Array.isArray(res) ? res : (res.data || res.items || []))).catch(console.error);
     licensesApi.getBatches().then((res: any) => setBatches(Array.isArray(res) ? res : (res.data || res.items || []))).catch(console.error);
+    modelCategoriesApi.getAll().then((res: any) => {
+      const data = Array.isArray(res) ? res : (res.data || res.items || []);
+      setCategories(data.filter((c: any) => c.name !== 'Main Model' && (!c.parentId || c.parent?.name === 'Main Model')));
+    }).catch(console.error);
     if (user?.organizationId) {
       orgsApi.getOne(user.organizationId).then((res: any) => setMyOrg(res)).catch(console.error);
     }
   }, [user]);
 
   useEffect(() => {
+    const handler = setTimeout(() => {
+      setSearchQuery(searchText);
+      setPage(1);
+    }, 450);
+    return () => clearTimeout(handler);
+  }, [searchText]);
+
+  useEffect(() => {
     fetchData();
-  }, [tab, page, searchQuery, selectedBatch]);
+  }, [tab, page, searchQuery, selectedBatch, selectedPlanType, selectedIsPositiveCut, selectedCategory]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -742,8 +790,15 @@ const LicensesPage = () => {
         const res: any = await licensesApi.getInventory(undefined, skip, ITEMS_PER_PAGE, searchQuery, selectedBatch).catch(() => ({ data: [], total: 0 }));
         setOrgLicenses(res.data || []); setTotalItems(res.total || 0);
       } else if (tab === 'credits') {
-        const res: any = await cutCreditsApi.getInventory(undefined, skip, ITEMS_PER_PAGE, searchQuery).catch(() => ({ data: [], total: 0 }));
+        const res: any = await cutCreditsApi.getInventory(undefined, skip, ITEMS_PER_PAGE, searchQuery, selectedPlanType).catch(() => ({ data: [], total: 0 }));
         setCutCredits(res.data || []); setTotalItems(res.total || 0);
+      } else if (tab === 'cut-logs') {
+        const isPositive = selectedIsPositiveCut === 'true' ? true : (selectedIsPositiveCut === 'false' ? false : undefined);
+        const res: any = await licensesApi.getCutLogs(undefined, undefined, skip, ITEMS_PER_PAGE, searchQuery, isPositive, selectedCategory || undefined).catch(() => ({ items: [], total: 0 }));
+        setCutLogs(res.items || []); setTotalItems(res.total || 0);
+      } else if (tab === 'master-qrs') {
+        const res: any = await (licensesApi as any).getMasterQRs(skip, ITEMS_PER_PAGE, searchQuery || undefined).catch(() => ({ items: [], total: 0 }));
+        setMasterQRs(res.items || []); setTotalItems(res.total || 0);
       } else if (tab === 'history') {
         const transferLicRes = await licensesApi.getTransfers().catch(() => []);
         const transferCredRes = await cutCreditsApi.getTransfers().catch(() => []);
@@ -904,9 +959,11 @@ const LicensesPage = () => {
 
       {/* Tabs */}
       <div className="flex border-b border-slate-200">
-        <button onClick={() => { setTab('licenses'); setPage(1); setSelectedIds([]); setSearchQuery(''); }} className={`px-6 py-3 font-semibold text-sm border-b-2 transition-all ${tab === 'licenses' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500'}`}>Org Licenses</button>
-        <button onClick={() => { setTab('credits'); setPage(1); setSelectedIds([]); setSearchQuery(''); }} className={`px-6 py-3 font-semibold text-sm border-b-2 transition-all ${tab === 'credits' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500'}`}>Cut Credits</button>
-        <button onClick={() => { setTab('history'); setPage(1); setSelectedIds([]); setSearchQuery(''); }} className={`px-6 py-3 font-semibold text-sm border-b-2 transition-all ${tab === 'history' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500'}`}>History</button>
+        <button onClick={() => { setTab('licenses'); setPage(1); setSelectedIds([]); setSearchQuery(''); setSearchText(''); setSelectedPlanType(''); setSelectedIsPositiveCut(''); setSelectedCategory(''); }} className={`px-6 py-3 font-semibold text-sm border-b-2 transition-all ${tab === 'licenses' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500'}`}>Org Licenses</button>
+        <button onClick={() => { setTab('credits'); setPage(1); setSelectedIds([]); setSearchQuery(''); setSearchText(''); setSelectedPlanType(''); setSelectedIsPositiveCut(''); setSelectedCategory(''); }} className={`px-6 py-3 font-semibold text-sm border-b-2 transition-all ${tab === 'credits' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500'}`}>Cut Credits</button>
+        <button onClick={() => { setTab('cut-logs'); setPage(1); setSelectedIds([]); setSearchQuery(''); setSearchText(''); setSelectedPlanType(''); setSelectedIsPositiveCut(''); setSelectedCategory(''); }} className={`px-6 py-3 font-semibold text-sm border-b-2 transition-all ${tab === 'cut-logs' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500'}`}>Cut Logs</button>
+        <button onClick={() => { setTab('master-qrs'); setPage(1); setSelectedIds([]); setSearchQuery(''); setSearchText(''); setSelectedPlanType(''); setSelectedIsPositiveCut(''); setSelectedCategory(''); }} className={`px-6 py-3 font-semibold text-sm border-b-2 transition-all ${tab === 'master-qrs' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500'}`}>Master QRs</button>
+        <button onClick={() => { setTab('history'); setPage(1); setSelectedIds([]); setSearchQuery(''); setSearchText(''); setSelectedPlanType(''); setSelectedIsPositiveCut(''); setSelectedCategory(''); }} className={`px-6 py-3 font-semibold text-sm border-b-2 transition-all ${tab === 'history' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500'}`}>History</button>
       </div>
 
       {loading ? (
@@ -919,14 +976,14 @@ const LicensesPage = () => {
               <input
                 type="text"
                 placeholder="Search licenses by key, batch code, service level, status or owner..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                value={searchText}
+                onChange={e => setSearchText(e.target.value)}
                 className="w-full pl-10 pr-10 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all"
               />
-              {searchQuery && (
+              {searchText && (
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => { setSearchText(''); setSearchQuery(''); }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
                 >
                   <X className="w-4 h-4" />
@@ -1031,19 +1088,35 @@ const LicensesPage = () => {
               <input
                 type="text"
                 placeholder="Search credits by serial, batch, status or owner..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                value={searchText}
+                onChange={e => setSearchText(e.target.value)}
                 className="w-full pl-10 pr-10 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all"
               />
-              {searchQuery && (
+              {searchText && (
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => { setSearchText(''); setSearchQuery(''); }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
+            </div>
+            
+            <div className="relative md:w-48">
+              <select
+                value={selectedPlanType}
+                onChange={e => setSelectedPlanType(e.target.value)}
+                className="w-full pl-4 pr-10 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all appearance-none"
+              >
+                <option value="">All Plan Types</option>
+                <option value="USAGE">Usage</option>
+                <option value="UNLIMITED">Unlimited</option>
+                <option value="LIFETIME">Lifetime</option>
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+              </div>
             </div>
             
           </div>
@@ -1071,14 +1144,15 @@ const LicensesPage = () => {
               <thead>
                 <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase border-b border-slate-100">
                   <th className="px-6 py-4">Plan Type</th>
-                  {user?.isSuperAdmin && <th className="px-6 py-4">Current Owner</th>}
+                  <th className="px-6 py-4">Organization</th>
+                  <th className="px-6 py-4">License</th>
                   <th className="px-6 py-4">Date Assigned</th>
                   <th className="px-6 py-4">Balance / Details</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
                 {cutCredits.length === 0 ? (
-                  <tr><td colSpan={user?.isSuperAdmin ? 4 : 3} className="px-6 py-12 text-center text-slate-400 italic">No cut credits present.</td></tr>
+                  <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">No cut credits present.</td></tr>
                 ) : cutCredits.map((item: any) => (
                   <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 font-semibold text-slate-700">
@@ -1091,17 +1165,31 @@ const LicensesPage = () => {
                         )}
                       </div>
                     </td>
-                    {user?.isSuperAdmin && (
-                      <td className="px-6 py-4">
-                         <div className="flex flex-col">
-                          <span className="font-bold text-slate-900">{item.owner?.name}</span>
-                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{item.owner?.organizationType?.name}</span>
+                    <td className="px-6 py-4">
+                       <div className="flex flex-col">
+                        <span className="font-bold text-slate-900">{item.owner?.name}</span>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{item.owner?.organizationType?.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {item.license ? (
+                        <div className="flex flex-col">
+                          <span className="font-mono font-bold text-slate-900">{item.license.key}</span>
+                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{item.license.batch?.licenseType}</span>
                         </div>
-                      </td>
-                    )}
+                      ) : (
+                        <span className="text-slate-400 italic text-xs">Unlinked</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-slate-500">{new Date(item.createdAt).toLocaleDateString()}</td>
                     <td className="px-6 py-4 font-bold text-slate-900">
-                      {item.planType === 'USAGE' ? `${item.credits} Cuts` : item.planType === 'UNLIMITED' ? `${item.validityDays} Days` : 'Lifetime'}
+                      {item.planType === 'USAGE' ? `${item.credits} Cuts` : item.planType === 'UNLIMITED' ? (
+                        (() => {
+                          const start = item.startDate ? new Date(item.startDate) : new Date(item.createdAt);
+                          const end = item.endDate ? new Date(item.endDate) : (item.validityDays ? new Date(start.getTime() + item.validityDays * 24 * 60 * 60 * 1000) : null);
+                          return end ? `${start.toLocaleDateString()} - ${end.toLocaleDateString()}` : `${item.validityDays} Days`;
+                        })()
+                      ) : 'Lifetime'}
                     </td>
                   </tr>
                 ))}
@@ -1111,6 +1199,248 @@ const LicensesPage = () => {
           {renderPagination()}
         </div>
       </div>
+      ) : tab === 'cut-logs' ? (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <div className="flex flex-col md:flex-row gap-4 max-w-2xl">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search by key, plotter ID, model or QR..."
+                value={searchText}
+                onChange={e => setSearchText(e.target.value)}
+                className="w-full pl-10 pr-10 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all"
+              />
+              {searchText && (
+                <button
+                  type="button"
+                  onClick={() => { setSearchText(''); setSearchQuery(''); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            
+            <div className="relative md:w-48">
+              <select
+                value={selectedCategory}
+                onChange={e => setSelectedCategory(e.target.value)}
+                className="w-full pl-4 pr-10 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all appearance-none"
+              >
+                <option value="">All Categories</option>
+                {categories.map(c => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+              </div>
+            </div>
+
+            <div className="relative md:w-48">
+              <select
+                value={selectedIsPositiveCut}
+                onChange={e => setSelectedIsPositiveCut(e.target.value)}
+                className="w-full pl-4 pr-10 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all appearance-none"
+              >
+                <option value="">All Cuts</option>
+                <option value="true">Successful Cuts</option>
+                <option value="false">Failed Cuts</option>
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase border-b border-slate-100">
+                    <th className="px-6 py-4">Category</th>
+                    <th className="px-6 py-4">Brand</th>
+                    <th className="px-6 py-4">Model</th>
+                    <th className="px-6 py-4">Pattern</th>
+                    <th className="px-6 py-4">Organization</th>
+                    <th className="px-6 py-4">Parent Org</th>
+                    <th className="px-6 py-4">License Key</th>
+                    <th className="px-6 py-4">User</th>
+                    <th className="px-6 py-4">Plotter ID</th>
+                    <th className="px-6 py-4">Date & Time</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4">Cut Review</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-sm">
+                  {cutLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={12} className="px-6 py-12 text-center text-slate-400 italic">
+                        No cut logs found.
+                      </td>
+                    </tr>
+                  ) : (
+                    cutLogs.map((item: any) => (
+                      <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <span className="text-slate-600">{(item.model?.category?.parent?.name && item.model?.category?.parent?.name !== 'Main Model') ? item.model?.category?.parent?.name : (item.model?.category?.name || <span className="text-slate-400 italic text-xs">N/A</span>)}</span>
+                        </td>
+                        <td className="px-6 py-4 font-bold text-slate-900">
+                          {item.model?.brand?.name || item.brandName || <span className="text-slate-400 italic text-xs">N/A</span>}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="font-semibold text-slate-700">{item.model?.name || item.modelName || 'Unknown'}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-slate-600">{item.modelCutFile?.cutPattern?.name || item.patternName || <span className="text-slate-400 italic text-xs">N/A</span>}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-slate-900">{item.organization?.name || 'Unknown'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-slate-600">
+                          {item.organization?.parent?.name || <span className="text-slate-400 italic text-xs">N/A</span>}
+                        </td>
+                        <td className="px-6 py-4 font-mono font-bold text-slate-700">
+                          {item.license?.key || <span className="text-slate-400 italic text-xs">Unlinked</span>}
+                        </td>
+                        <td className="px-6 py-4">
+                          {item.user ? (
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-slate-700">{item.user.email}</span>
+                              {(`${item.user.firstName || ''} ${item.user.lastName || ''}`.trim()) && (
+                                <span className="text-[10px] text-slate-400">{`${item.user.firstName || ''} ${item.user.lastName || ''}`.trim()}</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic">Unknown</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 font-mono font-bold text-slate-900">
+                          {item.plotterId || <span className="text-slate-400 italic text-xs">N/A</span>}
+                        </td>
+                        <td className="px-6 py-4 text-slate-500">
+                          {new Date(item.createdAt).toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 font-bold">
+                          {item.isPositiveCut ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+                              Success
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-100">
+                              Failed
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-slate-600">
+                          {item.reviews || <span className="text-slate-400 italic text-xs">—</span>}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {renderPagination()}
+          </div>
+        </div>
+      ) : tab === 'master-qrs' ? (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <div className="flex flex-col md:flex-row gap-4 max-w-2xl">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search by QR code or product name..."
+                value={searchText}
+                onChange={e => setSearchText(e.target.value)}
+                className="w-full pl-10 pr-10 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all"
+              />
+              {searchText && (
+                <button
+                  type="button"
+                  onClick={() => { setSearchText(''); setSearchQuery(''); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase border-b border-slate-100">
+                    <th className="px-6 py-4">Created Date</th>
+                    <th className="px-6 py-4">Master QR Code</th>
+                    <th className="px-6 py-4">Product Name</th>
+                    <th className="px-6 py-4">Force</th>
+                    <th className="px-6 py-4">Speed</th>
+                    <th className="px-6 py-4">Dealer / Org</th>
+                    <th className="px-6 py-4">Owner / Dist</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4">Creator</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-sm">
+                  {masterQRs.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-6 py-12 text-center text-slate-400 italic">
+                        No Master QRs found.
+                      </td>
+                    </tr>
+                  ) : (
+                    masterQRs.map((item: any) => (
+                      <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4 text-slate-500">
+                          {new Date(item.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 font-mono font-bold text-slate-900">
+                          {item.masterQRCode}
+                        </td>
+                        <td className="px-6 py-4 font-semibold text-slate-700">
+                          {item.masterProduct}
+                        </td>
+                        <td className="px-6 py-4 text-slate-600">
+                          {item.force}
+                        </td>
+                        <td className="px-6 py-4 text-slate-600">
+                          {item.speed}
+                        </td>
+                        <td className="px-6 py-4 text-slate-600">
+                          {item.dealer?.name || <span className="text-slate-400 italic">N/A</span>}
+                        </td>
+                        <td className="px-6 py-4 text-slate-600">
+                          {item.owner?.name || <span className="text-slate-400 italic">N/A</span>}
+                        </td>
+                        <td className="px-6 py-4">
+                          {item.isActive ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+                              Active
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-700 border border-slate-100">
+                              Inactive
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-slate-600">
+                          {item.creator ? `${item.creator.firstName || ''} ${item.creator.lastName || ''}`.trim() || item.creator.email : 'System'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {renderPagination()}
+          </div>
+        </div>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">

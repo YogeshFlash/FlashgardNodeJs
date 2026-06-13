@@ -1,0 +1,34 @@
+      } else if (moduleType === 'mobile-app-cuts') {
+        let offset = 0;
+        const limit = 50000;
+        let hasMore = true;
+        let totalImported = 0;
+        let totalSkipped = 0;
+        const allFailures: any[] = [];
+
+        while (hasMore) {
+          this.logger.log(`Fetching chunk for mobile-app-cuts: OFFSET ${offset} LIMIT ${limit}`);
+          const rows = (await pool.request().query(`SELECT * FROM [${tableMap.file1}] ORDER BY MobileAppCutsID OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`)).recordset;
+          
+          if (rows.length === 0) {
+            hasMore = false;
+            break;
+          }
+          
+          const result = await this.migrateMobileAppCuts(rows, `MSSQL: ${tableMap.file1} (OFFSET ${offset})`);
+          totalImported += result.importedLogs;
+          totalSkipped += result.skippedRows;
+          allFailures.push(...result.failures);
+          
+          offset += limit;
+          
+          // Let garbage collector run between chunks
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+        return { 
+          importedLogs: totalImported, 
+          skippedRows: totalSkipped, 
+          failures: allFailures.slice(0, 1000) 
+        };
+      } else {

@@ -175,14 +175,36 @@ export class CutCreditsService {
     });
   }
 
-  async getMyInventory(orgId: string, isSuperAdmin = false, skip?: number, take?: number, search?: string) {
+  private async getDescendantOrgIds(rootOrgId: string): Promise<string[]> {
+    if (!rootOrgId) return [];
+    const allOrgIds = new Set<string>([rootOrgId]);
+    let currentLevelIds = [rootOrgId];
+    while (currentLevelIds.length > 0) {
+      const children = await this.prisma.organization.findMany({
+        where: { parentId: { in: currentLevelIds } },
+        select: { id: true },
+      });
+      const childIds = children.map(c => c.id);
+      if (childIds.length === 0) break;
+      childIds.forEach(id => allOrgIds.add(id));
+      currentLevelIds = childIds;
+    }
+    return Array.from(allOrgIds);
+  }
+
+  async getMyInventory(orgId: string, isSuperAdmin = false, skip?: number, take?: number, search?: string, planType?: string) {
     const where: any = {};
     if (!isSuperAdmin) {
-      where.ownerId = orgId;
+      const allowedOrgIds = await this.getDescendantOrgIds(orgId);
+      where.ownerId = { in: allowedOrgIds };
     }
 
     if (search) {
       where.owner = { name: { contains: search, mode: 'insensitive' } };
+    }
+
+    if (planType) {
+      where.planType = planType;
     }
 
     if (skip !== undefined || take !== undefined) {
@@ -190,7 +212,9 @@ export class CutCreditsService {
         (this.prisma.cutCredit as any).findMany({
           where,
           include: { 
-            owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } }
+            owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } },
+            tenant: { select: { name: true } },
+            license: { select: { key: true, batch: { select: { licenseType: true } } } }
           },
           orderBy: { createdAt: 'desc' },
           skip: skip ? parseInt(skip as any) : undefined,
@@ -204,7 +228,9 @@ export class CutCreditsService {
     return (this.prisma.cutCredit as any).findMany({
       where,
       include: { 
-        owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } }
+        owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } },
+        tenant: { select: { name: true } },
+        license: { select: { key: true, batch: { select: { licenseType: true } } } }
       },
       orderBy: { createdAt: 'desc' },
     });

@@ -287,7 +287,18 @@ export class LicensesService {
           where,
           include: { 
             batch: true,
-            owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } }
+            owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } },
+            transferItems: {
+              include: {
+                transfer: {
+                  include: {
+                    fromOrg: { select: { name: true } }
+                  }
+                }
+              },
+              orderBy: { transfer: { resolvedAt: 'desc' } },
+              take: 1
+            }
           },
           orderBy: { createdAt: 'desc' },
           skip: skip ? parseInt(skip as any) : undefined,
@@ -305,7 +316,18 @@ export class LicensesService {
       where,
       include: { 
         batch: true,
-        owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } }
+        owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } },
+        transferItems: {
+          include: {
+            transfer: {
+              include: {
+                fromOrg: { select: { name: true } }
+              }
+            }
+          },
+          orderBy: { transfer: { resolvedAt: 'desc' } },
+          take: 1
+        }
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -392,4 +414,46 @@ export class LicensesService {
     
     return { ...updated, key: decryptLicenseKey(updated.key) };
   }
+
+  async getMasterQRs(params: {
+    orgId?: string;
+    isSuperAdmin?: boolean;
+    skip: number;
+    take: number;
+    search?: string;
+  }) {
+    const { orgId, isSuperAdmin, skip, take, search } = params;
+    const where: any = {};
+
+    if (!isSuperAdmin && orgId) {
+      where.dealerId = orgId;
+    } else if (orgId) {
+      where.dealerId = orgId;
+    }
+
+    if (search) {
+      where.OR = [
+        { masterQRCode: { contains: search, mode: 'insensitive' } },
+        { masterProduct: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.dealerMasterQR.findMany({
+        where,
+        include: {
+          dealer: true,
+          owner: true,
+          creator: true
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take
+      }),
+      this.prisma.dealerMasterQR.count({ where })
+    ]);
+
+    return { items, total };
+  }
 }
+

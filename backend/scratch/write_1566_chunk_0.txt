@@ -1,0 +1,3 @@
+  async migrateDealerMasterQRs(fileOrRows: Express.Multer.File | any[], sourceName?: string) {
+    if (!fileOrRows) throw new Error('File or rows are required');
+    const data = Array.isArray(fileOrRows) ? fileOrRows : await this.parseCsvBuffer((fileOrRows as Express.Multer.File).buffer);

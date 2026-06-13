@@ -1,0 +1,3 @@
+    await this.logMigration({
+      module: 'dealer-master-qrs',
+      fileName: sourceName || (!Array.isArray(fileOrRows) ? (fileOrRows as Express.Multer.File).originalname : 'Uploaded Dealer Master QRs File'),

@@ -29,6 +29,11 @@ import { LicensesModule } from './licenses/licenses.module';
 import { CutCreditsModule } from './cut-credits/cut-credits.module';
 import { FilesModule } from './files/files.module';
 import { MigrationModule } from './migration/migration.module';
+import { MachineCutsModule } from './machine-cuts/machine-cuts.module';
+import { ProductTypesModule } from './product-types/product-types.module';
+import { MaterialCategoriesModule } from './material-categories/material-categories.module';
+import { FilmCategoriesModule } from './film-categories/film-categories.module';
+import { MaterialsModule } from './materials/materials.module';
 
 @Module({
   imports: [
@@ -58,6 +63,11 @@ import { MigrationModule } from './migration/migration.module';
     CutCreditsModule,
     FilesModule,
     MigrationModule,
+    MachineCutsModule,
+    ProductTypesModule,
+    MaterialCategoriesModule,
+    FilmCategoriesModule,
+    MaterialsModule,
   ],
   controllers: [AppController],
   providers: [

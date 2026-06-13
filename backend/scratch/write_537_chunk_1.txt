@@ -1,0 +1,4 @@
+  // Ensure Admin-Org link is completely removed since Super Admin is independent
+  await prisma.userOrganization.deleteMany({
+    where: { userId: admin.id }
+  });

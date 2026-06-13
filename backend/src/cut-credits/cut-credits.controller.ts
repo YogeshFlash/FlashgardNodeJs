@@ -42,11 +42,12 @@ export class CutCreditsController {
     @Query('orgId') targetOrgId?: string,
     @Query('skip') skip?: number,
     @Query('take') take?: number,
-    @Query('search') search?: string
+    @Query('search') search?: string,
+    @Query('planType') planType?: string
   ) {
     const orgId = targetOrgId || req.user?.organizationId;
     const isSuperAdminForQuery = req.user?.isSuperAdmin && !targetOrgId;
-    return this.cutCreditsService.getMyInventory(orgId, isSuperAdminForQuery, skip, take, search);
+    return this.cutCreditsService.getMyInventory(orgId, isSuperAdminForQuery, skip, take, search, planType);
   }
 
   @Get('transfers')

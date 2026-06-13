@@ -4,7 +4,7 @@ import {
   Plus, Edit2, Trash2, Loader2, Users, Search, Key, Check, List, X, Shield, RotateCcw, Building, ScrollText,
   ChevronLeft, ChevronRight, ChevronDown
 } from 'lucide-react';
-import { rolesApi, usersApi, permissionsApi, auditLogsApi, orgsApi, organizationTypesApi, productTypesApi, materialCategoriesApi, filmCategoriesApi, materialsApi, materialCutConfigsApi, cutPatternsApi } from '../lib/api';
+import { rolesApi, usersApi, permissionsApi, auditLogsApi, orgsApi, organizationTypesApi, productTypesApi, materialCategoriesApi, filmCategoriesApi, materialsApi } from '../lib/api';
 import { HasPermission, usePermissions } from '../components/HasPermission';
 import { useAuth } from '../contexts/AuthContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -1723,72 +1723,7 @@ const MaterialModal = ({ item, filmCategories, onClose, onSave }: any) => {
   );
 };
 
-const MaterialCutConfigModal = ({ materials, cutPatterns, onClose, onSave }: any) => {
-  const [form, setForm] = useState({ materialId: '', cutTypeId: '' });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (materials.length > 0) setForm(prev => ({ ...prev, materialId: materials[0].id }));
-    if (cutPatterns.length > 0) setForm(prev => ({ ...prev, cutTypeId: cutPatterns[0].id }));
-  }, [materials, cutPatterns]);
-
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.materialId || !form.cutTypeId) {
-      setError('Both Material and Cut Pattern are required');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      await materialCutConfigsApi.create(form);
-      onSave();
-    } catch (err: any) {
-      setError(err.message || 'Failed to save cut configuration');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white">
-          <h2 className="text-lg font-semibold text-slate-800">New Cut Configuration</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
-        </div>
-        <form onSubmit={save} className="p-6 space-y-4">
-          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Material <span className="text-red-500">*</span></label>
-            <select className="input-field" value={form.materialId} onChange={e => setForm({ ...form, materialId: e.target.value })} required>
-              <option value="" disabled>Select Material</option>
-              {materials.map((m: any) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Cut Pattern (Cut Type) <span className="text-red-500">*</span></label>
-            <select className="input-field" value={form.cutTypeId} onChange={e => setForm({ ...form, cutTypeId: e.target.value })} required>
-              <option value="" disabled>Select Cut Pattern</option>
-              {cutPatterns.map((cp: any) => (
-                <option key={cp.id} value={cp.id}>{cp.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
-            <button type="submit" disabled={loading} className="btn-primary flex items-center gap-2">
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />} Map Cut Config
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
+// MaterialCutConfigModal removed
 
 const MaterialsTab = () => {
   const [subTab, setSubTab] = useState('product-types');
@@ -1800,8 +1735,6 @@ const MaterialsTab = () => {
   const [materialCategories, setMaterialCategories] = useState<any[]>([]);
   const [filmCategories, setFilmCategories] = useState<any[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
-  const [cutConfigs, setCutConfigs] = useState<any[]>([]);
-  const [cutPatterns, setCutPatterns] = useState<any[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<any>(null);
@@ -1836,15 +1769,6 @@ const MaterialsTab = () => {
         ]);
         setMaterials(mList);
         setFilmCategories(fcList);
-      } else if (subTab === 'cut-configs') {
-        const [ccList, mList, cpList] = await Promise.all([
-          materialCutConfigsApi.getAll(),
-          materialsApi.getAll(),
-          cutPatternsApi.getAll()
-        ]);
-        setCutConfigs(ccList);
-        setMaterials(mList);
-        setCutPatterns(cpList);
       }
     } catch (e) {
       console.error(e);
@@ -1953,22 +1877,13 @@ const MaterialsTab = () => {
     });
   };
 
-  // Actions for Cut Configs
-  const deleteCutConfig = (item: any) => {
-    setConfirm({
-      isOpen: true,
-      title: 'Unmap Cut Config',
-      message: `Unmap this cut configuration?`,
-      onConfirm: async () => { await materialCutConfigsApi.remove(item.id); loadData(); closeConfirm(); },
-    });
-  };
+  // Actions for Cut Configs removed
 
   const subTabsList = [
     { id: 'product-types', label: 'Product Types' },
     { id: 'material-categories', label: 'Categories' },
     { id: 'film-categories', label: 'Film Categories' },
-    { id: 'materials', label: 'Materials' },
-    { id: 'cut-configs', label: 'Cut Configs' }
+    { id: 'materials', label: 'Materials' }
   ];
 
   return (
@@ -2217,34 +2132,7 @@ const MaterialsTab = () => {
               </>
             )}
 
-            {subTab === 'cut-configs' && (
-              <>
-                <thead className="bg-slate-50 border-b border-slate-100">
-                  <tr>
-                    {['Material Name', 'Cut Pattern / Type Name', 'Actions'].map(h => (
-                      <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {cutConfigs.length === 0 ? (
-                    <tr><td colSpan={3} className="text-center py-8 text-slate-400">No cut configurations mapped</td></tr>
-                  ) : cutConfigs.map(t => (
-                    <tr key={t.id} className="hover:bg-slate-50/70 group transition-colors">
-                      <td className="px-5 py-4 font-semibold text-slate-800">{t.material?.name || '—'}</td>
-                      <td className="px-5 py-4 text-slate-600 font-medium">
-                        <span className="px-2.5 py-1 rounded bg-[var(--color-gold-muted)] text-[var(--color-accent)] text-xs font-mono">{t.cutPattern?.name || '—'}</span>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => deleteCutConfig(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete mapping"><Trash2 className="w-4 h-4" /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </>
-            )}
+            {/* Cut Configs Table Removed */}
           </table>
         </div>
       )}
@@ -2283,14 +2171,7 @@ const MaterialsTab = () => {
               onSave={() => { setModal(null); loadData(); }}
             />
           )}
-          {subTab === 'cut-configs' && (
-            <MaterialCutConfigModal
-              materials={materials.filter(m => m.isActive && !m.isDeleted)}
-              cutPatterns={cutPatterns}
-              onClose={() => setModal(null)}
-              onSave={() => { setModal(null); loadData(); }}
-            />
-          )}
+          {/* MaterialCutConfigModal trigger removed */}
         </>
       )}
 

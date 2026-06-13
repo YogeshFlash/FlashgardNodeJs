@@ -1,0 +1,4 @@
+      } else if (moduleType === 'dealer-master-qrs') {
+        const rows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
+        return await this.migrateDealerMasterQRs(rows, "MSSQL: " + tableMap.file1);
+      } else if (moduleType === 'mobile-app-cuts') {

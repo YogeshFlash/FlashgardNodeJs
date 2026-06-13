@@ -1,0 +1,2 @@
+              machineId: mobileRow.MachineID ? String(mobileRow.MachineID).replace(/\0/g, '') : null,
+              macAddress: mobileRow.BluetoothMac ? String(mobileRow.BluetoothMac).replace(/\0/g, '') : null,

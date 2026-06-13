@@ -1,0 +1,15 @@
+        isSuperAdmin: true,
+        isActive: true,
+        organizationId: null,
+        roleId: sysAdminRole.id
+      },
+    });
+  } else {
+    admin = await prisma.user.update({
+      where: { email },
+      data: {
+        organizationId: null,
+        roleId: sysAdminRole.id,
+      }
+    });
+  }

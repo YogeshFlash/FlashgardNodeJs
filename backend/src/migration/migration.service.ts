@@ -2874,7 +2874,6 @@ export class MigrationService {
     }
 
     if (module === 'materials' || module === 'all') {
-      await (this.prisma as any).materialCutConfig.deleteMany({});
       await (this.prisma as any).material.deleteMany({});
       await (this.prisma as any).filmCategory.deleteMany({});
       await (this.prisma as any).materialCategory.deleteMany({});
@@ -3053,14 +3052,12 @@ export class MigrationService {
         const categories = (await pool.request().query("SELECT * FROM [" + tableMap.file2 + "]")).recordset;
         const filmCategories = (await pool.request().query("SELECT * FROM [" + tableMap.file3 + "]")).recordset;
         const displayMaster = (await pool.request().query("SELECT * FROM [" + tableMap.file4 + "]")).recordset;
-        const cutConfigs = (await pool.request().query("SELECT * FROM [" + tableMap.file5 + "]")).recordset;
         return await this.migrateMaterialsSystem(
           productTypes,
           categories, // catsData is double-used as products since categories and products are both in MaterialMaster in MSSQL
           filmCategories,
           categories,
           displayMaster,
-          cutConfigs,
           "MSSQL Connection"
         );
       } else {
@@ -3272,7 +3269,6 @@ export class MigrationService {
     filmCategoriesFile: Express.Multer.File | any[],
     productsFile: Express.Multer.File | any[],
     displayMasterFile: Express.Multer.File | any[],
-    cutConfigsFile: Express.Multer.File | any[],
     sourceName?: string
   ) {
     const pTypesData = Array.isArray(productTypesFile) ? productTypesFile : await this.parseCsvBuffer((productTypesFile as Express.Multer.File).buffer);
@@ -3280,7 +3276,6 @@ export class MigrationService {
     const filmCatsData = Array.isArray(filmCategoriesFile) ? filmCategoriesFile : await this.parseCsvBuffer((filmCategoriesFile as Express.Multer.File).buffer);
     const prodsData = Array.isArray(productsFile) ? productsFile : await this.parseCsvBuffer((productsFile as Express.Multer.File).buffer);
     const displaysData = Array.isArray(displayMasterFile) ? displayMasterFile : await this.parseCsvBuffer((displayMasterFile as Express.Multer.File).buffer);
-    const cutsData = Array.isArray(cutConfigsFile) ? cutConfigsFile : await this.parseCsvBuffer((cutConfigsFile as Express.Multer.File).buffer);
 
     let imported = 0;
     let updated = 0;
@@ -3450,39 +3445,6 @@ export class MigrationService {
       }
     }
 
-    // 5. Migrate Material Cut Configs (MaterialCutTypeConfig)
-    // Maps MaterialID -> CutTypeID (CutPattern legacyId)
-    const cutPatterns = await (this.prisma as any).cutPattern.findMany({ select: { id: true, legacyId: true } });
-    const cutPatternMap = new Map<number, string>();
-    cutPatterns.forEach((cp: any) => {
-      if (cp.legacyId) cutPatternMap.set(cp.legacyId, cp.id);
-    });
-
-    for (const row of cutsData) {
-      try {
-        const matLegacyId = parseInt(row.MaterialID);
-        const cutLegacyId = parseInt(row.CutTypeID || row.CutPatternID);
-        if (isNaN(matLegacyId) || isNaN(cutLegacyId)) throw new Error('Invalid MaterialID or CutTypeID');
-
-        const materialId = materialMap.get(matLegacyId);
-        const cutTypeId = cutPatternMap.get(cutLegacyId);
-        if (!materialId) throw new Error(`Material with legacy ID ${matLegacyId} not imported`);
-        if (!cutTypeId) throw new Error(`CutPattern with legacy ID ${cutLegacyId} not found`);
-
-        await (this.prisma as any).materialCutConfig.upsert({
-          where: {
-            materialId_cutTypeId: { materialId, cutTypeId }
-          },
-          update: {},
-          create: { materialId, cutTypeId }
-        });
-        imported++;
-      } catch (err: any) {
-        skipped++;
-        failures.push({ row, error: `MaterialCutConfig Error: ${err.message}` });
-      }
-    }
-
     const result = {
       imported,
       updated,
@@ -3494,7 +3456,7 @@ export class MigrationService {
       module: 'materials',
       fileName: sourceName || 'Uploaded Materials System Files',
       status: skipped === 0 ? 'SUCCESS' : (imported > 0 ? 'PARTIAL' : 'FAILED'),
-      processed: pTypesData.length + catsData.length + filmCatsData.length + prodsData.length + displaysData.length + cutsData.length,
+      processed: pTypesData.length + catsData.length + filmCatsData.length + prodsData.length + displaysData.length,
       created: imported,
       updated,
       failed: skipped,

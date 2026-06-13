@@ -354,7 +354,6 @@ model CutPattern {
   isDeleted      Boolean        @default(false) @map("is_deleted")
   sortOrder      Int            @default(0) @map("sort_order")
   modelFiles     ModelCutFile[]
-  materialCutConfigs MaterialCutConfig[]
 
   @@map("cut_patterns")
 }
@@ -1071,21 +1070,11 @@ model Material {
   updatedAt      DateTime             @default(now()) @updatedAt @map("updated_at")
   deletedAt      DateTime?            @map("deleted_at")
   filmCategory   FilmCategory         @relation(fields: [filmCategoryId], references: [id], onDelete: Cascade)
-  cutConfigs     MaterialCutConfig[]
 
   @@map("materials")
 }
 
-model MaterialCutConfig {
-  id           String     @id @default(uuid()) @db.Uuid
-  materialId   String     @map("material_id") @db.Uuid
-  cutTypeId    String     @map("cut_type_id") @db.Uuid
-  material     Material   @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  cutPattern   CutPattern @relation(fields: [cutTypeId], references: [id], onDelete: Cascade)
 
-  @@unique([materialId, cutTypeId])
-  @@map("material_cut_configs")
-}
 
 
 
