@@ -1635,7 +1635,9 @@ export class MigrationService {
           tenantId: initialOwnerId,
           legacyId: licenseId,
           activatedAt: batchCreatedDate,
-          startDate: batchCreatedDate
+          startDate: batchCreatedDate,
+          licenseName: lic.LicenseName || lic.Name || null,
+          referenceName: lic.ReferenceName || null
         };
 
         if (!existingLicense) {
@@ -1974,7 +1976,7 @@ export class MigrationService {
               });
             }
 
-            const licenseData = {
+            const licenseData: any = {
               key: encryptedKey,
               batchId: licenseBatch.id,
               status: 'ACTIVE' as const,
@@ -1985,6 +1987,24 @@ export class MigrationService {
               activatedAt: createdDate,
               startDate: createdDate
             };
+
+            const incomingName = mobileRow.LicenseName || mobileRow.Name;
+            if (incomingName) {
+              licenseData.licenseName = incomingName;
+            } else if (existingLicense?.licenseName) {
+              licenseData.licenseName = existingLicense.licenseName;
+            } else {
+              licenseData.licenseName = null;
+            }
+
+            const incomingRefName = mobileRow.ReferenceName;
+            if (incomingRefName) {
+              licenseData.referenceName = incomingRefName;
+            } else if (existingLicense?.referenceName) {
+              licenseData.referenceName = existingLicense.referenceName;
+            } else {
+              licenseData.referenceName = null;
+            }
 
             if (!existingLicense) {
               existingLicense = await (this.prisma as any).orgLicense.create({

@@ -605,6 +605,8 @@ model OrgLicense {
   startDate      DateTime?               @map("start_date")
   tenantId       String?                 @map("tenant_id") @db.Uuid
   legacyId       String?                 @map("legacy_id")
+  licenseName    String?                 @map("license_name") @db.VarChar(255)
+  referenceName  String?                 @map("reference_name") @db.VarChar(255)
   credits        CutCredit[]             @relation("LicenseCredits")
   transferItems  LicensingTransferItem[]
   batch          OrgLicenseBatch         @relation(fields: [batchId], references: [id])

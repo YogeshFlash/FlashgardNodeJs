@@ -528,6 +528,11 @@ export class MachineCutsService {
             include: {
               batch: true
             }
+          },
+          modelCutFile: {
+            include: {
+              cutPattern: true
+            }
           }
         },
         orderBy: { createdAt: 'desc' },
@@ -539,6 +544,7 @@ export class MachineCutsService {
 
     const qrCodeStrings = Array.from(new Set(items.map(item => item.qrCode).filter(Boolean))) as string[];
     const qrCodeMap = new Map<string, any>();
+    const materialMap = new Map<string, any>();
 
     if (qrCodeStrings.length > 0) {
       const qrCodes = await this.prisma.qRCode.findMany({
@@ -556,6 +562,21 @@ export class MachineCutsService {
       for (const qr of qrCodes) {
         if (qr.sequenceNumber) {
           qrCodeMap.set(qr.sequenceNumber, qr);
+        }
+      }
+
+      const filmTypeNames = Array.from(new Set(qrCodes.map(qr => qr.filmType?.name).filter(Boolean))) as string[];
+      if (filmTypeNames.length > 0) {
+        const materials = await this.prisma.material.findMany({
+          where: {
+            name: { in: filmTypeNames }
+          },
+          include: {
+            filmCategory: true
+          }
+        });
+        for (const m of materials) {
+          materialMap.set(m.name.toLowerCase(), m);
         }
       }
     }
@@ -585,12 +606,45 @@ export class MachineCutsService {
       let productName = 'N/A';
 
       if (qrDetails?.filmType) {
-        if (qrDetails.filmType.parent) {
-          filmCategory = qrDetails.filmType.parent.name;
-          productName = qrDetails.filmType.name;
+        const matchedMaterial = materialMap.get(qrDetails.filmType.name.toLowerCase());
+        if (matchedMaterial) {
+          productName = matchedMaterial.name;
+          filmCategory = matchedMaterial.filmCategory?.name || 'N/A';
         } else {
-          filmCategory = qrDetails.filmType.name;
-          productName = qrDetails.filmType.name;
+          if (qrDetails.filmType.parent) {
+            filmCategory = qrDetails.filmType.parent.name;
+            productName = qrDetails.filmType.name;
+          } else {
+            filmCategory = qrDetails.filmType.name;
+            productName = qrDetails.filmType.name;
+          }
+        }
+      }
+
+      if (filmCategory === 'N/A' || productName === 'N/A') {
+        const patternLower = (item.modelCutFile?.cutPattern?.name || item.patternName || item.instruction || '').toLowerCase();
+        
+        // Determine if it matches Clear Film criteria
+        const isClearFilm = (patternLower.includes('front') || 
+                             patternLower.includes('screen') || 
+                             patternLower.includes('protector') || 
+                             patternLower.includes('cf') || 
+                             patternLower.includes('clear') ||
+                             patternLower.includes('igold') ||
+                             patternLower.includes('titan') ||
+                             patternLower.includes('shield')) && 
+                            // Make sure full/wrap back protector/skins don't get matched here
+                            !patternLower.includes('back skin full') && 
+                            !patternLower.includes('back protector full') &&
+                            !patternLower.includes('full wrap') &&
+                            !patternLower.includes('back protector with corner');
+
+        if (isClearFilm) {
+          filmCategory = 'Clear Film';
+          productName = 'Clear Film';
+        } else {
+          filmCategory = 'Canvas 3D';
+          productName = 'Canvas Alpha';
         }
       }
 
@@ -601,11 +655,11 @@ export class MachineCutsService {
         model: item.model?.name || 'N/A',
         dealer: item.organization?.name || 'N/A',
         licenseKey: decryptedKey,
-        licenseRefName: item.license?.machineId || item.license?.macAddress || 'N/A',
+        licenseRefName: item.license?.referenceName || item.license?.licenseName || item.license?.machineId || item.license?.macAddress || item.license?.deviceHash || 'N/A',
         categoryName: item.model?.category?.name || 'N/A',
         filmCategory,
         productName,
-        cutType: item.instruction || 'N/A',
+        cutType: item.modelCutFile?.cutPattern?.name || item.patternName || item.instruction || 'N/A',
         plotter: item.plotterId ? (plotterMap.get(item.plotterId.toLowerCase()) || item.plotterId) : 'N/A',
         updatedDate: item.createdAt,
         parentDealer: item.organization?.parent?.name || 'N/A',
