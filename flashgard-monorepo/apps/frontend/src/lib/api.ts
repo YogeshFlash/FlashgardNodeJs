@@ -600,11 +600,13 @@ export const filmCategoriesApi = {
 };
 
 export const materialsApi = {
-  getAll: (search?: string, includeDeleted?: boolean) => {
+  getAll: (search?: string, includeDeleted?: boolean, skip?: number, take?: number) => {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     if (includeDeleted) params.append('includeDeleted', 'true');
-    return request<any[]>(`/materials${params.toString() ? `?${params.toString()}` : ''}`);
+    if (skip !== undefined) params.append('skip', skip.toString());
+    if (take !== undefined) params.append('take', take.toString());
+    return request<any>(`/materials${params.toString() ? `?${params.toString()}` : ''}`);
   },
   getOne: (id: string) => request<any>(`/materials/${id}`),
   create: (data: any) => request<any>('/materials', { method: 'POST', body: JSON.stringify(data) }),

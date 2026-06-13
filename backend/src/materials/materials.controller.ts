@@ -15,9 +15,13 @@ export class MaterialsController {
   @Get()
   findAll(
     @Query('search') search?: string,
-    @Query('includeDeleted') includeDeleted?: string
+    @Query('includeDeleted') includeDeleted?: string,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string
   ) {
-    return this.materialsService.findAll(search, includeDeleted === 'true');
+    const skipNum = skip ? parseInt(skip, 10) : undefined;
+    const takeNum = take ? parseInt(take, 10) : undefined;
+    return this.materialsService.findAll(search, includeDeleted === 'true', skipNum, takeNum);
   }
 
   @Get(':id')

@@ -26,19 +26,65 @@ export class MaterialsService {
         isActive: data.isActive ?? true,
         isDeleted: data.isDeleted ?? false,
       },
-      include: { filmCategory: true }
+      include: {
+        filmCategory: {
+          include: {
+            materialCategory: {
+              include: {
+                productType: true
+              }
+            }
+          }
+        }
+      }
     });
   }
 
-  async findAll(search?: string, includeDeleted = false) {
+  async findAll(search?: string, includeDeleted = false, skip?: number, take?: number) {
+    const where: any = {
+      AND: [
+        search ? { name: { contains: search, mode: 'insensitive' } } : {},
+        !includeDeleted ? { isDeleted: false } : {}
+      ]
+    };
+
+    if (skip !== undefined && take !== undefined) {
+      const [items, total] = await Promise.all([
+        this.prisma.material.findMany({
+          where,
+          include: {
+            filmCategory: {
+              include: {
+                materialCategory: {
+                  include: {
+                    productType: true
+                  }
+                }
+              }
+            }
+          },
+          orderBy: { name: 'asc' },
+          skip,
+          take
+        }),
+        this.prisma.material.count({ where })
+      ]);
+      return { items, total };
+    }
+
     return this.prisma.material.findMany({
-      where: {
-        AND: [
-          search ? { name: { contains: search, mode: 'insensitive' } } : {},
-          !includeDeleted ? { isDeleted: false } : {}
-        ]
+      where,
+      include: {
+        filmCategory: {
+          include: {
+            materialCategory: {
+              include: {
+                productType: true
+              }
+            }
+          }
+        }
       },
-      include: { filmCategory: true },
       orderBy: { name: 'asc' }
     });
   }
@@ -46,7 +92,17 @@ export class MaterialsService {
   async findOne(id: string) {
     const item = await this.prisma.material.findUnique({ 
       where: { id },
-      include: { filmCategory: true }
+      include: {
+        filmCategory: {
+          include: {
+            materialCategory: {
+              include: {
+                productType: true
+              }
+            }
+          }
+        }
+      }
     });
     if (!item) throw new NotFoundException(`Material with ID ${id} not found`);
     return item;
@@ -57,7 +113,17 @@ export class MaterialsService {
     return this.prisma.material.update({
       where: { id },
       data,
-      include: { filmCategory: true }
+      include: {
+        filmCategory: {
+          include: {
+            materialCategory: {
+              include: {
+                productType: true
+              }
+            }
+          }
+        }
+      }
     });
   }
 

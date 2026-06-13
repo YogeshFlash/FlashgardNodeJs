@@ -1619,16 +1619,57 @@ const FilmCategoryModal = ({ item, materialCategories, onClose, onSave }: any) =
   );
 };
 
-const MaterialModal = ({ item, filmCategories, onClose, onSave }: any) => {
+const MaterialModal = ({ item, productTypes, materialCategories, filmCategories, onClose, onSave }: any) => {
   const [form, setForm] = useState(item || { name: '', filmCategoryId: '', thickness: '', layers: 1, minSpeed: '', minForce: '', isActive: true });
+  
+  const initialFilmCategoryId = item?.filmCategoryId || '';
+  const initialMaterialCategoryId = item?.filmCategory?.materialCategoryId || '';
+  const initialProductTypeId = item?.filmCategory?.materialCategory?.productTypeId || '';
+
+  const [selectedProductTypeId, setSelectedProductTypeId] = useState(initialProductTypeId);
+  const [selectedMaterialCategoryId, setSelectedMaterialCategoryId] = useState(initialMaterialCategoryId);
+  const [selectedFilmCategoryId, setSelectedFilmCategoryId] = useState(initialFilmCategoryId);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Filter categories by selected product type
+  const filteredCategories = materialCategories.filter((mc: any) => mc.productTypeId === selectedProductTypeId);
+  // Filter film categories by selected category
+  const filteredFilmCategories = filmCategories.filter((fc: any) => fc.materialCategoryId === selectedMaterialCategoryId);
+
+  // Cascading selections
   useEffect(() => {
-    if (!item && filmCategories.length > 0) {
-      setForm((prev: any) => ({ ...prev, filmCategoryId: filmCategories[0].id }));
+    // If we have product types, pre-select the first one if none selected
+    if (!selectedProductTypeId && productTypes.length > 0) {
+      setSelectedProductTypeId(productTypes[0].id);
     }
-  }, [item, filmCategories]);
+  }, [productTypes, selectedProductTypeId]);
+
+  useEffect(() => {
+    if (selectedProductTypeId) {
+      const match = filteredCategories.find((c: any) => c.id === selectedMaterialCategoryId);
+      if (!match) {
+        setSelectedMaterialCategoryId(filteredCategories[0]?.id || '');
+      }
+    }
+  }, [selectedProductTypeId, filteredCategories, selectedMaterialCategoryId]);
+
+  useEffect(() => {
+    if (selectedMaterialCategoryId) {
+      const match = filteredFilmCategories.find((fc: any) => fc.id === selectedFilmCategoryId);
+      if (!match) {
+        setSelectedFilmCategoryId(filteredFilmCategories[0]?.id || '');
+      }
+    } else {
+      setSelectedFilmCategoryId('');
+    }
+  }, [selectedMaterialCategoryId, filteredFilmCategories, selectedFilmCategoryId]);
+
+  // Sync filmCategoryId into form state when selectedFilmCategoryId changes
+  useEffect(() => {
+    setForm((prev: any) => ({ ...prev, filmCategoryId: selectedFilmCategoryId }));
+  }, [selectedFilmCategoryId]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1671,15 +1712,35 @@ const MaterialModal = ({ item, filmCategories, onClose, onSave }: any) => {
         </div>
         <form onSubmit={save} className="p-6 space-y-4">
           {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+          
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Product Type <span className="text-red-500">*</span></label>
+            <select className="input-field" value={selectedProductTypeId} onChange={e => setSelectedProductTypeId(e.target.value)} required>
+              <option value="" disabled>Select Product Type</option>
+              {productTypes.map((pt: any) => (
+                <option key={pt.id} value={pt.id}>{pt.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Category <span className="text-red-500">*</span></label>
+            <select className="input-field" value={selectedMaterialCategoryId} onChange={e => setSelectedMaterialCategoryId(e.target.value)} required>
+              <option value="" disabled>Select Category</option>
+              {filteredCategories.map((mc: any) => (
+                <option key={mc.id} value={mc.id}>{mc.name}</option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1">Film Category <span className="text-red-500">*</span></label>
-            <select className="input-field" value={form.filmCategoryId} onChange={e => setForm({ ...form, filmCategoryId: e.target.value })} required>
+            <select className="input-field" value={selectedFilmCategoryId} onChange={e => setSelectedFilmCategoryId(e.target.value)} required>
               <option value="" disabled>Select Film Category</option>
-              {filmCategories.map((fc: any) => (
+              {filteredFilmCategories.map((fc: any) => (
                 <option key={fc.id} value={fc.id}>{fc.name}</option>
               ))}
             </select>
           </div>
+
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1">Material Name <span className="text-red-500">*</span></label>
             <input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Matte HD Skin" required />
@@ -1736,6 +1797,11 @@ const MaterialsTab = () => {
   const [filmCategories, setFilmCategories] = useState<any[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
   
+  // Pagination state for materials sub-tab
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalMaterials, setTotalMaterials] = useState(0);
+  const itemsPerPage = 50;
+
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<any>(null);
   const { user } = useAuth();
@@ -1763,11 +1829,22 @@ const MaterialsTab = () => {
         setFilmCategories(fcList);
         setMaterialCategories(mcList);
       } else if (subTab === 'materials') {
-        const [mList, fcList] = await Promise.all([
-          materialsApi.getAll(search || undefined, includeDeleted),
+        const skip = (currentPage - 1) * itemsPerPage;
+        const [res, ptList, mcList, fcList] = await Promise.all([
+          materialsApi.getAll(search || undefined, includeDeleted, skip, itemsPerPage),
+          productTypesApi.getAll(),
+          materialCategoriesApi.getAll(),
           filmCategoriesApi.getAll()
         ]);
-        setMaterials(mList);
+        if (res && typeof res === 'object' && 'items' in res) {
+          setMaterials(res.items);
+          setTotalMaterials(res.total);
+        } else {
+          setMaterials(Array.isArray(res) ? res : []);
+          setTotalMaterials(Array.isArray(res) ? res.length : 0);
+        }
+        setProductTypes(ptList);
+        setMaterialCategories(mcList);
         setFilmCategories(fcList);
       }
     } catch (e) {
@@ -1779,7 +1856,7 @@ const MaterialsTab = () => {
 
   useEffect(() => {
     loadData();
-  }, [subTab, search, includeDeleted]);
+  }, [subTab, search, includeDeleted, currentPage]);
 
   // Actions for ProductTypes
   const deleteProductType = (item: any) => {
@@ -1893,7 +1970,7 @@ const MaterialsTab = () => {
         {subTabsList.map(t => (
           <button
             key={t.id}
-            onClick={() => { setSubTab(t.id); setSearch(''); }}
+            onClick={() => { setSubTab(t.id); setSearch(''); setCurrentPage(1); }}
             className={`flex-1 py-2 text-xs font-semibold rounded-md transition-all ${
               subTab === t.id
                 ? 'bg-[var(--color-accent)] text-white shadow-sm'
@@ -1929,7 +2006,7 @@ const MaterialsTab = () => {
               className="input-field pl-9 py-1.5 text-sm"
               placeholder="Search..."
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
             />
           </div>
           {subTab !== 'film-categories' && (
@@ -2100,7 +2177,14 @@ const MaterialsTab = () => {
                         <p className="text-[10px] text-slate-400 font-mono">Legacy ID: {t.legacyId}</p>
                       </td>
                       <td className="px-5 py-4 text-slate-600">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-medium">{t.filmCategory?.name || '—'}</span>
+                        <div className="space-y-0.5">
+                          <p className="font-semibold text-xs text-slate-700">{t.filmCategory?.name || '—'}</p>
+                          {t.filmCategory?.materialCategory && (
+                            <p className="text-[10px] text-slate-400">
+                              {t.filmCategory.materialCategory.productType?.name || '—'} / {t.filmCategory.materialCategory.name || '—'}
+                            </p>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-4 text-slate-600 text-xs font-mono">{t.thickness ? `${t.thickness}mm` : '—'}</td>
                       <td className="px-5 py-4 text-slate-600 text-xs">{t.layers}</td>
@@ -2134,6 +2218,29 @@ const MaterialsTab = () => {
 
             {/* Cut Configs Table Removed */}
           </table>
+          {subTab === 'materials' && totalMaterials > itemsPerPage && (
+            <div className="px-6 py-4 flex items-center justify-between border-t border-slate-100 bg-white">
+              <p className="text-[10px] font-bold text-slate-400 uppercase">
+                Page {currentPage} of {Math.ceil(totalMaterials / itemsPerPage)}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all text-slate-600"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(Math.ceil(totalMaterials / itemsPerPage), p + 1))}
+                  disabled={currentPage * itemsPerPage >= totalMaterials}
+                  className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all text-slate-600"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2166,7 +2273,9 @@ const MaterialsTab = () => {
           {subTab === 'materials' && (
             <MaterialModal
               item={modal === 'new' ? null : modal}
-              filmCategories={filmCategories.filter(f => f.isActive)}
+              productTypes={productTypes.filter(p => p.isActive && !p.isDeleted)}
+              materialCategories={materialCategories.filter(m => m.isActive && !m.isDeleted)}
+              filmCategories={filmCategories}
               onClose={() => setModal(null)}
               onSave={() => { setModal(null); loadData(); }}
             />
