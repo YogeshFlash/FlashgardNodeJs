@@ -556,3 +556,71 @@ export const migrationApi = {
 export const dashboardApi = {
   getStats: () => request<any>('/dashboard/stats'),
 };
+
+// ─── Materials Management Relational Schema CRUD ───
+export const productTypesApi = {
+  getAll: (search?: string, includeDeleted?: boolean) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (includeDeleted) params.append('includeDeleted', 'true');
+    return request<any[]>(`/product-types${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getOne: (id: string) => request<any>(`/product-types/${id}`),
+  create: (data: any) => request<any>('/product-types', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => request<any>(`/product-types/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/product-types/${id}`, { method: 'DELETE' }),
+  restore: (id: string) => request<any>(`/product-types/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) => request<void>(`/product-types/${id}/purge`, { method: 'DELETE' }),
+};
+
+export const materialCategoriesApi = {
+  getAll: (search?: string, includeDeleted?: boolean) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (includeDeleted) params.append('includeDeleted', 'true');
+    return request<any[]>(`/material-categories${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getOne: (id: string) => request<any>(`/material-categories/${id}`),
+  create: (data: any) => request<any>('/material-categories', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => request<any>(`/material-categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/material-categories/${id}`, { method: 'DELETE' }),
+  restore: (id: string) => request<any>(`/material-categories/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) => request<void>(`/material-categories/${id}/purge`, { method: 'DELETE' }),
+};
+
+export const filmCategoriesApi = {
+  getAll: (search?: string) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    return request<any[]>(`/film-categories${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getOne: (id: string) => request<any>(`/film-categories/${id}`),
+  create: (data: any) => request<any>('/film-categories', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => request<any>(`/film-categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/film-categories/${id}`, { method: 'DELETE' }),
+  purge: (id: string) => request<void>(`/film-categories/${id}/purge`, { method: 'DELETE' }),
+};
+
+export const materialsApi = {
+  getAll: (search?: string, includeDeleted?: boolean) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (includeDeleted) params.append('includeDeleted', 'true');
+    return request<any[]>(`/materials${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getOne: (id: string) => request<any>(`/materials/${id}`),
+  create: (data: any) => request<any>('/materials', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => request<any>(`/materials/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/materials/${id}`, { method: 'DELETE' }),
+  restore: (id: string) => request<any>(`/materials/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) => request<void>(`/materials/${id}/purge`, { method: 'DELETE' }),
+};
+
+export const materialCutConfigsApi = {
+  getAll: () => request<any[]>('/material-cut-configs'),
+  getOne: (id: string) => request<any>(`/material-cut-configs/${id}`),
+  create: (data: any) => request<any>('/material-cut-configs', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => request<any>(`/material-cut-configs/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/material-cut-configs/${id}`, { method: 'DELETE' }),
+};
+

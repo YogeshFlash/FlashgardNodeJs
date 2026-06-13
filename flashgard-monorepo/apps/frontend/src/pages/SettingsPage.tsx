@@ -4,7 +4,7 @@ import {
   Plus, Edit2, Trash2, Loader2, Users, Search, Key, Check, List, X, Shield, RotateCcw, Building, ScrollText,
   ChevronLeft, ChevronRight, ChevronDown
 } from 'lucide-react';
-import { rolesApi, usersApi, permissionsApi, auditLogsApi, orgsApi, organizationTypesApi, filmTypesApi } from '../lib/api';
+import { rolesApi, usersApi, permissionsApi, auditLogsApi, orgsApi, organizationTypesApi, productTypesApi, materialCategoriesApi, filmCategoriesApi, materialsApi, materialCutConfigsApi, cutPatternsApi } from '../lib/api';
 import { HasPermission, usePermissions } from '../components/HasPermission';
 import { useAuth } from '../contexts/AuthContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -224,7 +224,7 @@ const RoleModal = ({ role, onClose, onSave }: any) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-lg font-semibold">{role ? 'Edit Role' : 'New System Role'}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
@@ -1405,46 +1405,261 @@ const OrganizationTypesTab = () => {
   );
 };
 
-// ─── Materials (Film Types) Tab ───────────────────
-const FilmTypeModal = ({ item, onClose, onSave }: any) => {
-  const [form, setForm] = useState({ 
-    name: '', 
-    description: '', 
-    parentId: '', 
-    isActive: true, 
-    thickness: '', 
-    layers: 1, 
-    minForce: '', 
-    minSpeed: '', 
-    ...(item || {}) 
-  });
-  const [allTypes, setAllTypes] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    filmTypesApi.getAll(undefined, false).then((d: any) => setAllTypes(Array.isArray(d) ? d.filter((t: any) => t.id !== item?.id) : [])).catch(() => setAllTypes([]));
-  }, [item?.id]);
+// ─── Materials Management Sub-Tabs & Relational CRUD ─────────────────
+
+const ProductTypeModal = ({ item, onClose, onSave }: any) => {
+  const [form, setForm] = useState(item || { name: '', slug: '', isActive: true });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const save = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true); setError(null);
+    e.preventDefault();
+    setLoading(true);
+    setError('');
     try {
-      const payload = { 
-        name: form.name, 
-        description: form.description, 
-        parentId: form.parentId || null, 
-        isActive: form.isActive,
-        thickness: form.thickness ? parseFloat(form.thickness) : null,
-        layers: parseInt(String(form.layers)) || 1,
-        minForce: form.minForce ? parseFloat(form.minForce) : null,
-        minSpeed: form.minSpeed ? parseFloat(form.minSpeed) : null
-      };
-      if (item?.id) await filmTypesApi.update(item.id, payload);
-      else await filmTypesApi.create(payload);
+      if (item?.id) {
+        await productTypesApi.update(item.id, form);
+      } else {
+        await productTypesApi.create(form);
+      }
       onSave();
-    } catch (err: any) { 
-      setError(err?.response?.data?.message || err.message || 'Failed to save material');
-    } finally { setLoading(false); }
+    } catch (err: any) {
+      setError(err.message || 'Failed to save product type');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white">
+          <h2 className="text-lg font-semibold text-slate-800">{item ? 'Edit Product Type' : 'New Product Type'}</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
+        </div>
+        <form onSubmit={save} className="p-6 space-y-4">
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Name <span className="text-red-500">*</span></label>
+            <input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Screen Protector" required />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Slug</label>
+            <input className="input-field" value={form.slug} onChange={e => setForm({ ...form, slug: e.target.value })} placeholder="e.g. screen-protector (auto-generated if empty)" />
+          </div>
+          <div className="flex items-center gap-3 pt-1">
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" checked={form.isActive} onChange={e => setForm({ ...form, isActive: e.target.checked })} />
+              <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-accent)]"></div>
+            </label>
+            <span className="text-sm text-slate-700">Active</span>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+            <button type="submit" disabled={loading} className="btn-primary flex items-center gap-2">
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />} {item ? 'Save Changes' : 'Create Product Type'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const MaterialCategoryModal = ({ item, productTypes, onClose, onSave }: any) => {
+  const [form, setForm] = useState(item || { name: '', description: '', productTypeId: '', isActive: true });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!item && productTypes.length > 0) {
+      setForm((prev: any) => ({ ...prev, productTypeId: productTypes[0].id }));
+    }
+  }, [item, productTypes]);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.productTypeId) {
+      setError('Product Type is required');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      if (item?.id) {
+        await materialCategoriesApi.update(item.id, form);
+      } else {
+        await materialCategoriesApi.create(form);
+      }
+      onSave();
+    } catch (err: any) {
+      setError(err.message || 'Failed to save category');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white">
+          <h2 className="text-lg font-semibold text-slate-800">{item ? 'Edit Category' : 'New Category'}</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
+        </div>
+        <form onSubmit={save} className="p-6 space-y-4">
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Product Type <span className="text-red-500">*</span></label>
+            <select className="input-field" value={form.productTypeId} onChange={e => setForm({ ...form, productTypeId: e.target.value })} required>
+              <option value="" disabled>Select Product Type</option>
+              {productTypes.map((pt: any) => (
+                <option key={pt.id} value={pt.id}>{pt.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Category Name <span className="text-red-500">*</span></label>
+            <input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. TPU Film" required />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Description</label>
+            <textarea className="input-field" value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Optional description..." />
+          </div>
+          <div className="flex items-center gap-3 pt-1">
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" checked={form.isActive} onChange={e => setForm({ ...form, isActive: e.target.checked })} />
+              <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-accent)]"></div>
+            </label>
+            <span className="text-sm text-slate-700">Active</span>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+            <button type="submit" disabled={loading} className="btn-primary flex items-center gap-2">
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />} {item ? 'Save Changes' : 'Create Category'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const FilmCategoryModal = ({ item, materialCategories, onClose, onSave }: any) => {
+  const [form, setForm] = useState(item || { name: '', materialCategoryId: '', isActive: true });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!item && materialCategories.length > 0) {
+      setForm((prev: any) => ({ ...prev, materialCategoryId: materialCategories[0].id }));
+    }
+  }, [item, materialCategories]);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.materialCategoryId) {
+      setError('Material Category is required');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      if (item?.id) {
+        await filmCategoriesApi.update(item.id, form);
+      } else {
+        await filmCategoriesApi.create(form);
+      }
+      onSave();
+    } catch (err: any) {
+      setError(err.message || 'Failed to save film category');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white">
+          <h2 className="text-lg font-semibold text-slate-800">{item ? 'Edit Film Category' : 'New Film Category'}</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
+        </div>
+        <form onSubmit={save} className="p-6 space-y-4">
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Material Category <span className="text-red-500">*</span></label>
+            <select className="input-field" value={form.materialCategoryId} onChange={e => setForm({ ...form, materialCategoryId: e.target.value })} required>
+              <option value="" disabled>Select Material Category</option>
+              {materialCategories.map((mc: any) => (
+                <option key={mc.id} value={mc.id}>{mc.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Film Category Name <span className="text-red-500">*</span></label>
+            <input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Ultra Clear" required />
+          </div>
+          <div className="flex items-center gap-3 pt-1">
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" checked={form.isActive} onChange={e => setForm({ ...form, isActive: e.target.checked })} />
+              <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-accent)]"></div>
+            </label>
+            <span className="text-sm text-slate-700">Active</span>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+            <button type="submit" disabled={loading} className="btn-primary flex items-center gap-2">
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />} {item ? 'Save Changes' : 'Create Film Category'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const MaterialModal = ({ item, filmCategories, onClose, onSave }: any) => {
+  const [form, setForm] = useState(item || { name: '', filmCategoryId: '', thickness: '', layers: 1, minSpeed: '', minForce: '', isActive: true });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!item && filmCategories.length > 0) {
+      setForm((prev: any) => ({ ...prev, filmCategoryId: filmCategories[0].id }));
+    }
+  }, [item, filmCategories]);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.filmCategoryId) {
+      setError('Film Category is required');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    
+    // Parse numeric fields properly
+    const payload = {
+      ...form,
+      thickness: form.thickness ? parseFloat(form.thickness) : null,
+      layers: form.layers ? parseInt(form.layers, 10) : 1,
+      minSpeed: form.minSpeed ? parseInt(form.minSpeed, 10) : null,
+      minForce: form.minForce ? parseInt(form.minForce, 10) : null,
+    };
+
+    try {
+      if (item?.id) {
+        await materialsApi.update(item.id, payload);
+      } else {
+        await materialsApi.create(payload);
+      }
+      onSave();
+    } catch (err: any) {
+      setError(err.message || 'Failed to save material');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -1457,42 +1672,36 @@ const FilmTypeModal = ({ item, onClose, onSave }: any) => {
         <form onSubmit={save} className="p-6 space-y-4">
           {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
           <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Material Name <span className="text-red-500">*</span></label>
-            <input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Eco Clear GT" required />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Parent Material</label>
-            <select className="input-field" value={form.parentId || ''} onChange={e => setForm({ ...form, parentId: e.target.value })}>
-              <option value="">— None (Top-level) —</option>
-              {allTypes.map((t: any) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Film Category <span className="text-red-500">*</span></label>
+            <select className="input-field" value={form.filmCategoryId} onChange={e => setForm({ ...form, filmCategoryId: e.target.value })} required>
+              <option value="" disabled>Select Film Category</option>
+              {filmCategories.map((fc: any) => (
+                <option key={fc.id} value={fc.id}>{fc.name}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Description</label>
-            <textarea className="input-field" value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Optional notes about this material" />
+            <label className="text-sm font-medium text-slate-700 block mb-1">Material Name <span className="text-red-500">*</span></label>
+            <input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Matte HD Skin" required />
           </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Thickness (mm)</label>
-              <input type="number" step="0.001" className="input-field" value={form.thickness} onChange={e => setForm({ ...form, thickness: e.target.value })} placeholder="0.000" />
+              <input type="number" step="0.0001" className="input-field" value={form.thickness || ''} onChange={e => setForm({ ...form, thickness: e.target.value })} placeholder="0.000" />
             </div>
             <div>
-              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Number of Layers</label>
+              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Layers</label>
               <input type="number" className="input-field" value={form.layers} onChange={e => setForm({ ...form, layers: e.target.value })} placeholder="1" />
             </div>
           </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Min Force</label>
-              <input type="number" step="0.1" className="input-field" value={form.minForce} onChange={e => setForm({ ...form, minForce: e.target.value })} placeholder="0.0" />
+              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Min Speed</label>
+              <input type="number" className="input-field" value={form.minSpeed || ''} onChange={e => setForm({ ...form, minSpeed: e.target.value })} placeholder="e.g. 10" />
             </div>
             <div>
-              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Min Speed</label>
-              <input type="number" step="0.1" className="input-field" value={form.minSpeed} onChange={e => setForm({ ...form, minSpeed: e.target.value })} placeholder="0.0" />
+              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Min Force</label>
+              <input type="number" className="input-field" value={form.minForce || ''} onChange={e => setForm({ ...form, minForce: e.target.value })} placeholder="e.g. 30" />
             </div>
           </div>
           <div className="flex items-center gap-3 pt-1">
@@ -1514,126 +1723,577 @@ const FilmTypeModal = ({ item, onClose, onSave }: any) => {
   );
 };
 
+const MaterialCutConfigModal = ({ materials, cutPatterns, onClose, onSave }: any) => {
+  const [form, setForm] = useState({ materialId: '', cutTypeId: '' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-const MaterialsTab = () => {
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState<any>(null);
-  const { user } = useAuth();
-  
-  const [confirm, setConfirm] = useState<any>({ isOpen: false, title: '', message: '', onConfirm: async () => {}, isLoading: false });
-  const closeConfirm = () => setConfirm((p: any) => ({ ...p, isOpen: false }));
+  useEffect(() => {
+    if (materials.length > 0) setForm(prev => ({ ...prev, materialId: materials[0].id }));
+    if (cutPatterns.length > 0) setForm(prev => ({ ...prev, cutTypeId: cutPatterns[0].id }));
+  }, [materials, cutPatterns]);
 
-  const load = async () => {
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.materialId || !form.cutTypeId) {
+      setError('Both Material and Cut Pattern are required');
+      return;
+    }
     setLoading(true);
-    try { setItems(await filmTypesApi.getAll(undefined, true)); } catch { } finally { setLoading(false); }
-  };
-
-  useEffect(() => { load(); }, []);
-
-  const del = (item: any) => {
-    setConfirm({
-      isOpen: true,
-      title: 'Delete Material',
-      message: `Delete "${item.name}"? This will soft-delete the film type.`,
-      onConfirm: async () => { await filmTypesApi.remove(item.id); load(); closeConfirm(); },
-    });
-  };
-
-  const restore = (id: string) => {
-    setConfirm({
-      isOpen: true,
-      title: 'Restore Material',
-      message: 'Restore this film type material?',
-      onConfirm: async () => { await filmTypesApi.restore(id); load(); closeConfirm(); },
-    });
-  };
-
-  const purge = (item: any) => {
-    setConfirm({
-      isOpen: true,
-      title: 'Permanently Delete',
-      message: `PERMANENTLY delete "${item.name}"? Warning: Actions on batches and inventory may be affected.`,
-      onConfirm: async () => { await filmTypesApi.purge(item.id); load(); closeConfirm(); },
-    });
+    setError('');
+    try {
+      await materialCutConfigsApi.create(form);
+      onSave();
+    } catch (err: any) {
+      setError(err.message || 'Failed to save cut configuration');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="p-6">
-      {modal && <FilmTypeModal item={modal === 'new' ? null : modal} onClose={() => setModal(null)} onSave={() => { setModal(null); load(); }} />}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="font-semibold text-slate-700">Manage Materials</h3>
-          <p className="text-xs text-slate-400">Configure film types and tracking requirements</p>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white">
+          <h2 className="text-lg font-semibold text-slate-800">New Cut Configuration</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
         </div>
-        <button onClick={() => setModal('new')} className="btn-primary text-sm flex items-center gap-1.5 py-1.5">
-          <Plus className="w-3.5 h-3.5" /> New Material
-        </button>
+        <form onSubmit={save} className="p-6 space-y-4">
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Material <span className="text-red-500">*</span></label>
+            <select className="input-field" value={form.materialId} onChange={e => setForm({ ...form, materialId: e.target.value })} required>
+              <option value="" disabled>Select Material</option>
+              {materials.map((m: any) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Cut Pattern (Cut Type) <span className="text-red-500">*</span></label>
+            <select className="input-field" value={form.cutTypeId} onChange={e => setForm({ ...form, cutTypeId: e.target.value })} required>
+              <option value="" disabled>Select Cut Pattern</option>
+              {cutPatterns.map((cp: any) => (
+                <option key={cp.id} value={cp.id}>{cp.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex justify-end gap-3 pt-4">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+            <button type="submit" disabled={loading} className="btn-primary flex items-center gap-2">
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />} Map Cut Config
+            </button>
+          </div>
+        </form>
       </div>
+    </div>
+  );
+};
+
+const MaterialsTab = () => {
+  const [subTab, setSubTab] = useState('product-types');
+  const [search, setSearch] = useState('');
+  const [includeDeleted, setIncludeDeleted] = useState(false);
+  
+  // Data lists
+  const [productTypes, setProductTypes] = useState<any[]>([]);
+  const [materialCategories, setMaterialCategories] = useState<any[]>([]);
+  const [filmCategories, setFilmCategories] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [cutConfigs, setCutConfigs] = useState<any[]>([]);
+  const [cutPatterns, setCutPatterns] = useState<any[]>([]);
+  
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState<any>(null);
+  const { user } = useAuth();
+
+  const [confirm, setConfirm] = useState<any>({ isOpen: false, title: '', message: '', onConfirm: async () => {}, isLoading: false });
+  const closeConfirm = () => setConfirm((p: any) => ({ ...p, isOpen: false }));
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      if (subTab === 'product-types') {
+        setProductTypes(await productTypesApi.getAll(search || undefined, includeDeleted));
+      } else if (subTab === 'material-categories') {
+        const [categoriesList, ptList] = await Promise.all([
+          materialCategoriesApi.getAll(search || undefined, includeDeleted),
+          productTypesApi.getAll()
+        ]);
+        setMaterialCategories(categoriesList);
+        setProductTypes(ptList);
+      } else if (subTab === 'film-categories') {
+        const [fcList, mcList] = await Promise.all([
+          filmCategoriesApi.getAll(search || undefined),
+          materialCategoriesApi.getAll()
+        ]);
+        setFilmCategories(fcList);
+        setMaterialCategories(mcList);
+      } else if (subTab === 'materials') {
+        const [mList, fcList] = await Promise.all([
+          materialsApi.getAll(search || undefined, includeDeleted),
+          filmCategoriesApi.getAll()
+        ]);
+        setMaterials(mList);
+        setFilmCategories(fcList);
+      } else if (subTab === 'cut-configs') {
+        const [ccList, mList, cpList] = await Promise.all([
+          materialCutConfigsApi.getAll(),
+          materialsApi.getAll(),
+          cutPatternsApi.getAll()
+        ]);
+        setCutConfigs(ccList);
+        setMaterials(mList);
+        setCutPatterns(cpList);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [subTab, search, includeDeleted]);
+
+  // Actions for ProductTypes
+  const deleteProductType = (item: any) => {
+    setConfirm({
+      isOpen: true,
+      title: 'Delete Product Type',
+      message: `Delete product type "${item.name}"? This will soft-delete the product type.`,
+      onConfirm: async () => { await productTypesApi.remove(item.id); loadData(); closeConfirm(); },
+    });
+  };
+  const restoreProductType = (id: string) => {
+    setConfirm({
+      isOpen: true,
+      title: 'Restore Product Type',
+      message: 'Restore this product type?',
+      onConfirm: async () => { await productTypesApi.restore(id); loadData(); closeConfirm(); },
+    });
+  };
+  const purgeProductType = (item: any) => {
+    setConfirm({
+      isOpen: true,
+      title: 'Permanently Delete Product Type',
+      message: `PERMANENTLY delete product type "${item.name}"? Warning: This action is irreversible.`,
+      onConfirm: async () => { await productTypesApi.purge(item.id); loadData(); closeConfirm(); },
+    });
+  };
+
+  // Actions for MaterialCategories
+  const deleteMaterialCategory = (item: any) => {
+    setConfirm({
+      isOpen: true,
+      title: 'Delete Category',
+      message: `Delete category "${item.name}"? This will soft-delete the category.`,
+      onConfirm: async () => { await materialCategoriesApi.remove(item.id); loadData(); closeConfirm(); },
+    });
+  };
+  const restoreMaterialCategory = (id: string) => {
+    setConfirm({
+      isOpen: true,
+      title: 'Restore Category',
+      message: 'Restore this material category?',
+      onConfirm: async () => { await materialCategoriesApi.restore(id); loadData(); closeConfirm(); },
+    });
+  };
+  const purgeMaterialCategory = (item: any) => {
+    setConfirm({
+      isOpen: true,
+      title: 'Permanently Delete Category',
+      message: `PERMANENTLY delete category "${item.name}"? Warning: This action is irreversible.`,
+      onConfirm: async () => { await materialCategoriesApi.purge(item.id); loadData(); closeConfirm(); },
+    });
+  };
+
+  // Actions for FilmCategories
+  const deleteFilmCategory = (item: any) => {
+    setConfirm({
+      isOpen: true,
+      title: 'Delete Film Category',
+      message: `Delete film category "${item.name}"?`,
+      onConfirm: async () => { await filmCategoriesApi.remove(item.id); loadData(); closeConfirm(); },
+    });
+  };
+  const purgeFilmCategory = (item: any) => {
+    setConfirm({
+      isOpen: true,
+      title: 'Permanently Delete Film Category',
+      message: `PERMANENTLY delete film category "${item.name}"? Warning: This action is irreversible.`,
+      onConfirm: async () => { await filmCategoriesApi.purge(item.id); loadData(); closeConfirm(); },
+    });
+  };
+
+  // Actions for Materials
+  const deleteMaterial = (item: any) => {
+    setConfirm({
+      isOpen: true,
+      title: 'Delete Material',
+      message: `Delete material "${item.name}"? This will soft-delete the material.`,
+      onConfirm: async () => { await materialsApi.remove(item.id); loadData(); closeConfirm(); },
+    });
+  };
+  const restoreMaterial = (id: string) => {
+    setConfirm({
+      isOpen: true,
+      title: 'Restore Material',
+      message: 'Restore this material?',
+      onConfirm: async () => { await materialsApi.restore(id); loadData(); closeConfirm(); },
+    });
+  };
+  const purgeMaterial = (item: any) => {
+    setConfirm({
+      isOpen: true,
+      title: 'Permanently Delete Material',
+      message: `PERMANENTLY delete material "${item.name}"? Warning: This action is irreversible.`,
+      onConfirm: async () => { await materialsApi.purge(item.id); loadData(); closeConfirm(); },
+    });
+  };
+
+  // Actions for Cut Configs
+  const deleteCutConfig = (item: any) => {
+    setConfirm({
+      isOpen: true,
+      title: 'Unmap Cut Config',
+      message: `Unmap this cut configuration?`,
+      onConfirm: async () => { await materialCutConfigsApi.remove(item.id); loadData(); closeConfirm(); },
+    });
+  };
+
+  const subTabsList = [
+    { id: 'product-types', label: 'Product Types' },
+    { id: 'material-categories', label: 'Categories' },
+    { id: 'film-categories', label: 'Film Categories' },
+    { id: 'materials', label: 'Materials' },
+    { id: 'cut-configs', label: 'Cut Configs' }
+  ];
+
+  return (
+    <div className="p-6 space-y-4">
+      {/* Sub Tabs Bar */}
+      <div className="flex border-b border-slate-200 bg-white p-1 rounded-lg shadow-sm">
+        {subTabsList.map(t => (
+          <button
+            key={t.id}
+            onClick={() => { setSubTab(t.id); setSearch(''); }}
+            className={`flex-1 py-2 text-xs font-semibold rounded-md transition-all ${
+              subTab === t.id
+                ? 'bg-[var(--color-accent)] text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-slate-700">
+            {subTabsList.find(t => t.id === subTab)?.label}
+          </h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Manage physical film material types, groupings and cutting parameters.
+          </p>
+        </div>
+        <HasPermission permission="catalog:write">
+          <button onClick={() => setModal('new')} className="btn-primary text-sm flex items-center gap-1.5 py-1.5">
+            <Plus className="w-3.5 h-3.5" /> New Item
+          </button>
+        </HasPermission>
+      </div>
+
+      {subTab !== 'cut-configs' && (
+        <div className="flex items-center gap-4">
+          <div className="relative max-w-xs flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              className="input-field pl-9 py-1.5 text-sm"
+              placeholder="Search..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          {subTab !== 'film-categories' && (
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-600 select-none">
+              <input
+                type="checkbox"
+                checked={includeDeleted}
+                onChange={e => setIncludeDeleted(e.target.checked)}
+                className="rounded border-slate-300 text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+              />
+              Show Deleted
+            </label>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-[var(--color-accent)] animate-spin" /></div>
       ) : (
-        <div className="card bg-white overflow-hidden">
+        <div className="card bg-white overflow-hidden shadow-sm border border-slate-100 rounded-xl">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                {['Name', 'Parent', 'Thickness', 'Layers', 'Force/Speed', 'Status', 'Actions'].map(h => (
-                  <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {items.map(t => (
-                <tr key={t.id} className={`hover:bg-slate-50/70 group transition-colors ${t.isDeleted ? 'bg-red-50/50' : ''}`}>
-                  <td className="px-5 py-4">
-                    <p className={`font-semibold ${t.isDeleted ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.name}</p>
-                    {t.description && <p className="text-xs text-slate-400 mt-0.5">{t.description}</p>}
-                    {t.isDeleted && <span className="text-[10px] font-bold text-red-500">DELETED</span>}
-                  </td>
-                  <td className="px-5 py-4 text-slate-500 text-sm">
-                    {t.parent?.name ? (
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">{t.parent.name}</span>
-                    ) : (
-                      <span className="text-slate-300 text-xs">—</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-4 text-slate-600 text-xs font-mono">
-                    {t.thickness ? `${t.thickness}mm` : '—'}
-                  </td>
-                  <td className="px-5 py-4 text-slate-600 text-xs">
-                    {t.layers || 1}
-                  </td>
-                  <td className="px-5 py-4 text-slate-600 text-xs font-mono">
-                    {t.minForce || '—'} / {t.minSpeed || '—'}
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {t.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {!t.isDeleted ? (
-                        <>
+            {subTab === 'product-types' && (
+              <>
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr>
+                    {['Name', 'Slug', 'Legacy ID', 'Status', 'Actions'].map(h => (
+                      <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {productTypes.length === 0 ? (
+                    <tr><td colSpan={5} className="text-center py-8 text-slate-400">No product types found</td></tr>
+                  ) : productTypes.map(t => (
+                    <tr key={t.id} className={`hover:bg-slate-50/70 group transition-colors ${t.isDeleted ? 'bg-red-50/50' : ''}`}>
+                      <td className="px-5 py-4 font-semibold text-slate-800">{t.name}</td>
+                      <td className="px-5 py-4 text-slate-500 font-mono text-xs">{t.slug}</td>
+                      <td className="px-5 py-4 text-slate-500 font-mono text-xs">{t.legacyId}</td>
+                      <td className="px-5 py-4">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {t.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                        {t.isDeleted && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600 uppercase">DELETED</span>}
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {!t.isDeleted ? (
+                            <>
+                              <button onClick={() => setModal(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
+                              <button onClick={() => deleteProductType(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                            </>
+                          ) : user?.isSuperAdmin && (
+                            <>
+                              <button onClick={() => restoreProductType(t.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"><RotateCcw className="w-4 h-4" /></button>
+                              <button onClick={() => purgeProductType(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-700 hover:bg-red-100 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </>
+            )}
+
+            {subTab === 'material-categories' && (
+              <>
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr>
+                    {['Name', 'Product Type', 'Description', 'Legacy ID', 'Status', 'Actions'].map(h => (
+                      <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {materialCategories.length === 0 ? (
+                    <tr><td colSpan={6} className="text-center py-8 text-slate-400">No categories found</td></tr>
+                  ) : materialCategories.map(t => (
+                    <tr key={t.id} className={`hover:bg-slate-50/70 group transition-colors ${t.isDeleted ? 'bg-red-50/50' : ''}`}>
+                      <td className="px-5 py-4 font-semibold text-slate-800">{t.name}</td>
+                      <td className="px-5 py-4 text-slate-600">
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-medium">{t.productType?.name || '—'}</span>
+                      </td>
+                      <td className="px-5 py-4 text-slate-500 text-xs max-w-xs truncate">{t.description || '—'}</td>
+                      <td className="px-5 py-4 text-slate-500 font-mono text-xs">{t.legacyId}</td>
+                      <td className="px-5 py-4">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {t.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                        {t.isDeleted && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600 uppercase">DELETED</span>}
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {!t.isDeleted ? (
+                            <>
+                              <button onClick={() => setModal(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
+                              <button onClick={() => deleteMaterialCategory(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                            </>
+                          ) : user?.isSuperAdmin && (
+                            <>
+                              <button onClick={() => restoreMaterialCategory(t.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"><RotateCcw className="w-4 h-4" /></button>
+                              <button onClick={() => purgeMaterialCategory(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-700 hover:bg-red-100 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </>
+            )}
+
+            {subTab === 'film-categories' && (
+              <>
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr>
+                    {['Name', 'Material Category', 'Legacy ID', 'Status', 'Actions'].map(h => (
+                      <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {filmCategories.length === 0 ? (
+                    <tr><td colSpan={5} className="text-center py-8 text-slate-400">No film categories found</td></tr>
+                  ) : filmCategories.map(t => (
+                    <tr key={t.id} className="hover:bg-slate-50/70 group transition-colors">
+                      <td className="px-5 py-4 font-semibold text-slate-800">{t.name}</td>
+                      <td className="px-5 py-4 text-slate-600">
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-medium">{t.materialCategory?.name || '—'}</span>
+                      </td>
+                      <td className="px-5 py-4 text-slate-500 font-mono text-xs">{t.legacyId}</td>
+                      <td className="px-5 py-4">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {t.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => setModal(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
-                          <button onClick={() => del(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                        </>
-                      ) : user?.isSuperAdmin && (
-                        <>
-                          <button onClick={() => restore(t.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"><RotateCcw className="w-4 h-4" /></button>
-                          <button onClick={() => purge(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-700 hover:bg-red-100 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+                          <button onClick={() => deleteFilmCategory(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                          {user?.isSuperAdmin && (
+                            <button onClick={() => purgeFilmCategory(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-700 hover:bg-red-100 transition-colors" title="Purge permanently"><Trash2 className="w-4 h-4" /></button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </>
+            )}
+
+            {subTab === 'materials' && (
+              <>
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr>
+                    {['Name', 'Film Category', 'Thickness', 'Layers', 'Force/Speed', 'Status', 'Actions'].map(h => (
+                      <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {materials.length === 0 ? (
+                    <tr><td colSpan={7} className="text-center py-8 text-slate-400">No materials found</td></tr>
+                  ) : materials.map(t => (
+                    <tr key={t.id} className={`hover:bg-slate-50/70 group transition-colors ${t.isDeleted ? 'bg-red-50/50' : ''}`}>
+                      <td className="px-5 py-4">
+                        <p className={`font-semibold ${t.isDeleted ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.name}</p>
+                        <p className="text-[10px] text-slate-400 font-mono">Legacy ID: {t.legacyId}</p>
+                      </td>
+                      <td className="px-5 py-4 text-slate-600">
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-medium">{t.filmCategory?.name || '—'}</span>
+                      </td>
+                      <td className="px-5 py-4 text-slate-600 text-xs font-mono">{t.thickness ? `${t.thickness}mm` : '—'}</td>
+                      <td className="px-5 py-4 text-slate-600 text-xs">{t.layers}</td>
+                      <td className="px-5 py-4 text-slate-600 text-xs font-mono">{t.minForce || '—'} / {t.minSpeed || '—'}</td>
+                      <td className="px-5 py-4">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {t.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                        {t.isDeleted && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600 uppercase">DELETED</span>}
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {!t.isDeleted ? (
+                            <>
+                              <button onClick={() => setModal(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
+                              <button onClick={() => deleteMaterial(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                            </>
+                          ) : user?.isSuperAdmin && (
+                            <>
+                              <button onClick={() => restoreMaterial(t.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"><RotateCcw className="w-4 h-4" /></button>
+                              <button onClick={() => purgeMaterial(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-700 hover:bg-red-100 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </>
+            )}
+
+            {subTab === 'cut-configs' && (
+              <>
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr>
+                    {['Material Name', 'Cut Pattern / Type Name', 'Actions'].map(h => (
+                      <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {cutConfigs.length === 0 ? (
+                    <tr><td colSpan={3} className="text-center py-8 text-slate-400">No cut configurations mapped</td></tr>
+                  ) : cutConfigs.map(t => (
+                    <tr key={t.id} className="hover:bg-slate-50/70 group transition-colors">
+                      <td className="px-5 py-4 font-semibold text-slate-800">{t.material?.name || '—'}</td>
+                      <td className="px-5 py-4 text-slate-600 font-medium">
+                        <span className="px-2.5 py-1 rounded bg-[var(--color-gold-muted)] text-[var(--color-accent)] text-xs font-mono">{t.cutPattern?.name || '—'}</span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => deleteCutConfig(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete mapping"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </>
+            )}
           </table>
         </div>
-
       )}
+
+      {/* Modals trigger */}
+      {modal && (
+        <>
+          {subTab === 'product-types' && (
+            <ProductTypeModal
+              item={modal === 'new' ? null : modal}
+              onClose={() => setModal(null)}
+              onSave={() => { setModal(null); loadData(); }}
+            />
+          )}
+          {subTab === 'material-categories' && (
+            <MaterialCategoryModal
+              item={modal === 'new' ? null : modal}
+              productTypes={productTypes.filter(p => p.isActive && !p.isDeleted)}
+              onClose={() => setModal(null)}
+              onSave={() => { setModal(null); loadData(); }}
+            />
+          )}
+          {subTab === 'film-categories' && (
+            <FilmCategoryModal
+              item={modal === 'new' ? null : modal}
+              materialCategories={materialCategories.filter(m => m.isActive && !m.isDeleted)}
+              onClose={() => setModal(null)}
+              onSave={() => { setModal(null); loadData(); }}
+            />
+          )}
+          {subTab === 'materials' && (
+            <MaterialModal
+              item={modal === 'new' ? null : modal}
+              filmCategories={filmCategories.filter(f => f.isActive)}
+              onClose={() => setModal(null)}
+              onSave={() => { setModal(null); loadData(); }}
+            />
+          )}
+          {subTab === 'cut-configs' && (
+            <MaterialCutConfigModal
+              materials={materials.filter(m => m.isActive && !m.isDeleted)}
+              cutPatterns={cutPatterns}
+              onClose={() => setModal(null)}
+              onSave={() => { setModal(null); loadData(); }}
+            />
+          )}
+        </>
+      )}
+
       <ConfirmDialog isOpen={confirm.isOpen} title={confirm.title} message={confirm.message} onConfirm={confirm.onConfirm} onClose={closeConfirm} isLoading={confirm.isLoading} />
     </div>
   );
