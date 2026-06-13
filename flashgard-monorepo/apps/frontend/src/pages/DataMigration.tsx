@@ -19,13 +19,14 @@ import {
   Search,
   Download,
   Shield,
-  Ticket
+  Ticket,
+  Cpu
 } from 'lucide-react';
 import { migrationApi, API_BASE } from '../lib/api';
 import { SearchableSelect } from '../components/SearchableSelect';
 
 type MainTab = 'legacy' | 'mssql' | 'bulk' | 'history';
-type LegacySubTab = 'catalog' | 'skins' | 'designs' | 'roles' | 'users' | 'licenses' | 'mobile-users' | 'cut-credits' | 'orders';
+type LegacySubTab = 'catalog' | 'skins' | 'designs' | 'roles' | 'users' | 'licenses' | 'mobile-users' | 'cut-credits' | 'mobile-app-cuts' | 'dealer-master-qrs' | 'plotter-masters' | 'materials' | 'orders';
 
 const DataMigration: React.FC = () => {
   const [activeTab, setActiveTab] = useState<MainTab>('mssql');
@@ -33,6 +34,11 @@ const DataMigration: React.FC = () => {
 
   const [file1, setFile1] = useState<File | null>(null);
   const [file2, setFile2] = useState<File | null>(null);
+  const [file3, setFile3] = useState<File | null>(null);
+  const [file4, setFile4] = useState<File | null>(null);
+  const [file5, setFile5] = useState<File | null>(null);
+  const [file6, setFile6] = useState<File | null>(null);
+
   const [isMigrating, setIsMigrating] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +53,9 @@ const DataMigration: React.FC = () => {
   const [dbTables, setDbTables] = useState<string[]>([]);
   const [dbMapFile1, setDbMapFile1] = useState('');
   const [dbMapFile2, setDbMapFile2] = useState('');
+  const [dbMapFile3, setDbMapFile3] = useState('');
+  const [dbMapFile4, setDbMapFile4] = useState('');
+  const [dbMapFile5, setDbMapFile5] = useState('');
 
   const loadLogs = async () => {
     setLogsLoading(true);
@@ -148,6 +157,10 @@ const DataMigration: React.FC = () => {
   const resetState = () => {
     setFile1(null);
     setFile2(null);
+    setFile3(null);
+    setFile4(null);
+    setFile5(null);
+    setFile6(null);
     setResult(null);
     setError(null);
     setConfirmCleanModule(null);
@@ -182,6 +195,30 @@ const DataMigration: React.FC = () => {
         data = await migrationApi.migrateMobileUsers(
           file1
         );
+      } else if (legacySubTab === 'mobile-app-cuts') {
+        data = await migrationApi.migrateMobileAppCuts(
+          file1
+        );
+      } else if (legacySubTab === 'dealer-master-qrs') {
+        data = await migrationApi.migrateDealerMasterQRs(
+          file1
+        );
+      } else if (legacySubTab === 'plotter-masters') {
+        data = await migrationApi.migratePlotters(
+          file1
+        );
+      } else if (legacySubTab === 'materials') {
+        if (!file2 || !file3 || !file4 || !file5 || !file6) {
+          throw new Error('All 6 files are required for Materials system migration');
+        }
+        data = await migrationApi.migrateMaterials(
+          file1,
+          file2,
+          file3,
+          file4,
+          file5,
+          file6
+        );
       }
       
       setResult(data);
@@ -194,7 +231,7 @@ const DataMigration: React.FC = () => {
     }
   };
 
-  const legacySubTabs: { id: LegacySubTab; label: string; icon: any; description: string; file1Label: string; file1Name: string; file2Label?: string; file2Name?: string }[] = [
+  const legacySubTabs: { id: LegacySubTab; label: string; icon: any; description: string; file1Label: string; file1Name: string; file2Label?: string; file2Name?: string; file3Label?: string; file3Name?: string; file4Label?: string; file4Name?: string; file5Label?: string; file5Name?: string; file6Label?: string; file6Name?: string }[] = [
     { id: 'catalog', label: '1. Categories & Brands', icon: Layers, description: 'Setup the high-level organizational structure.', file1Label: 'Catalog CSV', file1Name: 'CatalogueMaster.csv' },
     { id: 'skins', label: '2. Cut Patterns', icon: Scissors, description: 'Define the types of skins and cut settings.', file1Label: 'Skins CSV', file1Name: 'ModelSkinMaster.csv' },
     { id: 'designs', label: '3. Models & Designs', icon: FileCode, description: 'Import 17k+ designs and create Models.', file1Label: 'Designs CSV', file1Name: 'ModelMaster.csv' },
@@ -203,6 +240,10 @@ const DataMigration: React.FC = () => {
     { id: 'licenses', label: '6. Licenses', icon: FileCode, description: 'Migrate legacy licenses and assign to dealers.', file1Label: 'Licenses CSV', file1Name: 'LicenseMaster.csv', file2Label: 'License Dealers CSV', file2Name: 'LicenseAssignDealer.csv' },
     { id: 'mobile-users', label: '7. Mobile Users', icon: Users, description: 'Migrate legacy mobile app users and links.', file1Label: 'Mobile Users CSV', file1Name: 'MobileAppUser.csv' },
     { id: 'cut-credits', label: '8. Cut Credits', icon: Ticket, description: 'Migrate legacy cut credits and balances.', file1Label: 'CutCreditAssignDealer Table', file1Name: 's_CutCreditAssignDealer', file2Label: 'CutcreditDealerCount Table', file2Name: 's_CutcreditDealerCount' },
+    { id: 'mobile-app-cuts', label: '9. Mobile App Cuts', icon: Scissors, description: 'Migrate legacy mobile app cuts to machine cut logs.', file1Label: 'MobileAppCuts Table', file1Name: 'MobileAppCuts' },
+    { id: 'dealer-master-qrs', label: '10. Dealer Master QRs', icon: FileSpreadsheet, description: 'Migrate legacy DealerMasterQR table to database.', file1Label: 'DealerMasterQR CSV', file1Name: 'DealerMasterQR' },
+    { id: 'plotter-masters', label: '11. Plotter Masters', icon: Cpu, description: 'Migrate legacy PlotterMaster configuration to database.', file1Label: 'PlotterMaster CSV', file1Name: 'PlotterMaster' },
+    { id: 'materials', label: '12. Materials System', icon: Layers, description: 'Migrate legacy ProductType, Material, Categories & config.', file1Label: 'ProductType CSV', file1Name: 'ProductTypeMaster.csv', file2Label: 'MaterialMaster CSV', file2Name: 'MaterialMaster.csv', file3Label: 'FilmCategory CSV', file3Name: 'ReportCategoryMaster.csv', file4Label: 'ProductDisplayMaster CSV', file4Name: 'ProductDisplayMaster.csv', file5Label: 'CutTypeConfig CSV', file5Name: 'MaterialCutTypeConfig.csv', file6Label: 'CutPattern CSV', file6Name: 'ModelSkinMaster.csv' },
     { id: 'orders', label: 'Order History', icon: ShoppingCart, description: 'Sync past transactions.', file1Label: 'Orders CSV', file1Name: 'OrderMaster.csv' },
   ];
 
@@ -210,6 +251,9 @@ const DataMigration: React.FC = () => {
   useEffect(() => {
     setDbMapFile1('');
     setDbMapFile2('');
+    setDbMapFile3('');
+    setDbMapFile4('');
+    setDbMapFile5('');
     if (currentTab && dbTables.length > 0) {
       if (currentTab.id === 'users') {
         const match1 = dbTables.find(t => t.toLowerCase() === 'aspnetusers');
@@ -231,6 +275,24 @@ const DataMigration: React.FC = () => {
           const t2 = currentTab.file2Name.replace('.csv', '');
           const match2 = dbTables.find(t => t.toLowerCase() === t2.toLowerCase() || t.includes(t2));
           if (match2) setDbMapFile2(match2);
+        }
+
+        if (currentTab.file3Name) {
+          const t3 = currentTab.file3Name.replace('.csv', '');
+          const match3 = dbTables.find(t => t.toLowerCase() === t3.toLowerCase() || t.includes(t3));
+          if (match3) setDbMapFile3(match3);
+        }
+
+        if (currentTab.file4Name) {
+          const t4 = currentTab.file4Name.replace('.csv', '');
+          const match4 = dbTables.find(t => t.toLowerCase() === t4.toLowerCase() || t.includes(t4));
+          if (match4) setDbMapFile4(match4);
+        }
+
+        if (currentTab.file5Name) {
+          const t5 = currentTab.file5Name.replace('.csv', '');
+          const match5 = dbTables.find(t => t.toLowerCase() === t5.toLowerCase() || t.includes(t5));
+          if (match5) setDbMapFile5(match5);
         }
       }
     }
@@ -261,7 +323,7 @@ const DataMigration: React.FC = () => {
       const data = await migrationApi.dbRun({ 
         credentials: dbConfig,
         moduleType: legacySubTab, 
-        tableMap: { file1: dbMapFile1, file2: dbMapFile2 }
+        tableMap: { file1: dbMapFile1, file2: dbMapFile2, file3: dbMapFile3, file4: dbMapFile4, file5: dbMapFile5 }
       });
       setResult(data);
       
@@ -321,7 +383,7 @@ const DataMigration: React.FC = () => {
           <div className="w-full md:w-80 shrink-0 space-y-6">
             {[
               { title: 'Models Management', ids: ['catalog', 'skins', 'designs'] },
-              { title: 'System & Core', ids: ['roles', 'users', 'licenses', 'mobile-users', 'cut-credits', 'orders'] }
+              { title: 'System & Core', ids: ['roles', 'users', 'licenses', 'mobile-users', 'cut-credits', 'mobile-app-cuts', 'dealer-master-qrs', 'plotter-masters', 'orders'] }
             ].map((group) => (
               <div key={group.title} className="space-y-2">
                 <div className="px-4">
@@ -356,7 +418,7 @@ const DataMigration: React.FC = () => {
           <div className="flex-1 min-w-0">
             <div className="bg-white rounded-[2rem] border border-slate-200 shadow-xl overflow-hidden min-h-[550px] flex flex-col">
               
-              {['catalog', 'skins', 'designs', 'roles', 'users', 'licenses', 'mobile-users', 'cut-credits'].includes(legacySubTab) ? (
+              {['catalog', 'skins', 'designs', 'roles', 'users', 'licenses', 'mobile-users', 'cut-credits', 'mobile-app-cuts', 'dealer-master-qrs', 'plotter-masters', 'materials'].includes(legacySubTab) ? (
                 <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4">
                   <div className="p-8 bg-slate-50 border-b border-slate-100">
                     <div className="flex items-center gap-3 mb-1">
@@ -369,7 +431,7 @@ const DataMigration: React.FC = () => {
                   </div>
 
                   <div className="p-10 flex-1 flex flex-col items-center">
-                    <div className={`w-full ${legacySubTab === 'users' ? 'max-w-2xl' : 'max-w-lg'} space-y-6`}>
+                    <div className={`w-full ${legacySubTab === 'users' || legacySubTab === 'materials' ? 'max-w-2xl' : 'max-w-lg'} space-y-6`}>
                       
                       {activeTab === 'mssql' ? (
                         <div className="space-y-6">
@@ -426,11 +488,44 @@ const DataMigration: React.FC = () => {
                                     />
                                   </div>
                                 )}
+                                {currentTab?.file3Name && (
+                                  <div>
+                                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">{currentTab?.file3Label} Table</label>
+                                    <SearchableSelect
+                                      options={dbTables.map(t => ({ value: t, label: t }))}
+                                      value={dbMapFile3}
+                                      onChange={(v) => setDbMapFile3(v)}
+                                      placeholder="-- Select Table --"
+                                    />
+                                  </div>
+                                )}
+                                {currentTab?.file4Name && (
+                                  <div>
+                                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">{currentTab?.file4Label} Table</label>
+                                    <SearchableSelect
+                                      options={dbTables.map(t => ({ value: t, label: t }))}
+                                      value={dbMapFile4}
+                                      onChange={(v) => setDbMapFile4(v)}
+                                      placeholder="-- Select Table --"
+                                    />
+                                  </div>
+                                )}
+                                {currentTab?.file5Name && (
+                                  <div>
+                                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">{currentTab?.file5Label} Table</label>
+                                    <SearchableSelect
+                                      options={dbTables.map(t => ({ value: t, label: t }))}
+                                      value={dbMapFile5}
+                                      onChange={(v) => setDbMapFile5(v)}
+                                      placeholder="-- Select Table --"
+                                    />
+                                  </div>
+                                )}
                               </div>
                               <button
                                 onClick={handleDbMigration}
-                                disabled={!dbMapFile1 || isMigrating || (currentTab?.id === 'users' && !dbMapFile2)}
-                                className={`w-full flex items-center justify-center gap-3 py-4 rounded-xl font-black text-lg text-white transition-all transform ${!dbMapFile1 || isMigrating || (currentTab?.id === 'users' && !dbMapFile2) ? 'bg-slate-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-xl'}`}
+                                disabled={!dbMapFile1 || isMigrating || (currentTab?.id === 'users' && !dbMapFile2) || (currentTab?.id === 'materials' && (!dbMapFile2 || !dbMapFile3 || !dbMapFile4 || !dbMapFile5))}
+                                className={`w-full flex items-center justify-center gap-3 py-4 rounded-xl font-black text-lg text-white transition-all transform ${!dbMapFile1 || isMigrating || (currentTab?.id === 'users' && !dbMapFile2) || (currentTab?.id === 'materials' && (!dbMapFile2 || !dbMapFile3 || !dbMapFile4 || !dbMapFile5)) ? 'bg-slate-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-xl'}`}
                               >
                                 {isMigrating ? <Loader2 className="w-6 h-6 animate-spin" /> : <RefreshCcw className="w-6 h-6" />}
                                 {isMigrating ? 'Syncing...' : 'Start DB Migration'}
@@ -462,6 +557,7 @@ const DataMigration: React.FC = () => {
                             </label>
                           </div>
 
+
                           {/* File 2 (Optional) */}
                           {currentTab?.file2Name && (
                             <div className="space-y-3 animate-in slide-in-from-top-4">
@@ -481,6 +577,98 @@ const DataMigration: React.FC = () => {
                                   </p>
                                 </div>
                                 <input type="file" className="hidden" accept=".csv" onChange={(e) => setFile2(e.target.files?.[0] || null)} />
+                              </label>
+                            </div>
+                          )}
+
+                          {/* File 3 (Optional) */}
+                          {currentTab?.file3Name && (
+                            <div className="space-y-3 animate-in slide-in-from-top-4">
+                              <div className="flex items-center gap-2 px-1">
+                                <FileSpreadsheet className="w-4 h-4 text-amber-500" />
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  {currentTab?.file3Name}
+                                </span>
+                              </div>
+                              <label className="relative flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-200 rounded-[2rem] cursor-pointer hover:bg-indigo-50/30 hover:border-indigo-300 transition-all group overflow-hidden">
+                                <div className="flex flex-col items-center justify-center text-center px-4">
+                                  <div className={`p-2 rounded-full mb-1 transition-all ${file3 ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-50 text-slate-300 group-hover:text-indigo-500'}`}>
+                                    {file3 ? <CheckCircle2 className="w-5 h-5" /> : <Upload className="w-5 h-5" />}
+                                  </div>
+                                  <p className="text-xs font-bold text-slate-700 truncate max-w-[200px]">
+                                    {file3 ? file3.name : `Select ${currentTab?.file3Label}`}
+                                  </p>
+                                </div>
+                                <input type="file" className="hidden" accept=".csv" onChange={(e) => setFile3(e.target.files?.[0] || null)} />
+                              </label>
+                            </div>
+                          )}
+
+                          {/* File 4 (Optional) */}
+                          {currentTab?.file4Name && (
+                            <div className="space-y-3 animate-in slide-in-from-top-4">
+                              <div className="flex items-center gap-2 px-1">
+                                <FileSpreadsheet className="w-4 h-4 text-amber-500" />
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  {currentTab?.file4Name}
+                                </span>
+                              </div>
+                              <label className="relative flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-200 rounded-[2rem] cursor-pointer hover:bg-indigo-50/30 hover:border-indigo-300 transition-all group overflow-hidden">
+                                <div className="flex flex-col items-center justify-center text-center px-4">
+                                  <div className={`p-2 rounded-full mb-1 transition-all ${file4 ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-50 text-slate-300 group-hover:text-indigo-500'}`}>
+                                    {file4 ? <CheckCircle2 className="w-5 h-5" /> : <Upload className="w-5 h-5" />}
+                                  </div>
+                                  <p className="text-xs font-bold text-slate-700 truncate max-w-[200px]">
+                                    {file4 ? file4.name : `Select ${currentTab?.file4Label}`}
+                                  </p>
+                                </div>
+                                <input type="file" className="hidden" accept=".csv" onChange={(e) => setFile4(e.target.files?.[0] || null)} />
+                              </label>
+                            </div>
+                          )}
+
+                          {/* File 5 (Optional) */}
+                          {currentTab?.file5Name && (
+                            <div className="space-y-3 animate-in slide-in-from-top-4">
+                              <div className="flex items-center gap-2 px-1">
+                                <FileSpreadsheet className="w-4 h-4 text-amber-500" />
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  {currentTab?.file5Name}
+                                </span>
+                              </div>
+                              <label className="relative flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-200 rounded-[2rem] cursor-pointer hover:bg-indigo-50/30 hover:border-indigo-300 transition-all group overflow-hidden">
+                                <div className="flex flex-col items-center justify-center text-center px-4">
+                                  <div className={`p-2 rounded-full mb-1 transition-all ${file5 ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-50 text-slate-300 group-hover:text-indigo-500'}`}>
+                                    {file5 ? <CheckCircle2 className="w-5 h-5" /> : <Upload className="w-5 h-5" />}
+                                  </div>
+                                  <p className="text-xs font-bold text-slate-700 truncate max-w-[200px]">
+                                    {file5 ? file5.name : `Select ${currentTab?.file5Label}`}
+                                  </p>
+                                </div>
+                                <input type="file" className="hidden" accept=".csv" onChange={(e) => setFile5(e.target.files?.[0] || null)} />
+                              </label>
+                            </div>
+                          )}
+
+                          {/* File 6 (Optional) */}
+                          {currentTab?.file6Name && (
+                            <div className="space-y-3 animate-in slide-in-from-top-4">
+                              <div className="flex items-center gap-2 px-1">
+                                <FileSpreadsheet className="w-4 h-4 text-amber-500" />
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  {currentTab?.file6Name}
+                                </span>
+                              </div>
+                              <label className="relative flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-200 rounded-[2rem] cursor-pointer hover:bg-indigo-50/30 hover:border-indigo-300 transition-all group overflow-hidden">
+                                <div className="flex flex-col items-center justify-center text-center px-4">
+                                  <div className={`p-2 rounded-full mb-1 transition-all ${file6 ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-50 text-slate-300 group-hover:text-indigo-500'}`}>
+                                    {file6 ? <CheckCircle2 className="w-5 h-5" /> : <Upload className="w-5 h-5" />}
+                                  </div>
+                                  <p className="text-xs font-bold text-slate-700 truncate max-w-[200px]">
+                                    {file6 ? file6.name : `Select ${currentTab?.file6Label}`}
+                                  </p>
+                                </div>
+                                <input type="file" className="hidden" accept=".csv" onChange={(e) => setFile6(e.target.files?.[0] || null)} />
                               </label>
                             </div>
                           )}
@@ -582,7 +770,7 @@ const DataMigration: React.FC = () => {
                       )}
 
                       {/* Danger Zone / Clean Data */}
-                      {['catalog', 'skins', 'designs', 'roles', 'users', 'licenses', 'mobile-users', 'cut-credits'].includes(legacySubTab) && (
+                      {['catalog', 'skins', 'designs', 'roles', 'users', 'licenses', 'mobile-users', 'cut-credits', 'mobile-app-cuts', 'dealer-master-qrs', 'plotter-masters', 'materials'].includes(legacySubTab) && (
                         <div className="pt-6 border-t border-slate-100 mt-8 space-y-4">
                           <div className="flex items-center gap-2 text-rose-600 px-1">
                             <AlertTriangle className="w-4 h-4" />
@@ -601,6 +789,10 @@ const DataMigration: React.FC = () => {
                                     ? 'Mobile Users'
                                     : legacySubTab === 'cut-credits'
                                     ? 'Cut Credits'
+                                    : legacySubTab === 'mobile-app-cuts'
+                                    ? 'Mobile App Cuts'
+                                    : legacySubTab === 'plotter-masters'
+                                    ? 'Plotter Masters'
                                     : legacySubTab.charAt(0).toUpperCase() + legacySubTab.slice(1)
                                 } Migration Data
                               </h4>

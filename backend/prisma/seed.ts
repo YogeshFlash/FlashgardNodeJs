@@ -10,6 +10,7 @@ async function main() {
   console.log('--- Seeding Organization Types ---');
   const orgTypes = [
     { name: 'parent', description: 'Parent organization Flashgard' },
+    { name: 'headquarters', description: 'Headquarters / Main Dealer' },
     { name: 'distributor', description: 'Product distributor' },
     { name: 'dealer', description: 'Authorized dealer' },
     { name: 'retailer', description: 'Local retailer' },
@@ -68,6 +69,7 @@ async function main() {
     // Navigation Visibility
     { action: 'nav:dashboard', description: 'View Dashboard tab' },
     { action: 'nav:organizations', description: 'View Organizations tab' },
+    { action: 'nav:reports', description: 'View Reports tab' },
     { action: 'nav:models', description: 'View Models tab' },
     { action: 'nav:inventory', description: 'View Inventory tab' },
     { action: 'nav:licenses', description: 'View Licenses tab' },
@@ -104,7 +106,7 @@ async function main() {
         'orgs:read', 'users:read', 'users:write', 'catalog:read', 
         'inventory:read', 'inventory:write', 'dispatch:read', 'dispatch:write',
         'licenses:read', 'licenses:write', 'credits:read', 'credits:write', 'reports:read',
-        'nav:dashboard', 'nav:organizations', 'nav:models', 'nav:inventory', 'nav:licenses', 'nav:settings'
+        'nav:dashboard', 'nav:organizations', 'nav:reports', 'nav:models', 'nav:inventory', 'nav:licenses', 'nav:settings'
       ].map(action => ({
         permissionId: permissions[action].id,
         dataScope: DataScope.team,
@@ -117,7 +119,7 @@ async function main() {
       rolePermissions: [
         'users:read', 'users:write', 'catalog:read', 'inventory:read',
         'licenses:read', 'licenses:write', 'credits:read', 'credits:write',
-        'nav:dashboard', 'nav:models', 'nav:inventory', 'nav:licenses', 'nav:settings'
+        'nav:dashboard', 'nav:reports', 'nav:models', 'nav:inventory', 'nav:licenses', 'nav:settings'
       ].map(action => ({
         permissionId: permissions[action].id,
         dataScope: DataScope.team,
@@ -141,7 +143,7 @@ async function main() {
       isSystemRole: true,
       rolePermissions: [
         'users:read', 'users:write', 'catalog:read', 'licenses:read', 'licenses:write', 'credits:read', 'credits:write', 'orgs:read',
-        'nav:dashboard', 'nav:organizations', 'nav:models', 'nav:licenses', 'nav:settings'
+        'nav:dashboard', 'nav:organizations', 'nav:reports', 'nav:models', 'nav:licenses', 'nav:settings'
       ].map(action => ({
         permissionId: permissions[action].id,
         dataScope: DataScope.team,
@@ -210,26 +212,24 @@ async function main() {
         lastName: 'Admin',
         isSuperAdmin: true,
         isActive: true,
-        organizationId: flashgard.id,
+        organizationId: null,
         roleId: sysAdminRole.id
       },
     });
-  }
-
-  // Ensure Admin-Org link
-  const link = await prisma.userOrganization.findUnique({
-    where: { userId_organizationId: { userId: admin.id, organizationId: flashgard.id } },
-  });
-  if (!link) {
-    await prisma.userOrganization.create({
+  } else {
+    admin = await prisma.user.update({
+      where: { email },
       data: {
-        userId: admin.id,
-        organizationId: flashgard.id,
+        organizationId: null,
         roleId: sysAdminRole.id,
-        isPrimary: true,
-      },
+      }
     });
   }
+
+  // Ensure Admin-Org link is completely removed since Super Admin is independent
+  await prisma.userOrganization.deleteMany({
+    where: { userId: admin.id }
+  });
 
   // 5. Seed Product Master Data
   console.log('--- Seeding Product Master Data ---');

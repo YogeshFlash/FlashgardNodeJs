@@ -116,6 +116,15 @@ export class MigrationController {
     return this.migrationService.migrateCutCredits(dealerAssignFile!, countFile);
   }
 
+  @Post('legacy/mobile-app-cuts')
+  @RequirePermissions('catalog:write')
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 4 * 1024 * 1024 * 1024 } // 4GB
+  }))
+  migrateMobileAppCuts(@UploadedFile() file: Express.Multer.File) {
+    return this.migrationService.migrateMobileAppCuts(file);
+  }
+
   @Post('legacy/designs')
   @RequirePermissions('catalog:write')
   @UseInterceptors(FileInterceptor('file', {
@@ -224,4 +233,55 @@ export class MigrationController {
   ) {
     return this.migrationService.dbRun(credentials, moduleType, tableMap);
   }
+
+  @Post('legacy/dealer-master-qrs')
+  @RequirePermissions('catalog:write')
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 1024 * 1024 * 1024 } // 1GB limit
+  }))
+  migrateDealerMasterQRs(@UploadedFile() file: Express.Multer.File) {
+    return this.migrationService.migrateDealerMasterQRs(file);
+  }
+
+  @Post('legacy/plotter-masters')
+  @RequirePermissions('catalog:write')
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 1024 * 1024 * 1024 } // 1GB limit
+  }))
+  migratePlotters(@UploadedFile() file: Express.Multer.File) {
+    return this.migrationService.migratePlotters(file);
+  }
+
+  @Post('legacy/materials')
+  @RequirePermissions('catalog:write')
+  @UseInterceptors(FileFieldsInterceptor([
+    { name: 'productTypes', maxCount: 1 },
+    { name: 'categories', maxCount: 1 },
+    { name: 'filmCategories', maxCount: 1 },
+    { name: 'products', maxCount: 1 },
+    { name: 'displayMaster', maxCount: 1 },
+    { name: 'cutConfigs', maxCount: 1 }
+  ], {
+    limits: { fileSize: 1024 * 1024 * 1024 } // 1GB limit
+  }))
+  migrateMaterials(
+    @UploadedFiles() files: {
+      productTypes?: Express.Multer.File[];
+      categories?: Express.Multer.File[];
+      filmCategories?: Express.Multer.File[];
+      products?: Express.Multer.File[];
+      displayMaster?: Express.Multer.File[];
+      cutConfigs?: Express.Multer.File[];
+    }
+  ) {
+    return this.migrationService.migrateMaterialsSystem(
+      files.productTypes?.[0]!,
+      files.categories?.[0]!,
+      files.filmCategories?.[0]!,
+      files.products?.[0]!,
+      files.displayMaster?.[0]!,
+      files.cutConfigs?.[0]!
+    );
+  }
 }
+

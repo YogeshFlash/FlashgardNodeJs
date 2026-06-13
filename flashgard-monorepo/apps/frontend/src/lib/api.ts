@@ -383,19 +383,57 @@ export const licensesApi = {
   },
   getTransfers: (orgId?: string) => request<any[]>(`/licenses/transfers${orgId ? `?orgId=${orgId}` : ''}`),
   updateStatus: (id: string, status: string) => request<any>(`/licenses/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  getCutLogs: (licenseId?: string, orgId?: string, skip?: number, take?: number, search?: string, isPositiveCut?: boolean, categoryName?: string) => {
+    const p = new URLSearchParams();
+    if (licenseId) p.append('licenseId', licenseId);
+    if (orgId) p.append('orgId', orgId);
+    if (skip !== undefined) p.append('skip', skip.toString());
+    if (take !== undefined) p.append('take', take.toString());
+    if (search) p.append('search', search);
+    if (isPositiveCut !== undefined) p.append('isPositiveCut', isPositiveCut.toString());
+    if (categoryName) p.append('categoryName', categoryName);
+    return request<any>(`/cuts/logs${p.toString() ? `?${p.toString()}` : ''}`);
+  },
+  getReportsStats: (orgId?: string, range?: number) => {
+    const p = new URLSearchParams();
+    if (orgId) p.append('orgId', orgId);
+    if (range !== undefined) p.append('range', range.toString());
+    return request<any>(`/cuts/stats${p.toString() ? `?${p.toString()}` : ''}`);
+  },
+  getReportsCutReport: (params: { orgId?: string; startDate?: string; endDate?: string; search?: string; skip?: number; take?: number }) => {
+    const p = new URLSearchParams();
+    if (params.orgId) p.append('orgId', params.orgId);
+    if (params.startDate) p.append('startDate', params.startDate);
+    if (params.endDate) p.append('endDate', params.endDate);
+    if (params.search) p.append('search', params.search);
+    if (params.skip !== undefined) p.append('skip', params.skip.toString());
+    if (params.take !== undefined) p.append('take', params.take.toString());
+    return request<any>(`/cuts/report${p.toString() ? `?${p.toString()}` : ''}`);
+  },
+  getMasterQRs: (skip?: number, take?: number, search?: string, orgId?: string) => {
+    const p = new URLSearchParams();
+    if (skip !== undefined) p.append('skip', skip.toString());
+    if (take !== undefined) p.append('take', take.toString());
+    if (search) p.append('search', search);
+    if (orgId) p.append('orgId', orgId);
+    return request<any>(`/licenses/master-qrs${p.toString() ? `?${p.toString()}` : ''}`);
+  },
 };
+
+
 
 // ─── Cut Credits ─────────────────────────────────────
 export const cutCreditsApi = {
   issue: (data: any) => request<any>('/cut-credits/issue', { method: 'POST', body: JSON.stringify(data) }),
   dispatch: (data: { amount: number; toOrgId: string; fromOrgId?: string; targetLicenseId?: string }) => 
     request<any>('/cut-credits/dispatch', { method: 'POST', body: JSON.stringify(data) }),
-  getInventory: (orgId?: string, skip?: number, take?: number, search?: string) => {
+  getInventory: (orgId?: string, skip?: number, take?: number, search?: string, planType?: string) => {
     const p = new URLSearchParams();
     if (orgId) p.append('orgId', orgId);
     if (skip !== undefined) p.append('skip', skip.toString());
     if (take !== undefined) p.append('take', take.toString());
     if (search) p.append('search', search);
+    if (planType) p.append('planType', planType);
     return request<any>(`/cut-credits/inventory${p.toString() ? `?${p.toString()}` : ''}`);
   },
   getTransfers: (orgId?: string) => request<any[]>(`/cut-credits/transfers${orgId ? `?orgId=${orgId}` : ''}`),
@@ -451,6 +489,11 @@ export const migrationApi = {
     formData.append('mobileUsers', mobileUsers);
     return request<any>('/migration/legacy/mobile-users', { method: 'POST', body: formData });
   },
+  migrateMobileAppCuts: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request<any>('/migration/legacy/mobile-app-cuts', { method: 'POST', body: formData });
+  },
   dbConnect: (config: any) => 
     request<any>('/migration/db/connect', { method: 'POST', body: JSON.stringify(config) }),
   dbRun: (data: any) =>
@@ -480,5 +523,36 @@ export const migrationApi = {
       method: 'POST',
       body: JSON.stringify({ module })
     });
-  }
+  },
+  migrateDealerMasterQRs: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request<any>('/migration/legacy/dealer-master-qrs', { method: 'POST', body: formData });
+  },
+  migratePlotters: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request<any>('/migration/legacy/plotter-masters', { method: 'POST', body: formData });
+  },
+  migrateMaterials: (
+    productTypes: File,
+    categories: File,
+    filmCategories: File,
+    products: File,
+    displayMaster: File,
+    cutConfigs: File
+  ) => {
+    const formData = new FormData();
+    formData.append('productTypes', productTypes);
+    formData.append('categories', categories);
+    formData.append('filmCategories', filmCategories);
+    formData.append('products', products);
+    formData.append('displayMaster', displayMaster);
+    formData.append('cutConfigs', cutConfigs);
+    return request<any>('/migration/legacy/materials', { method: 'POST', body: formData });
+  },
+};
+
+export const dashboardApi = {
+  getStats: () => request<any>('/dashboard/stats'),
 };

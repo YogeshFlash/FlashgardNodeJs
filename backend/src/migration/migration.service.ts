@@ -17,6 +17,53 @@ export class MigrationService {
 
   constructor(private prisma: PrismaService) {}
 
+  private async executeBatchRaw(batch: any[]) {
+    if (batch.length === 0) return;
+    const valuesPlaceholders: string[] = [];
+    const queryValues: any[] = [];
+    let valIdx = 1;
+
+    for (const item of batch) {
+      const id = crypto.randomUUID();
+      queryValues.push(
+        id,
+        item.appUniqueId,
+        item.licenseId,
+        item.modelId,
+        item.modelCutFileId,
+        item.organizationId,
+        item.userId,
+        item.brandName,
+        item.modelName,
+        item.patternName,
+        item.qrCode,
+        item.instruction,
+        item.plotterId,
+        item.latitude,
+        item.longitude,
+        item.isPositiveCut,
+        item.reviews,
+        item.createdAt
+      );
+      valuesPlaceholders.push(
+        `($${valIdx}::uuid, $${valIdx + 1}, $${valIdx + 2}::uuid, $${valIdx + 3}::uuid, $${valIdx + 4}::uuid, $${valIdx + 5}::uuid, $${valIdx + 6}::uuid, $${valIdx + 7}, $${valIdx + 8}, $${valIdx + 9}, $${valIdx + 10}, $${valIdx + 11}, $${valIdx + 12}, $${valIdx + 13}::float8, $${valIdx + 14}::float8, $${valIdx + 15}::boolean, $${valIdx + 16}, $${valIdx + 17}::timestamp)`
+      );
+      valIdx += 18;
+    }
+
+    const sqlQuery = `
+      INSERT INTO "machine_cut_logs" (
+        "id", "app_unique_id", "license_id", "model_id", "model_cut_file_id", "organization_id", "user_id",
+        "brand_name", "model_name", "pattern_name",
+        "qr_code", "instruction", "plotter_id", "latitude", "longitude", "is_positive_cut",
+        "reviews", "created_at"
+      ) VALUES ${valuesPlaceholders.join(', ')}
+      ON CONFLICT ("id") DO NOTHING;
+    `;
+
+    await this.prisma.$executeRawUnsafe(sqlQuery, ...queryValues);
+  }
+
   async getLogs() {
     return (this.prisma as any).migrationLog.findMany({
       select: {
@@ -399,12 +446,40 @@ export class MigrationService {
                             categoryId = foundId;
                             categoryDbMap.set(parentCatalogID, foundId);
                         } else {
-                            const existingBrand = await this.prisma.brand.findFirst({ where: { legacyId: legacyParentId } });
-                            if (existingBrand) {
-                                brandId = existingBrand.id;
-                                brandDbMap.set(parentCatalogID, brandId);
-                                // We might not know the categoryId for this brand easily here, 
-                                // but the brand relation is often enough or we can fetch it.
+                            // Find the brand name in our input rows for this legacy ID
+                            const brandNode = rows.find(r => String(r.CatalogID).trim() === parentCatalogID);
+                            if (brandNode) {
+                                const existingBrand = await this.prisma.brand.findFirst({
+                                    where: { name: { equals: brandNode.Name.trim(), mode: 'insensitive' } }
+                                });
+                                if (existingBrand) {
+                                    brandId = existingBrand.id;
+                                    brandDbMap.set(parentCatalogID, brandId);
+                                    
+                                    // Also resolve categoryId if we can find the parent of this brand node
+                                    const brandParentCatalogID = String(brandNode.ParentID).trim();
+                                    let parentCatId = categoryDbMap.get(brandParentCatalogID);
+                                    if (!parentCatId) {
+                                        const legacyBrandParentId = parseInt(brandParentCatalogID);
+                                        if (!isNaN(legacyBrandParentId)) {
+                                            const existingParentCat = await (this.prisma as any).modelCategory.findFirst({ where: { legacyId: legacyBrandParentId } });
+                                            if (existingParentCat) {
+                                                const foundCatId: string = existingParentCat.id;
+                                                parentCatId = foundCatId;
+                                                categoryDbMap.set(brandParentCatalogID, foundCatId);
+                                            }
+                                        }
+                                    }
+                                    if (parentCatId) {
+                                        categoryId = parentCatId;
+                                    }
+                                }
+                            } else {
+                                const existingBrand = await this.prisma.brand.findFirst({ where: { legacyId: legacyParentId } });
+                                if (existingBrand) {
+                                    brandId = existingBrand.id;
+                                    brandDbMap.set(parentCatalogID, brandId);
+                                }
                             }
                         }
                     }
@@ -1285,7 +1360,7 @@ export class MigrationService {
             }
           }
 
-          // Never re-parent the rootOrg — it must always stay at the top
+          // Never re-parent the rootOrg ΓÇö it must always stay at the top
           if (userOrgId && parentOrgId && userOrgId !== parentOrgId && userOrgId !== rootOrg?.id) {
             await this.prisma.organization.update({
               where: { id: userOrgId },
@@ -2244,6 +2319,335 @@ export class MigrationService {
     return result;
   }
 
+  async migrateMobileAppCuts(
+    mobileCutsFile: Express.Multer.File | any[],
+    sourceName?: string,
+    mapsCache?: {
+      orgLegacyMap: Map<string, string>;
+      userLegacyMap: Map<string, string>;
+      modelLegacyMap: Map<number, string>;
+      modelCutFileLegacyMap: Map<number, string>;
+      licenseMap: Map<string, any>;
+    }
+  ) {
+    let importedLogs = 0;
+    let skippedRows = 0;
+    const failures: any[] = [];
+
+    if (!mobileCutsFile) {
+      throw new Error('MobileAppCuts file is required');
+    }
+
+    const cutsData = Array.isArray(mobileCutsFile) ? mobileCutsFile : await this.parseCsvBuffer((mobileCutsFile as Express.Multer.File).buffer);
+
+    const orgLegacyMap: Map<string, string> = mapsCache?.orgLegacyMap || await (async () => {
+      const orgs = await this.prisma.organization.findMany({
+        where: { legacyId: { not: null } },
+        select: { id: true, legacyId: true }
+      });
+      const map = new Map<string, string>();
+      orgs.forEach(o => map.set(o.legacyId!.toLowerCase(), o.id));
+      return map;
+    })();
+
+    const userLegacyMap: Map<string, string> = mapsCache?.userLegacyMap || await (async () => {
+      const users = await this.prisma.user.findMany({
+        where: { legacyId: { not: null } },
+        select: { id: true, legacyId: true }
+      });
+      const map = new Map<string, string>();
+      users.forEach(u => map.set(String(u.legacyId).toLowerCase(), u.id));
+      return map;
+    })();
+
+    const modelLegacyMap: Map<number, string> = mapsCache?.modelLegacyMap || await (async () => {
+      const models = await this.prisma.model.findMany({
+        where: { legacyId: { not: null } },
+        select: { id: true, legacyId: true }
+      });
+      const map = new Map<number, string>();
+      models.forEach(m => map.set(m.legacyId!, m.id));
+      return map;
+    })();
+
+    const modelCutFileLegacyMap: Map<number, string> = mapsCache?.modelCutFileLegacyMap || await (async () => {
+      const cutFiles = await this.prisma.modelCutFile.findMany({
+        where: { legacyId: { not: null } },
+        select: { id: true, legacyId: true }
+      });
+      const map = new Map<number, string>();
+      cutFiles.forEach(cf => map.set(cf.legacyId!, cf.id));
+      return map;
+    })();
+
+    const licenseMap: Map<string, any> = mapsCache?.licenseMap || await (async () => {
+      const licenses = await (this.prisma as any).orgLicense.findMany({
+        select: { id: true, key: true, ownerId: true }
+      });
+      const map = new Map<string, any>();
+      licenses.forEach((l: any) => map.set(l.key, { id: l.id, ownerId: l.ownerId }));
+      return map;
+    })();
+
+    // Build lookup of organizationId -> mobileUserId to resolve users for cut logs
+    const orgToMobileUserMap: Map<string, string> = await (async () => {
+      const map = new Map<string, string>();
+      const uos = await this.prisma.userOrganization.findMany({
+        where: {
+          role: {
+            name: { equals: 'MobileUser', mode: 'insensitive' }
+          }
+        },
+        select: {
+          userId: true,
+          organizationId: true
+        }
+      });
+      uos.forEach(uo => map.set(uo.organizationId, uo.userId));
+
+      const users = await this.prisma.user.findMany({
+        where: {
+          role: {
+            name: { equals: 'MobileUser', mode: 'insensitive' }
+          },
+          organizationId: { not: null }
+        },
+        select: {
+          id: true,
+          organizationId: true
+        }
+      });
+      users.forEach(u => map.set(u.organizationId!, u.id));
+      return map;
+    })();
+
+    const batchSize = 1000;
+    let batchData: any[] = [];
+
+    for (const row of cutsData) {
+      try {
+        const modelLegacyId = parseInt(row.CatalogID || row.CatalogId);
+        const modelId = !isNaN(modelLegacyId) ? modelLegacyMap.get(modelLegacyId) : null;
+
+        const modelCutFileLegacyId = parseInt(row.ModelID || row.ModelId);
+        const modelCutFileId = !isNaN(modelCutFileLegacyId) ? modelCutFileLegacyMap.get(modelCutFileLegacyId) : null;
+        
+        let licenseId = null;
+        let organizationId = null;
+        let userId = null;
+
+        const rawLicenseKey = String(row.LicenseKey || '').replace(/\0/g, '').trim();
+        if (rawLicenseKey) {
+          const decodedKey = this.decodeHex(rawLicenseKey);
+          const encryptedKey = encryptLicenseKey(decodedKey);
+          const licInfo = licenseMap.get(encryptedKey);
+          if (licInfo) {
+            licenseId = licInfo.id;
+            organizationId = licInfo.ownerId;
+            if (organizationId) {
+              userId = orgToMobileUserMap.get(organizationId) || null;
+            }
+          }
+        }
+
+        // Fallback to PromoterID mapping if userId could not be resolved via license owner organization
+        if (!userId) {
+          const promoterId = String(row.PromoterID || '').trim().toLowerCase();
+          userId = promoterId ? userLegacyMap.get(promoterId) : null;
+        }
+
+        const brandName = row.ParentName || null;
+        const modelName = row.CatalogName || null;
+        const patternName = row.ModelName || null;
+
+        const isPositive = row.IsPositiveCut === '1' || row.IsPositiveCut === 1 || row.IsPositiveCut === 'true' || row.IsPositiveCut === true;
+
+        batchData.push({
+          appUniqueId: row.AppUniqueID || null,
+          licenseId: licenseId,
+          modelId: modelId,
+          modelCutFileId: modelCutFileId,
+          organizationId: organizationId,
+          userId: userId,
+          brandName: brandName,
+          modelName: modelName,
+          patternName: patternName,
+          qrCode: row.QRCode || null,
+          instruction: row.Instruction || null,
+          plotterId: row.PlotterID || null,
+          latitude: row.Latitude ? parseFloat(row.Latitude) : null,
+          longitude: row.Longitude ? parseFloat(row.Longitude) : null,
+          isPositiveCut: isPositive,
+          reviews: row.Reviews || null,
+          createdAt: this.safeDate(row.CreatedDate) || new Date()
+        });
+
+        if (batchData.length >= batchSize) {
+          await this.executeBatchRaw(batchData);
+          importedLogs += batchData.length;
+          batchData = [];
+          
+          // Let the event loop breathe to prevent OOM
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      } catch (err: any) {
+        skippedRows++;
+        if (failures.length < 1000) {
+          failures.push({ row, error: err.message });
+        }
+      }
+    }
+
+    if (batchData.length > 0) {
+      try {
+        await this.executeBatchRaw(batchData);
+        importedLogs += batchData.length;
+      } catch (err: any) {
+        skippedRows += batchData.length;
+        if (failures.length < 1000) {
+          failures.push({ row: batchData[0], error: 'Batch failed: ' + err.message });
+        }
+      }
+    }
+
+    const result = {
+      importedLogs,
+      skippedRows,
+      failures: failures.slice(0, 1000)
+    };
+
+    await this.logMigration({
+      module: 'mobile-app-cuts',
+      fileName: sourceName || (!Array.isArray(mobileCutsFile) ? (mobileCutsFile as Express.Multer.File).originalname : 'Uploaded Mobile Cuts CSV File'),
+      status: skippedRows === 0 ? 'SUCCESS' : (importedLogs > 0 ? 'PARTIAL' : 'FAILED'),
+      processed: cutsData.length,
+      created: importedLogs,
+      updated: 0,
+      failed: skippedRows,
+      details: result
+    });
+
+    return result;
+  }
+
+  async migrateDealerMasterQRs(fileOrRows: Express.Multer.File | any[], sourceName?: string) {
+    if (!fileOrRows) throw new Error('File or rows are required');
+    const data = Array.isArray(fileOrRows) ? fileOrRows : await this.parseCsvBuffer((fileOrRows as Express.Multer.File).buffer);
+    let imported = 0;
+    let skipped = 0;
+    const failures: any[] = [];
+
+    const orgs = await this.prisma.organization.findMany({
+      where: { legacyId: { not: null } },
+      select: { id: true, legacyId: true }
+    });
+    const orgMap = new Map<string, string>();
+    orgs.forEach(o => orgMap.set(o.legacyId!.toLowerCase(), o.id));
+
+    const users = await this.prisma.user.findMany({
+      where: { legacyId: { not: null } },
+      select: { id: true, legacyId: true }
+    });
+    const userMap = new Map<string, string>();
+    users.forEach(u => userMap.set(String(u.legacyId).toLowerCase(), u.id));
+
+    const defaultAdmin = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: { in: ['admin@flashgard.in', 'admin@flashgard.com'] } },
+          { isSuperAdmin: true }
+        ]
+      }
+    });
+    const defaultAdminId = defaultAdmin?.id;
+
+    const batchSize = 1000;
+    let batchData: any[] = [];
+
+    for (const row of data) {
+      try {
+        const dealerLegacyId = String(row.DealerID || '').trim().toLowerCase();
+        const dealerId = orgMap.get(dealerLegacyId);
+        if (!dealerId) throw new Error(`Dealer legacy ID ${dealerLegacyId} not found`);
+
+        const ownerLegacyId = String(row.OwnerID || '').trim().toLowerCase();
+        const ownerId = orgMap.get(ownerLegacyId);
+        if (!ownerId) throw new Error(`Owner legacy ID ${ownerLegacyId} not found`);
+
+        const creatorLegacyId = String(row.CreatedBy || '').trim().toLowerCase();
+        let createdById = userMap.get(creatorLegacyId);
+        if (!createdById) {
+          if (defaultAdminId) {
+            createdById = defaultAdminId;
+          } else {
+            throw new Error(`Creator legacy ID ${creatorLegacyId} not found and no admin fallback user exists`);
+          }
+        }
+
+        const legacyId = row.MasterQRID ? parseInt(row.MasterQRID) : null;
+        const masterQRCode = String(row.MasterQRCode || '').trim();
+        const masterProduct = String(row.MasterProduct || '').trim();
+        const force = row.Force ? parseInt(row.Force) : 30;
+        const speed = row.Speed ? parseInt(row.Speed) : 10;
+        const isActive = row.IsActive === '1' || row.IsActive === 'true' || row.IsActive === true;
+
+        batchData.push({
+          legacyId,
+          dealerId,
+          masterQRCode,
+          masterProduct,
+          ownerId,
+          createdById,
+          isActive,
+          force,
+          speed,
+          createdAt: this.safeDate(row.Createddate) || new Date()
+        });
+
+        if (batchData.length >= batchSize) {
+          await this.prisma.dealerMasterQR.createMany({
+            data: batchData,
+            skipDuplicates: true
+          });
+          imported += batchData.length;
+          batchData = [];
+        }
+      } catch (err: any) {
+        skipped++;
+        if (failures.length < 1000) {
+          failures.push({ row, error: err.message });
+        }
+      }
+    }
+
+    if (batchData.length > 0) {
+      await this.prisma.dealerMasterQR.createMany({
+        data: batchData,
+        skipDuplicates: true
+      });
+      imported += batchData.length;
+    }
+
+    const result = {
+      imported,
+      skipped,
+      failures: failures.slice(0, 1000)
+    };
+
+    await this.logMigration({
+      module: 'dealer-master-qrs',
+      fileName: sourceName || (!Array.isArray(fileOrRows) ? (fileOrRows as Express.Multer.File).originalname : 'Uploaded Dealer Master QRs File'),
+      status: skipped === 0 ? 'SUCCESS' : (imported > 0 ? 'PARTIAL' : 'FAILED'),
+      processed: data.length,
+      created: imported,
+      updated: 0,
+      failed: skipped,
+      details: result
+    });
+
+    return result;
+  }
+
   async migrateRoles(rolesFile: Express.Multer.File | any[], sourceName?: string) {
     let importedRoles = 0;
     let updatedRoles = 0;
@@ -2456,6 +2860,27 @@ export class MigrationService {
       await (this.prisma as any).cutPattern.deleteMany({});
     }
 
+    if (module === 'mobile-app-cuts' || module === 'all') {
+      await this.prisma.machineCutLog.deleteMany({});
+    }
+
+    if (module === 'dealer-master-qrs' || module === 'all') {
+      await this.prisma.dealerMasterQR.deleteMany({});
+    }
+
+    if (module === 'plotter-masters' || module === 'all') {
+      await (this.prisma as any).plotterMasterLegacy.deleteMany({});
+      await (this.prisma as any).plotterMaster.deleteMany({});
+    }
+
+    if (module === 'materials' || module === 'all') {
+      await (this.prisma as any).materialCutConfig.deleteMany({});
+      await (this.prisma as any).material.deleteMany({});
+      await (this.prisma as any).filmCategory.deleteMany({});
+      await (this.prisma as any).materialCategory.deleteMany({});
+      await (this.prisma as any).productType.deleteMany({});
+    }
+
     // Delete matching migration logs
     await (this.prisma as any).migrationLog.deleteMany({
       where: module === 'all' ? undefined : { module }
@@ -2528,6 +2953,116 @@ export class MigrationService {
         const assignRows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
         const countRows = tableMap.file2 ? (await pool.request().query("SELECT * FROM [" + tableMap.file2 + "]")).recordset : [];
         return await this.migrateCutCredits(assignRows, countRows, "MSSQL: " + tableMap.file1);
+      } else if (moduleType === 'mobile-app-cuts') {
+        // Pre-fetch maps cache once at service level before chunk loop
+        const orgs = await this.prisma.organization.findMany({
+          where: { legacyId: { not: null } },
+          select: { id: true, legacyId: true }
+        });
+        const orgLegacyMap = new Map<string, string>();
+        orgs.forEach(o => orgLegacyMap.set(o.legacyId!.toLowerCase(), o.id));
+
+        const users = await this.prisma.user.findMany({
+          where: { legacyId: { not: null } },
+          select: { id: true, legacyId: true }
+        });
+        const userLegacyMap = new Map<string, string>();
+        users.forEach(u => userLegacyMap.set(String(u.legacyId).toLowerCase(), u.id));
+
+        const models = await this.prisma.model.findMany({
+          where: { legacyId: { not: null } },
+          select: { id: true, legacyId: true }
+        });
+        const modelLegacyMap = new Map<number, string>();
+        models.forEach(m => modelLegacyMap.set(m.legacyId!, m.id));
+
+        const licenses = await (this.prisma as any).orgLicense.findMany({
+          select: { id: true, key: true, ownerId: true }
+        });
+        const licenseMap = new Map<string, any>();
+        licenses.forEach((l: any) => licenseMap.set(l.key, { id: l.id, ownerId: l.ownerId }));
+
+        const cutFiles = await this.prisma.modelCutFile.findMany({
+          where: { legacyId: { not: null } },
+          select: { id: true, legacyId: true }
+        });
+        const modelCutFileLegacyMap = new Map<number, string>();
+        cutFiles.forEach(cf => modelCutFileLegacyMap.set(cf.legacyId!, cf.id));
+
+        const mapsCache = {
+          orgLegacyMap,
+          userLegacyMap,
+          modelLegacyMap,
+          modelCutFileLegacyMap,
+          licenseMap
+        };
+
+        let offset = 0;
+        const limit = 10000;
+        let hasMore = true;
+        let totalImported = 0;
+        let totalSkipped = 0;
+        const allFailures: any[] = [];
+
+        while (hasMore) {
+          this.logger.log(`Fetching chunk for mobile-app-cuts: OFFSET ${offset} LIMIT ${limit}`);
+          let rows: any = (await pool.request().query(`SELECT * FROM [${tableMap.file1}] ORDER BY MobileAppCutsID OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`)).recordset;
+          
+          if (rows.length === 0) {
+            hasMore = false;
+            break;
+          }
+          
+          const result = await this.migrateMobileAppCuts(rows, `MSSQL: ${tableMap.file1} (OFFSET ${offset})`, mapsCache);
+          totalImported += result.importedLogs;
+          totalSkipped += result.skippedRows;
+          
+          if (allFailures.length < 1000) {
+            allFailures.push(...result.failures.slice(0, 1000 - allFailures.length));
+          }
+          
+          // Clear rows array to free memory
+          rows = [];
+          
+          offset += limit;
+          
+          // Let garbage collector run between chunks
+          await new Promise(resolve => setTimeout(resolve, 500));
+          if ((global as any).gc) {
+            try {
+              (global as any).gc();
+            } catch (e) {
+              this.logger.warn('Failed to call global.gc() manually: ' + e.message);
+            }
+          }
+        }
+        
+        return { 
+          importedLogs: totalImported, 
+          skippedRows: totalSkipped, 
+          failures: allFailures 
+        };
+      } else if (moduleType === 'dealer-master-qrs') {
+        const rows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
+        return await this.migrateDealerMasterQRs(rows, "MSSQL: " + tableMap.file1);
+      } else if (moduleType === 'plotter-masters') {
+        const rows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
+        return await this.migratePlotters(rows, "MSSQL: " + tableMap.file1);
+      } else if (moduleType === 'materials') {
+        const productTypes = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
+        const categories = (await pool.request().query("SELECT * FROM [" + tableMap.file2 + "]")).recordset;
+        const filmCategories = (await pool.request().query("SELECT * FROM [" + tableMap.file3 + "]")).recordset;
+        const displayMaster = (await pool.request().query("SELECT * FROM [" + tableMap.file4 + "]")).recordset;
+        const cutConfigs = (await pool.request().query("SELECT * FROM [" + tableMap.file5 + "]")).recordset;
+        return await this.migrateMaterialsSystem(
+          productTypes,
+          categories, // catsData is double-used as products since categories and products are both in MaterialMaster in MSSQL
+          filmCategories,
+          categories,
+          displayMaster,
+          cutConfigs,
+          "MSSQL Connection"
+        );
       } else {
         throw new BadRequestException('Unsupported module type for DB migration: ' + moduleType);
       }
@@ -2535,4 +3070,438 @@ export class MigrationService {
       await pool.close();
     }
   }
+
+  async migratePlotters(fileOrRows: Express.Multer.File | any[], sourceName?: string) {
+    if (!fileOrRows) throw new Error('File or rows are required');
+    const data = Array.isArray(fileOrRows) ? fileOrRows : await this.parseCsvBuffer((fileOrRows as Express.Multer.File).buffer);
+    let imported = 0;
+    let updated = 0;
+    let skipped = 0;
+    const failures: any[] = [];
+
+    for (const row of data) {
+      try {
+        const legacyId = String(row.PlotterID || '').trim();
+        if (!legacyId) {
+          skipped++;
+          failures.push({ row, error: 'PlotterID is required' });
+          continue;
+        }
+
+        const plotterName = String(row.PlotterName || '').trim();
+        const cutPointX = row.CutPointX ? parseFloat(row.CutPointX) : null;
+        const cutPointY = row.CutPointY ? parseFloat(row.CutPointY) : null;
+
+        // Suggested new fields:
+        const manufacturer = String(row.Manufacturer || '').trim() || null;
+        const connectionType = String(row.ConnectionType || '').trim() || null;
+        const description = String(row.Description || '').trim() || null;
+        const maxSpeed = row.MaxSpeed ? parseInt(row.MaxSpeed) : null;
+        const maxForce = row.MaxForce ? parseInt(row.MaxForce) : null;
+        const status = String(row.Status || 'ACTIVE').trim();
+
+        // Legacy configuration parameters
+        const scaleX = row.scale_x ? parseFloat(row.scale_x) : null;
+        const scaleY = row.scale_y ? parseFloat(row.scale_y) : null;
+        const displayX = row.display_x ? parseFloat(row.display_x) : null;
+        const displayY = row.display_y ? parseFloat(row.display_y) : null;
+        const scale90X = row.scale_90_x ? parseFloat(row.scale_90_x) : null;
+        const scale90Y = row.scale_90_y ? parseFloat(row.scale_90_y) : null;
+        const display90X = row.display_90_x ? parseFloat(row.display_90_x) : null;
+        const display90Y = row.display_90_y ? parseFloat(row.display_90_y) : null;
+
+        const supportGpgl = this.parseBit(row.SupportGPGL);
+        const isRegistrationMarkSupport = this.parseBit(row.IsRegistrationMarkSupport);
+        const isMovable = this.parseBit(row.IsMovable);
+        const isLpgl = this.parseBit(row.IsLPGL);
+        const isActive = this.parseBit(row.IsActive);
+        const isDelete = this.parseBit(row.IsDelete);
+        const isAndroid = this.parseBit(row.IsAndroid);
+
+        const plotterType = String(row.PlotterType || '').trim() || null;
+        const searchKeyword = String(row.SearchKeyword || '').trim() || null;
+        const languageType = String(row.LanguageType || '').trim() || null;
+        const driverType = String(row.DriverType || '').trim() || null;
+        const endPoint = String(row.EndPoint || '').trim() || null;
+
+        const basePenUp = row.BasePen_UP ? parseInt(row.BasePen_UP) : null;
+        const basePenDown = row.BasePen_DOWN ? parseInt(row.BasePen_DOWN) : null;
+        const targetPenUp = row.TargetPen_UP ? parseInt(row.TargetPen_UP) : null;
+        const targetPenDown = row.TargetPen_DOWN ? parseInt(row.TargetPen_DOWN) : null;
+
+        const baseXYSeparator = String(row.BaseXYSeperator || '').trim() || null;
+        const xySeparator = String(row.XYSeperator || '').trim() || null;
+        const startString = String(row.StartString || '').trim() || null;
+        const endString = String(row.EndString || '').trim() || null;
+
+        // Find or Create PlotterMaster
+        let plotter = await (this.prisma as any).plotterMaster.findUnique({
+          where: { legacyId }
+        });
+
+        if (!plotter) {
+          plotter = await (this.prisma as any).plotterMaster.create({
+            data: {
+              legacyId,
+              plotterName,
+              cutPointX,
+              cutPointY,
+              manufacturer,
+              connectionType,
+              description,
+              maxSpeed,
+              maxForce,
+              status
+            }
+          });
+          imported++;
+        } else {
+          plotter = await (this.prisma as any).plotterMaster.update({
+            where: { id: plotter.id },
+            data: {
+              plotterName,
+              cutPointX,
+              cutPointY,
+              manufacturer,
+              connectionType,
+              description,
+              maxSpeed,
+              maxForce,
+              status
+            }
+          });
+          updated++;
+        }
+
+        // Upsert PlotterMasterLegacy
+        await (this.prisma as any).plotterMasterLegacy.upsert({
+          where: { plotterMasterId: plotter.id },
+          update: {
+            scaleX,
+            scaleY,
+            displayX,
+            displayY,
+            scale90X,
+            scale90Y,
+            display90X,
+            display90Y,
+            supportGpgl,
+            isRegistrationMarkSupport,
+            isMovable,
+            isLpgl,
+            isActive,
+            isDelete,
+            plotterType,
+            searchKeyword,
+            languageType,
+            driverType,
+            endPoint,
+            basePenUp,
+            basePenDown,
+            targetPenUp,
+            targetPenDown,
+            baseXYSeparator,
+            xySeparator,
+            startString,
+            endString,
+            isAndroid
+          },
+          create: {
+            plotterMasterId: plotter.id,
+            scaleX,
+            scaleY,
+            displayX,
+            displayY,
+            scale90X,
+            scale90Y,
+            display90X,
+            display90Y,
+            supportGpgl,
+            isRegistrationMarkSupport,
+            isMovable,
+            isLpgl,
+            isActive,
+            isDelete,
+            plotterType,
+            searchKeyword,
+            languageType,
+            driverType,
+            endPoint,
+            basePenUp,
+            basePenDown,
+            targetPenUp,
+            targetPenDown,
+            baseXYSeparator,
+            xySeparator,
+            startString,
+            endString,
+            isAndroid
+          }
+        });
+
+      } catch (err: any) {
+        skipped++;
+        failures.push({ row, error: err.message });
+      }
+    }
+
+    const result = {
+      imported,
+      updated,
+      skipped,
+      failures: failures.slice(0, 1000)
+    };
+
+    await this.logMigration({
+      module: 'plotter-masters',
+      fileName: sourceName || (!Array.isArray(fileOrRows) ? (fileOrRows as Express.Multer.File).originalname : 'Uploaded Plotter Master File'),
+      status: skipped === 0 ? 'SUCCESS' : (imported + updated > 0 ? 'PARTIAL' : 'FAILED'),
+      processed: data.length,
+      created: imported,
+      updated,
+      failed: skipped,
+      details: result
+    });
+
+    return result;
+  }
+
+  async migrateMaterialsSystem(
+    productTypesFile: Express.Multer.File | any[],
+    categoriesFile: Express.Multer.File | any[],
+    filmCategoriesFile: Express.Multer.File | any[],
+    productsFile: Express.Multer.File | any[],
+    displayMasterFile: Express.Multer.File | any[],
+    cutConfigsFile: Express.Multer.File | any[],
+    sourceName?: string
+  ) {
+    const pTypesData = Array.isArray(productTypesFile) ? productTypesFile : await this.parseCsvBuffer((productTypesFile as Express.Multer.File).buffer);
+    const catsData = Array.isArray(categoriesFile) ? categoriesFile : await this.parseCsvBuffer((categoriesFile as Express.Multer.File).buffer);
+    const filmCatsData = Array.isArray(filmCategoriesFile) ? filmCategoriesFile : await this.parseCsvBuffer((filmCategoriesFile as Express.Multer.File).buffer);
+    const prodsData = Array.isArray(productsFile) ? productsFile : await this.parseCsvBuffer((productsFile as Express.Multer.File).buffer);
+    const displaysData = Array.isArray(displayMasterFile) ? displayMasterFile : await this.parseCsvBuffer((displayMasterFile as Express.Multer.File).buffer);
+    const cutsData = Array.isArray(cutConfigsFile) ? cutConfigsFile : await this.parseCsvBuffer((cutConfigsFile as Express.Multer.File).buffer);
+
+    let imported = 0;
+    let updated = 0;
+    let skipped = 0;
+    const failures: any[] = [];
+
+    // 1. Migrate Product Types
+    const productTypeMap = new Map<number, string>(); // legacyId -> DB UUID
+    for (const row of pTypesData) {
+      try {
+        const legacyId = parseInt(row.ProductTypeID);
+        if (isNaN(legacyId)) throw new Error('Invalid ProductTypeID');
+        const name = String(row.ProductTypeName || '').trim();
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        const isActive = row.IsActive !== undefined ? this.parseBit(row.IsActive) : true;
+        const isDeleted = row.IsDeleted !== undefined ? this.parseBit(row.IsDeleted) : false;
+
+        const record = await (this.prisma as any).productType.upsert({
+          where: { legacyId },
+          update: { name, slug, isActive, isDeleted },
+          create: { legacyId, name, slug, isActive, isDeleted }
+        });
+        productTypeMap.set(legacyId, record.id);
+        imported++;
+      } catch (err: any) {
+        skipped++;
+        failures.push({ row, error: `ProductType Error: ${err.message}` });
+      }
+    }
+
+    // 2. Migrate Material Categories (MaterialMaster where ParentID = -1)
+    const materialCategoryMap = new Map<number, string>(); // legacyId -> DB UUID
+    // We filter catsData for ParentID = -1 (or parentId === '-1')
+    const categoryRows = catsData.filter(row => String(row.ParentID).trim() === '-1');
+    for (const row of categoryRows) {
+      try {
+        const legacyId = parseInt(row.MaterialID);
+        if (isNaN(legacyId)) throw new Error('Invalid MaterialID');
+        const name = String(row.MaterialName || row.Name || '').trim();
+        const description = String(row.Description || '').trim() || null;
+        const isActive = row.IsActive !== undefined ? this.parseBit(row.IsActive) : true;
+        const isDeleted = row.IsDelete !== undefined ? this.parseBit(row.IsDelete) : false;
+
+        // Determine productTypeId. Legacy ProductTypeMaster records map to categories somehow?
+        // Let's check ProductTypeID or default to first productType if missing.
+        const ptLegacyId = parseInt(row.ProductTypeID);
+        let productTypeId = !isNaN(ptLegacyId) ? productTypeMap.get(ptLegacyId) : null;
+        if (!productTypeId && productTypeMap.size > 0) {
+          productTypeId = Array.from(productTypeMap.values())[0];
+        }
+        if (!productTypeId) throw new Error('No valid ProductType found for category');
+
+        const record = await (this.prisma as any).materialCategory.upsert({
+          where: { legacyId },
+          update: { name, description, isActive, isDeleted, productTypeId },
+          create: { legacyId, name, description, isActive, isDeleted, productTypeId }
+        });
+        materialCategoryMap.set(legacyId, record.id);
+        imported++;
+      } catch (err: any) {
+        skipped++;
+        failures.push({ row, error: `MaterialCategory Error: ${err.message}` });
+      }
+    }
+
+    // 3. Migrate Film Categories (ReportCategoryMaster)
+    // FilmCategory needs materialCategoryId.
+    // In legacy schema, ProductDisplayMaster maps MaterialID (product) to ReportCategoryID (film category).
+    // A product (MaterialMaster where ParentID != -1) has a ParentID pointing to the MaterialCategory.
+    // So we can establish: MaterialCategory (ParentID) -> Material (MaterialID) -> ProductDisplayMaster -> ReportCategoryID (Film Category)
+    const filmCategoryMap = new Map<number, string>(); // legacyId -> DB UUID
+    
+    // Create maps from displaysData and catsData (product rows) to help trace category
+    const productToCategoryLegacyIdMap = new Map<number, number>();
+    catsData.forEach(row => {
+      const parentId = parseInt(row.ParentID);
+      const materialId = parseInt(row.MaterialID);
+      if (!isNaN(parentId) && parentId !== -1 && !isNaN(materialId)) {
+        productToCategoryLegacyIdMap.set(materialId, parentId);
+      }
+    });
+
+    const filmCatToMaterialCatMap = new Map<number, number>(); // ReportCategoryID -> MaterialCategory legacy ID
+    displaysData.forEach(row => {
+      const materialId = parseInt(row.MaterialID);
+      const reportCatId = parseInt(row.ReportCategoryID);
+      if (!isNaN(materialId) && !isNaN(reportCatId)) {
+        const matCatLegacyId = productToCategoryLegacyIdMap.get(materialId);
+        if (matCatLegacyId) {
+          filmCatToMaterialCatMap.set(reportCatId, matCatLegacyId);
+        }
+      }
+    });
+
+    for (const row of filmCatsData) {
+      try {
+        const legacyId = parseInt(row.ReportCategoryID);
+        if (isNaN(legacyId)) throw new Error('Invalid ReportCategoryID');
+        const name = String(row.ReportCategoryName || row.Name || '').trim();
+        const isActive = row.IsActive !== undefined ? this.parseBit(row.IsActive) : true;
+
+        // Resolve materialCategoryId
+        const matCatLegacyId = filmCatToMaterialCatMap.get(legacyId);
+        let materialCategoryId = matCatLegacyId ? materialCategoryMap.get(matCatLegacyId) : null;
+        if (!materialCategoryId && materialCategoryMap.size > 0) {
+          materialCategoryId = Array.from(materialCategoryMap.values())[0];
+        }
+        if (!materialCategoryId) throw new Error('No valid MaterialCategory found for FilmCategory');
+
+        const record = await (this.prisma as any).filmCategory.upsert({
+          where: { legacyId },
+          update: { name, isActive, materialCategoryId },
+          create: { legacyId, name, isActive, materialCategoryId }
+        });
+        filmCategoryMap.set(legacyId, record.id);
+        imported++;
+      } catch (err: any) {
+        skipped++;
+        failures.push({ row, error: `FilmCategory Error: ${err.message}` });
+      }
+    }
+
+    // 4. Migrate Materials (MaterialMaster where ParentID != -1)
+    const materialMap = new Map<number, string>(); // legacyId -> DB UUID
+    const productRows = catsData.filter(row => String(row.ParentID).trim() !== '-1');
+    
+    // Create map from displayMaster (MaterialID -> ReportCategoryID) to link product to FilmCategory
+    const productToFilmCatLegacyIdMap = new Map<number, number>();
+    displaysData.forEach(row => {
+      const materialId = parseInt(row.MaterialID);
+      const reportCatId = parseInt(row.ReportCategoryID);
+      if (!isNaN(materialId) && !isNaN(reportCatId)) {
+        productToFilmCatLegacyIdMap.set(materialId, reportCatId);
+      }
+    });
+
+    for (const row of productRows) {
+      try {
+        const legacyId = parseInt(row.MaterialID);
+        if (isNaN(legacyId)) throw new Error('Invalid MaterialID');
+        const name = String(row.MaterialName || row.Name || '').trim();
+        const thickness = row.Thickness ? parseFloat(row.Thickness) : null;
+        const layers = row.Layers ? parseInt(row.Layers) : 1;
+        const minSpeed = row.MinSpeed ? parseInt(row.MinSpeed) : null;
+        const minForce = row.MinForce ? parseInt(row.MinForce) : null;
+        const isActive = row.IsActive !== undefined ? this.parseBit(row.IsActive) : true;
+        const isDeleted = row.IsDelete !== undefined ? this.parseBit(row.IsDelete) : false;
+
+        // Resolve filmCategoryId
+        const filmCatLegacyId = productToFilmCatLegacyIdMap.get(legacyId);
+        let filmCategoryId = filmCatLegacyId ? filmCategoryMap.get(filmCatLegacyId) : null;
+        if (!filmCategoryId && filmCategoryMap.size > 0) {
+          filmCategoryId = Array.from(filmCategoryMap.values())[0];
+        }
+        if (!filmCategoryId) throw new Error('No valid FilmCategory found for Material');
+
+        const record = await (this.prisma as any).material.upsert({
+          where: { legacyId },
+          update: { name, thickness, layers, minSpeed, minForce, isActive, isDeleted, filmCategoryId },
+          create: { legacyId, name, thickness, layers, minSpeed, minForce, isActive, isDeleted, filmCategoryId }
+        });
+        materialMap.set(legacyId, record.id);
+        imported++;
+      } catch (err: any) {
+        skipped++;
+        failures.push({ row, error: `Material Error: ${err.message}` });
+      }
+    }
+
+    // 5. Migrate Material Cut Configs (MaterialCutTypeConfig)
+    // Maps MaterialID -> CutTypeID (CutPattern legacyId)
+    const cutPatterns = await (this.prisma as any).cutPattern.findMany({ select: { id: true, legacyId: true } });
+    const cutPatternMap = new Map<number, string>();
+    cutPatterns.forEach((cp: any) => {
+      if (cp.legacyId) cutPatternMap.set(cp.legacyId, cp.id);
+    });
+
+    for (const row of cutsData) {
+      try {
+        const matLegacyId = parseInt(row.MaterialID);
+        const cutLegacyId = parseInt(row.CutTypeID || row.CutPatternID);
+        if (isNaN(matLegacyId) || isNaN(cutLegacyId)) throw new Error('Invalid MaterialID or CutTypeID');
+
+        const materialId = materialMap.get(matLegacyId);
+        const cutTypeId = cutPatternMap.get(cutLegacyId);
+        if (!materialId) throw new Error(`Material with legacy ID ${matLegacyId} not imported`);
+        if (!cutTypeId) throw new Error(`CutPattern with legacy ID ${cutLegacyId} not found`);
+
+        await (this.prisma as any).materialCutConfig.upsert({
+          where: {
+            materialId_cutTypeId: { materialId, cutTypeId }
+          },
+          update: {},
+          create: { materialId, cutTypeId }
+        });
+        imported++;
+      } catch (err: any) {
+        skipped++;
+        failures.push({ row, error: `MaterialCutConfig Error: ${err.message}` });
+      }
+    }
+
+    const result = {
+      imported,
+      updated,
+      skipped,
+      failures: failures.slice(0, 1000)
+    };
+
+    await this.logMigration({
+      module: 'materials',
+      fileName: sourceName || 'Uploaded Materials System Files',
+      status: skipped === 0 ? 'SUCCESS' : (imported > 0 ? 'PARTIAL' : 'FAILED'),
+      processed: pTypesData.length + catsData.length + filmCatsData.length + prodsData.length + displaysData.length + cutsData.length,
+      created: imported,
+      updated,
+      failed: skipped,
+      details: result
+    });
+
+    return result;
+  }
 }
+
