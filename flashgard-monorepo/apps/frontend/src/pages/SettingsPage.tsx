@@ -1635,8 +1635,8 @@ const MaterialModal = ({ item, productTypes, materialCategories, filmCategories,
 
   // Filter categories by selected product type
   const filteredCategories = materialCategories.filter((mc: any) => mc.productTypeId === selectedProductTypeId);
-  // Filter film categories by selected category
-  const filteredFilmCategories = filmCategories.filter((fc: any) => fc.materialCategoryId === selectedMaterialCategoryId);
+  // Film category is not dependent on category
+  const filteredFilmCategories = filmCategories;
 
   // Cascading selections
   useEffect(() => {
@@ -1656,15 +1656,10 @@ const MaterialModal = ({ item, productTypes, materialCategories, filmCategories,
   }, [selectedProductTypeId, filteredCategories, selectedMaterialCategoryId]);
 
   useEffect(() => {
-    if (selectedMaterialCategoryId) {
-      const match = filteredFilmCategories.find((fc: any) => fc.id === selectedFilmCategoryId);
-      if (!match) {
-        setSelectedFilmCategoryId(filteredFilmCategories[0]?.id || '');
-      }
-    } else {
-      setSelectedFilmCategoryId('');
+    if (!selectedFilmCategoryId && filmCategories.length > 0) {
+      setSelectedFilmCategoryId(filmCategories[0].id);
     }
-  }, [selectedMaterialCategoryId, filteredFilmCategories, selectedFilmCategoryId]);
+  }, [filmCategories, selectedFilmCategoryId]);
 
   // Sync filmCategoryId into form state when selectedFilmCategoryId changes
   useEffect(() => {
