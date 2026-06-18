@@ -625,6 +625,7 @@ export const plottersApi = {
     }
     return request<any[]>(`/plotters${p.toString() ? `?${p.toString()}` : ''}`);
   },
+  getMasters: () => request<any[]>('/plotters/masters'),
   getOne: (id: string) => request<any>(`/plotters/${id}`),
   create: (data: any) => request<any[]>('/plotters', { method: 'POST', body: JSON.stringify(data) }),
   updateQA: (id: string, status: string, notes?: string) =>

@@ -979,6 +979,7 @@ model PlotterMaster {
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
 
   legacySettings PlotterMasterLegacy?
+  plotters       Plotter[]
 
   @@map("plotter_masters")
 }
@@ -1088,6 +1089,7 @@ model Material {
 model Plotter {
   id                  String                 @id @default(uuid()) @db.Uuid
   serialNumber        String                 @unique @map("serial_number") @db.VarChar(255)
+  plotterMasterId     String                 @map("plotter_master_id") @db.Uuid
   modelName           String                 @map("model_name") @db.VarChar(255)
   status              String                 @default("ORDERED") @db.VarChar(50)
   purchaseOrderNumber String?                @map("purchase_order_number") @db.VarChar(100)
@@ -1100,6 +1102,7 @@ model Plotter {
   createdAt           DateTime               @default(now()) @map("created_at")
   updatedAt           DateTime               @default(now()) @updatedAt @map("updated_at")
 
+  plotterMaster       PlotterMaster          @relation(fields: [plotterMasterId], references: [id])
   supplier            Organization           @relation("SupplierPlotters", fields: [supplierId], references: [id])
   currentOwner        Organization?          @relation("OwnerPlotters", fields: [currentOwnerId], references: [id])
   currentLicense      OrgLicense?            @relation("LicensePlotter", fields: [currentLicenseId], references: [id])

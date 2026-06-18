@@ -5,15 +5,21 @@ import { PrismaService } from '../prisma/prisma.service';
 export class PlottersService {
   constructor(private prisma: PrismaService) {}
 
+  async findAllMasters() {
+    return this.prisma.plotterMaster.findMany({
+      orderBy: { plotterName: 'asc' },
+    });
+  }
+
   async create(data: any, currentUser: any) {
     if (!currentUser?.isSuperAdmin) {
       throw new ForbiddenException('Only Super Admins can log plotter procurements.');
     }
 
-    const { purchaseOrderNumber, supplierId, modelName, serialNumbers, notes } = data;
+    const { purchaseOrderNumber, supplierId, plotterMasterId, serialNumbers, notes } = data;
 
-    if (!supplierId || !modelName || !serialNumbers || !Array.isArray(serialNumbers) || serialNumbers.length === 0) {
-      throw new BadRequestException('Supplier, model name, and a list of serial numbers are required.');
+    if (!supplierId || !plotterMasterId || !serialNumbers || !Array.isArray(serialNumbers) || serialNumbers.length === 0) {
+      throw new BadRequestException('Supplier, plotter model master, and a list of serial numbers are required.');
     }
 
     const supplier = await this.prisma.organization.findUnique({
@@ -23,6 +29,14 @@ export class PlottersService {
       throw new NotFoundException(`Supplier Organization with ID ${supplierId} not found.`);
     }
 
+    const plotterMaster = await this.prisma.plotterMaster.findUnique({
+      where: { id: plotterMasterId },
+    });
+    if (!plotterMaster) {
+      throw new NotFoundException(`Plotter model with ID ${plotterMasterId} not found.`);
+    }
+
+    const modelName = plotterMaster.plotterName || 'Unknown Model';
     const createdPlotters: any[] = [];
 
     // Run in transaction to ensure consistency
@@ -42,6 +56,7 @@ export class PlottersService {
         const plotter = await tx.plotter.create({
           data: {
             serialNumber: trimmedSerial,
+            plotterMasterId,
             modelName,
             status: 'ORDERED',
             purchaseOrderNumber,
@@ -56,7 +71,7 @@ export class PlottersService {
             plotterId: plotter.id,
             action: 'CREATE_PO',
             performedById: currentUser.id,
-            notes: `Procurement logged. PO: ${purchaseOrderNumber || 'N/A'}. ${notes || ''}`,
+            notes: `Procurement logged. PO: ${purchaseOrderNumber || 'N/A'}. Model: ${modelName}. ${notes || ''}`,
           },
         });
 
@@ -100,7 +115,6 @@ export class PlottersService {
     // Role-based visibility logic
     if (!currentUser.isSuperAdmin) {
       // Non-superadmins should only see plotters distributed to their own organization (or children)
-      // We will assume the user has a list of organizations they are part of
       const userOrgIds = currentUser.organizationId ? [currentUser.organizationId] : [];
       if (userOrgIds.length > 0) {
         filters.push({
@@ -110,7 +124,6 @@ export class PlottersService {
           ],
         });
       } else {
-        // If they don't have an org, they shouldn't see anything unless they are super admin
         return [];
       }
     }
@@ -118,6 +131,7 @@ export class PlottersService {
     return this.prisma.plotter.findMany({
       where: filters.length > 0 ? { AND: filters } : undefined,
       include: {
+        plotterMaster: true,
         supplier: { select: { id: true, name: true } },
         currentOwner: { select: { id: true, name: true } },
         currentLicense: { select: { id: true, key: true, licenseName: true } },
@@ -131,6 +145,7 @@ export class PlottersService {
     const plotter = await this.prisma.plotter.findUnique({
       where: { id },
       include: {
+        plotterMaster: true,
         supplier: { select: { id: true, name: true } },
         currentOwner: { select: { id: true, name: true } },
         currentLicense: { select: { id: true, key: true, licenseName: true } },

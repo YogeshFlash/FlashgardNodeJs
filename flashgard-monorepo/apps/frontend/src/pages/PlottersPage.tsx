@@ -47,7 +47,10 @@ export default function PlottersPage() {
   // Procurement Form state
   const [poNumber, setPoNumber] = useState('');
   const [supplierId, setSupplierId] = useState('');
-  const [modelName, setModelName] = useState('');
+  const [plotterMasterId, setPlotterMasterId] = useState('');
+  const [plotterMasters, setPlotterMasters] = useState<any[]>([]);
+  const [masterSearchText, setMasterSearchText] = useState('');
+  const [showMasterDropdown, setShowMasterDropdown] = useState(false);
   const [serialsText, setSerialsText] = useState('');
   const [poNotes, setPoNotes] = useState('');
 
@@ -63,12 +66,14 @@ export default function PlottersPage() {
     try {
       setLoading(true);
       setError(null);
-      const [plotterData, orgData] = await Promise.all([
+      const [plotterData, orgData, masterData] = await Promise.all([
         plottersApi.getAll(),
-        orgsApi.getAll()
+        orgsApi.getAll(),
+        plottersApi.getMasters()
       ]);
       setPlotters(plotterData);
       setOrganizations(orgData);
+      setPlotterMasters(masterData || []);
     } catch (err: any) {
       setError(err?.message || 'Failed to fetch plotter data.');
     } finally {
@@ -78,7 +83,7 @@ export default function PlottersPage() {
 
   const handleCreateProcurement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supplierId || !modelName || !serialsText.trim()) {
+    if (!supplierId || !plotterMasterId || !serialsText.trim()) {
       setError('Please fill all required fields.');
       return;
     }
@@ -99,7 +104,7 @@ export default function PlottersPage() {
       await plottersApi.create({
         purchaseOrderNumber: poNumber,
         supplierId,
-        modelName,
+        plotterMasterId,
         serialNumbers: serials,
         notes: poNotes,
       });
@@ -108,10 +113,11 @@ export default function PlottersPage() {
       // Reset Form
       setPoNumber('');
       setSupplierId('');
-      setModelName('');
+      setPlotterMasterId('');
       setSerialsText('');
       setPoNotes('');
       setOrgSearchText('');
+      setMasterSearchText('');
 
       await fetchData();
       setActiveTab('registry');
@@ -223,6 +229,11 @@ export default function PlottersPage() {
   // Filtered organizations for dropdown
   const filteredOrgs = organizations.filter(o => 
     o.name.toLowerCase().includes(orgSearchText.toLowerCase())
+  );
+
+  // Filtered plotter masters for dropdown
+  const filteredMasters = plotterMasters.filter(m => 
+    (m.plotterName || '').toLowerCase().includes(masterSearchText.toLowerCase())
   );
 
   return (
@@ -459,16 +470,49 @@ export default function PlottersPage() {
                       className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Model Name *</label>
-                    <input
-                      type="text"
-                      required
-                      value={modelName}
-                      onChange={e => setModelName(e.target.value)}
-                      placeholder="e.g. Roland GS-24"
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
+                  <div className="relative">
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Plotter Model *</label>
+                    <div
+                      onClick={() => setShowMasterDropdown(!showMasterDropdown)}
+                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between text-sm cursor-pointer hover:border-slate-300"
+                    >
+                      <span className="truncate">
+                        {plotterMasterId ? plotterMasters.find(m => m.id === plotterMasterId)?.plotterName : 'Select Plotter Model'}
+                      </span>
+                      <ChevronDownIcon />
+                    </div>
+                    {showMasterDropdown && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setShowMasterDropdown(false)} />
+                        <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden">
+                          <div className="p-2 border-b border-slate-100 bg-white">
+                            <input
+                              autoFocus
+                              type="text"
+                              placeholder="Search plotter model..."
+                              value={masterSearchText}
+                              onChange={e => setMasterSearchText(e.target.value)}
+                              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                          </div>
+                          <div className="overflow-y-auto p-1 max-h-48 custom-scrollbar">
+                            {filteredMasters.length === 0 ? (
+                              <div className="p-3 text-sm text-slate-400 text-center">No results</div>
+                            ) : (
+                              filteredMasters.map(m => (
+                                <div
+                                  key={m.id}
+                                  onClick={() => { setPlotterMasterId(m.id); setShowMasterDropdown(false); setMasterSearchText(''); }}
+                                  className={`px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-slate-50 ${plotterMasterId === m.id ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'}`}
+                                >
+                                  {m.plotterName} {m.manufacturer && <span className="text-xs opacity-75">({m.manufacturer})</span>}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 

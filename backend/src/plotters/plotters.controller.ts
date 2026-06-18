@@ -25,6 +25,11 @@ export class PlottersController {
     );
   }
 
+  @Get('masters')
+  findAllMasters() {
+    return this.plottersService.findAllMasters();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Req() req: any) {
     return this.plottersService.findOne(id, req.user);
