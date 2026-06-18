@@ -54,6 +54,10 @@ model Organization {
   MachineCutLog          MachineCutLog[]
   dealerMasterQRs        DealerMasterQR[]    @relation("DealerMasterQRs")
   ownerMasterQRs         DealerMasterQR[]    @relation("OwnerMasterQRs")
+  supplierPlotters       Plotter[]           @relation("SupplierPlotters")
+  ownerPlotters          Plotter[]           @relation("OwnerPlotters")
+  fromOwnerLogs          PlotterAssignmentLog[] @relation("FromOwnerLogs")
+  toOwnerLogs            PlotterAssignmentLog[] @relation("ToOwnerLogs")
 
   @@map("organizations")
 }
@@ -180,6 +184,8 @@ model User {
   createdWorkOrders      WorkOrder[]
   MachineCutLog          MachineCutLog[]
   creatorMasterQRs       DealerMasterQR[]    @relation("CreatorMasterQRs")
+  testedPlotters         Plotter[]           @relation("TestedPlotters")
+  performedLogs          PlotterAssignmentLog[] @relation("PerformedLogs")
 
   @@map("users")
 }
@@ -614,6 +620,9 @@ model OrgLicense {
   tenant         Organization?           @relation("TenantLicenses", fields: [tenantId], references: [id])
   securityAlerts SecurityAlert[]
   MachineCutLog  MachineCutLog[]
+  plotters       Plotter[]           @relation("LicensePlotter")
+  fromLicenseLogs PlotterAssignmentLog[] @relation("FromLicenseLogs")
+  toLicenseLogs   PlotterAssignmentLog[] @relation("ToLicenseLogs")
 
   @@index([ownerId])
   @@index([status])
@@ -1075,6 +1084,53 @@ model Material {
 
   @@map("materials")
 }
+
+model Plotter {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  serialNumber        String                 @unique @map("serial_number") @db.VarChar(255)
+  modelName           String                 @map("model_name") @db.VarChar(255)
+  status              String                 @default("ORDERED") @db.VarChar(50)
+  purchaseOrderNumber String?                @map("purchase_order_number") @db.VarChar(100)
+  supplierId          String                 @map("supplier_id") @db.Uuid
+  currentOwnerId      String?                @map("current_owner_id") @db.Uuid
+  currentLicenseId    String?                @map("current_license_id") @db.Uuid
+  notes               String?                @db.Text
+  testedById          String?                @map("tested_by_id") @db.Uuid
+  testedAt            DateTime?              @map("tested_at")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @default(now()) @updatedAt @map("updated_at")
+
+  supplier            Organization           @relation("SupplierPlotters", fields: [supplierId], references: [id])
+  currentOwner        Organization?          @relation("OwnerPlotters", fields: [currentOwnerId], references: [id])
+  currentLicense      OrgLicense?            @relation("LicensePlotter", fields: [currentLicenseId], references: [id])
+  testedBy            User?                  @relation("TestedPlotters", fields: [testedById], references: [id])
+  assignmentLogs      PlotterAssignmentLog[]
+
+  @@map("plotters")
+}
+
+model PlotterAssignmentLog {
+  id             String        @id @default(uuid()) @db.Uuid
+  plotterId      String        @map("plotter_id") @db.Uuid
+  action         String        @db.VarChar(50)
+  fromOwnerId    String?       @map("from_owner_id") @db.Uuid
+  toOwnerId      String?       @map("to_owner_id") @db.Uuid
+  fromLicenseId  String?       @map("from_license_id") @db.Uuid
+  toLicenseId    String?       @map("to_license_id") @db.Uuid
+  performedById  String        @map("performed_by_id") @db.Uuid
+  notes          String?       @db.Text
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  plotter        Plotter       @relation(fields: [plotterId], references: [id], onDelete: Cascade)
+  fromOwner      Organization? @relation("FromOwnerLogs", fields: [fromOwnerId], references: [id])
+  toOwner        Organization? @relation("ToOwnerLogs", fields: [toOwnerId], references: [id])
+  fromLicense    OrgLicense?   @relation("FromLicenseLogs", fields: [fromLicenseId], references: [id])
+  toLicense      OrgLicense?   @relation("ToLicenseLogs", references: [id], fields: [toLicenseId])
+  performedBy    User          @relation("PerformedLogs", fields: [performedById], references: [id])
+
+  @@map("plotter_assignment_logs")
+}
+
 
 
 

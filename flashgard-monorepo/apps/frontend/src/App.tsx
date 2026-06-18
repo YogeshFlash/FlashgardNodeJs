@@ -15,6 +15,7 @@ import ModelsPage from './pages/ModelsPage';
 import InventoryPage from './pages/InventoryPage';
 import LicensesPage from './pages/LicensesPage';
 import DataMigration from './pages/DataMigration';
+import PlottersPage from './pages/PlottersPage';
 
 function App() {
   return (
@@ -42,6 +43,7 @@ function App() {
             <Route path="profile" element={<ProfilePage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="inventory" element={<InventoryPage />} />
+            <Route path="plotters" element={<PlottersPage />} />
             <Route path="licenses" element={<LicensesPage />} />
             <Route path="migration" element={<DataMigration />} />
           </Route>

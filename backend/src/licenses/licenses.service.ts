@@ -288,6 +288,7 @@ export class LicensesService {
           include: { 
             batch: true,
             owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } },
+            plotters: true,
             transferItems: {
               include: {
                 transfer: {
@@ -317,6 +318,7 @@ export class LicensesService {
       include: { 
         batch: true,
         owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } },
+        plotters: true,
         transferItems: {
           include: {
             transfer: {

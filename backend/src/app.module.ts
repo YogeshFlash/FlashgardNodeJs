@@ -34,6 +34,7 @@ import { ProductTypesModule } from './product-types/product-types.module';
 import { MaterialCategoriesModule } from './material-categories/material-categories.module';
 import { FilmCategoriesModule } from './film-categories/film-categories.module';
 import { MaterialsModule } from './materials/materials.module';
+import { PlottersModule } from './plotters/plotters.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { MaterialsModule } from './materials/materials.module';
     MaterialCategoriesModule,
     FilmCategoriesModule,
     MaterialsModule,
+    PlottersModule,
   ],
   controllers: [AppController],
   providers: [
