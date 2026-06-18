@@ -25,13 +25,18 @@ const Card = ({ title, value, change, icon: Icon, colorClass, shadowClass }: any
 );
 
 const ReportsPage = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'modelReport'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'modelReport' | 'dealerPerformance' | 'plotterAnalytics'>('overview');
   
   // Overview Tab Stats
   const [range, setRange] = useState<number>(6);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
+
+  // New Reports State Fields
+  const [dealerStats, setDealerStats] = useState<any[]>([]);
+  const [plotterStats, setPlotterStats] = useState<any[]>([]);
+  const [extraReportsLoading, setExtraReportsLoading] = useState<boolean>(false);
 
   // Model Wise Cut Report Tab States
   const [reportItems, setReportItems] = useState<any[]>([]);
@@ -262,6 +267,103 @@ const ReportsPage = () => {
     }
   }, [startDate, endDate, search, statusFilter, plotterFilter, categoryFilter, sortBy, activeTab]);
 
+  // Fetch aggregated Dealer Performance & Plotter Analytics details
+  useEffect(() => {
+    if (activeTab === 'dealerPerformance' || activeTab === 'plotterAnalytics') {
+      setExtraReportsLoading(true);
+      licensesApi.getReportsCutReport({
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        search: search || undefined,
+        skip: 0,
+        take: 5000
+      })
+        .then((res: any) => {
+          const items = res.items || [];
+
+          // 1. Compile Dealer Performance Stats
+          const dealerMap: Record<string, { name: string; total: number; success: number; failed: number; models: Set<string>; lastActive: string }> = {};
+          items.forEach((item: any) => {
+            const dName = item.dealer || 'Unknown Dealer';
+            if (!dealerMap[dName]) {
+              dealerMap[dName] = {
+                name: dName,
+                total: 0,
+                success: 0,
+                failed: 0,
+                models: new Set<string>(),
+                lastActive: item.updatedDate
+              };
+            }
+            const record = dealerMap[dName];
+            record.total++;
+            if (item.cutStatus === 'Success') {
+              record.success++;
+            } else {
+              record.failed++;
+            }
+            if (item.model) record.models.add(item.model);
+            if (new Date(item.updatedDate).getTime() > new Date(record.lastActive).getTime()) {
+              record.lastActive = item.updatedDate;
+            }
+          });
+
+          const dealers = Object.values(dealerMap).map(d => ({
+            name: d.name,
+            totalCuts: d.total,
+            successRate: d.total > 0 ? Math.round((d.success / d.total) * 100) : 0,
+            failedCuts: d.failed,
+            uniqueModelsCut: d.models.size,
+            lastCutDate: d.lastActive
+          })).sort((a, b) => b.totalCuts - a.totalCuts);
+
+          setDealerStats(dealers);
+
+          // 2. Compile Plotter Analytics Stats
+          const plotterMap: Record<string, { id: string; total: number; success: number; failed: number; categories: Set<string>; dealers: Set<string> }> = {};
+          items.forEach((item: any) => {
+            const pId = item.plotter || 'Unknown Plotter';
+            if (!plotterMap[pId]) {
+              plotterMap[pId] = {
+                id: pId,
+                total: 0,
+                success: 0,
+                failed: 0,
+                categories: new Set<string>(),
+                dealers: new Set<string>()
+              };
+            }
+            const record = plotterMap[pId];
+            record.total++;
+            if (item.cutStatus === 'Success') {
+              record.success++;
+            } else {
+              record.failed++;
+            }
+            if (item.categoryName) record.categories.add(item.categoryName);
+            if (item.dealer) record.dealers.add(item.dealer);
+          });
+
+          const plotters = Object.values(plotterMap).map(p => ({
+            id: p.id,
+            totalCuts: p.total,
+            successRate: p.total > 0 ? Math.round((p.success / p.total) * 100) : 0,
+            failedCuts: p.failed,
+            categoriesCount: p.categories.size,
+            dealersCount: p.dealers.size
+          })).sort((a, b) => b.totalCuts - a.totalCuts);
+
+          setPlotterStats(plotters);
+        })
+        .catch((err: any) => {
+          console.error('Failed to compile secondary reports:', err);
+        })
+        .finally(() => {
+          setExtraReportsLoading(false);
+        });
+    }
+  }, [startDate, endDate, search, activeTab]);
+
   useEffect(() => {
     if (activeTab === 'modelReport') {
       fetchAnalytics();
@@ -354,7 +456,7 @@ const ReportsPage = () => {
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex p-1 bg-slate-100 rounded-xl border border-slate-200/60 self-start sm:self-auto">
+        <div className="flex p-1 bg-slate-100 rounded-xl border border-slate-200/60 self-start sm:self-auto flex-wrap gap-1">
           <button
             onClick={() => setActiveTab('overview')}
             className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'overview' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
@@ -366,6 +468,18 @@ const ReportsPage = () => {
             className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'modelReport' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
           >
             Model Wise Cut Report
+          </button>
+          <button
+            onClick={() => setActiveTab('dealerPerformance')}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'dealerPerformance' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            Dealer Performance
+          </button>
+          <button
+            onClick={() => setActiveTab('plotterAnalytics')}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'plotterAnalytics' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            Plotter Analytics
           </button>
         </div>
       </div>
@@ -514,7 +628,7 @@ const ReportsPage = () => {
             </>
           )}
         </>
-      ) : (
+      ) : activeTab === 'modelReport' ? (
         /* Model Wise Cut Report Tab */
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
           {/* Filtering Header */}
@@ -993,6 +1107,144 @@ const ReportsPage = () => {
               </div>
             </div>
           )}
+        </div>
+      ) : activeTab === 'dealerPerformance' ? (
+        /* Dealer Performance Report View */
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col p-6 space-y-6 relative min-h-[300px]">
+          {extraReportsLoading && (
+            <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-10 backdrop-blur-[1px]">
+              <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+            </div>
+          )}
+
+          <div>
+            <h3 className="text-lg font-bold text-slate-800">Dealer Performance Dashboard</h3>
+            <p className="text-slate-400 text-xs font-semibold">Analyzes cutting volume, success metrics, and diversity across active dealer stores.</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
+                  <th className="px-6 py-4">Dealer / Store Name</th>
+                  <th className="px-6 py-4">Total Cuts</th>
+                  <th className="px-6 py-4">Success Rate</th>
+                  <th className="px-6 py-4">Failed Cuts</th>
+                  <th className="px-6 py-4">Unique Devices Cut</th>
+                  <th className="px-6 py-4">Last Activity</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700 text-xs font-medium">
+                {dealerStats.length > 0 ? (
+                  dealerStats.map((dealer, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-6 py-4 font-bold text-slate-800">{dealer.name}</td>
+                      <td className="px-6 py-4 font-semibold text-slate-700">{dealer.totalCuts.toLocaleString()}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            dealer.successRate >= 95 
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                              : dealer.successRate >= 85 
+                              ? 'bg-blue-50 text-blue-700 border-blue-100' 
+                              : 'bg-rose-50 text-rose-700 border-rose-100'
+                          }`}>
+                            {dealer.successRate}%
+                          </span>
+                          <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden hidden sm:block">
+                            <div 
+                              className={`h-full rounded-full ${
+                                dealer.successRate >= 95 ? 'bg-emerald-600' : dealer.successRate >= 85 ? 'bg-blue-600' : 'bg-rose-600'
+                              }`} 
+                              style={{ width: `${dealer.successRate}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-slate-500">{dealer.failedCuts.toLocaleString()}</td>
+                      <td className="px-6 py-4 font-semibold text-indigo-600">{dealer.uniqueModelsCut} models</td>
+                      <td className="px-6 py-4 text-slate-400">{new Date(dealer.lastCutDate).toLocaleString()}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                      No dealer performance data found matching filters.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* Plotter / Cutting Machine Analytics View */
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col p-6 space-y-6 relative min-h-[300px]">
+          {extraReportsLoading && (
+            <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-10 backdrop-blur-[1px]">
+              <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+            </div>
+          )}
+
+          <div>
+            <h3 className="text-lg font-bold text-slate-800">Plotter / Cutting Machine Analytics</h3>
+            <p className="text-slate-400 text-xs font-semibold">Evaluates cutter utilization, reliability, and device category output across all machinery.</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
+                  <th className="px-6 py-4">Plotter Name / ID</th>
+                  <th className="px-6 py-4">Total Cuts Logged</th>
+                  <th className="px-6 py-4">Cut Success rate</th>
+                  <th className="px-6 py-4">Failed Cuts</th>
+                  <th className="px-6 py-4">Active Categories</th>
+                  <th className="px-6 py-4">Stores Connected</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700 text-xs font-medium">
+                {plotterStats.length > 0 ? (
+                  plotterStats.map((plotter, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-6 py-4 font-mono font-bold text-slate-800">{plotter.id}</td>
+                      <td className="px-6 py-4 font-semibold text-slate-700">{plotter.totalCuts.toLocaleString()}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            plotter.successRate >= 95 
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                              : plotter.successRate >= 85 
+                              ? 'bg-blue-50 text-blue-700 border-blue-100' 
+                              : 'bg-rose-50 text-rose-700 border-rose-100'
+                          }`}>
+                            {plotter.successRate}%
+                          </span>
+                          <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden hidden sm:block">
+                            <div 
+                              className={`h-full rounded-full ${
+                                plotter.successRate >= 95 ? 'bg-emerald-600' : plotter.successRate >= 85 ? 'bg-blue-600' : 'bg-rose-600'
+                              }`} 
+                              style={{ width: `${plotter.successRate}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-slate-500">{plotter.failedCuts.toLocaleString()}</td>
+                      <td className="px-6 py-4 font-semibold text-blue-600">{plotter.categoriesCount} categories</td>
+                      <td className="px-6 py-4 font-semibold text-slate-700">{plotter.dealersCount} store(s)</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                      No plotter analytics details available.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
