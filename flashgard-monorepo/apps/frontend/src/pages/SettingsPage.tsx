@@ -71,38 +71,17 @@ function buildOrgRows(orgs: any[], rootOrgId?: number) {
   return rows;
 }
 
-// ─── Shared TabBar ──────────────────────────────────
-const TabBar = ({ tabs, active, onChange }: { tabs: { id: string; label: string; icon: any }[]; active: string; onChange: (t: string) => void }) => (
-  <div className="flex border-b border-slate-200 bg-white sticky top-0 z-10">
-    <div className="flex overflow-x-auto no-scrollbar">
-      {tabs.map(tab => (
-        <button
-          key={tab.id}
-          onClick={() => onChange(tab.id)}
-          className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-all whitespace-nowrap border-b-2 
-            ${active === tab.id 
-              ? 'border-[var(--color-accent)] text-[var(--color-accent)] bg-[var(--color-accent)]/5' 
-              : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-            }`}
-        >
-          <tab.icon className={`w-4 h-4 ${active === tab.id ? 'text-[var(--color-accent)]' : 'text-slate-400'}`} />
-          {tab.label}
-        </button>
-      ))}
-    </div>
-  </div>
-);
 
 // ─── General Settings Tab ───────────────────────────
 const Toggle = ({ checked, onChange, label, desc }: any) => (
-  <div className="flex items-center justify-between py-3.5 border-b border-slate-100 last:border-0">
-    <div>
-      <p className="text-sm font-medium text-slate-700">{label}</p>
-      {desc && <p className="text-xs text-slate-400 mt-0.5">{desc}</p>}
+  <div className="flex items-center justify-between py-3.5 border-b border-slate-100 last:border-0 hover:bg-slate-50/20 px-2 rounded-xl transition-colors">
+    <div className="space-y-0.5">
+      <p className="text-sm font-semibold text-slate-700">{label}</p>
+      {desc && <p className="text-xs text-slate-400 font-medium">{desc}</p>}
     </div>
     <button
       onClick={() => onChange(!checked)}
-      className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${checked ? 'bg-[var(--color-accent)]' : 'bg-slate-200'}`}
+      className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${checked ? 'bg-indigo-600' : 'bg-slate-200'}`}
     >
       <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${checked ? 'translate-x-5' : ''}`} />
     </button>
@@ -115,64 +94,89 @@ const GeneralTab = () => {
   const [twoFA, setTwoFA] = React.useState(false);
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl">
-      <div className="card bg-white p-6">
-        <div className="flex items-center gap-2 mb-5">
-          <Bell className="w-5 h-5 text-slate-600" />
-          <h3 className="text-base font-semibold text-slate-800">Notifications</h3>
-        </div>
-        <Toggle checked={emailNotif} onChange={setEmailNotif} label="Email Notifications" desc="Receive summaries and alerts via email" />
-        <Toggle checked={loginAlert} onChange={setLoginAlert} label="Login Alerts" desc="Get notified when a new login is detected" />
-      </div>
-
-      <div className="card bg-white p-6">
-        <div className="flex items-center gap-2 mb-5">
-          <Key className="w-5 h-5 text-slate-600" />
-          <h3 className="text-base font-semibold text-slate-800">Security</h3>
-        </div>
-        <Toggle checked={twoFA} onChange={setTwoFA} label="Two-Factor Authentication" desc="Require a second factor at login" />
-        <div className="py-3.5 border-b border-slate-100 flex justify-between items-center">
-          <div>
-            <p className="text-sm font-medium text-slate-700">Session Timeout</p>
-            <p className="text-xs text-slate-400 mt-0.5">Automatically sign out after inactivity</p>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all space-y-4">
+        <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+          <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+            <Bell className="w-5 h-5" />
           </div>
-          <select className="input-field w-auto text-sm">
-            <option>8 hours</option>
-            <option>4 hours</option>
-            <option>1 hour</option>
-          </select>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Notifications</h3>
+            <p className="text-[10px] text-slate-400 font-semibold">Configure how you receive system alerts</p>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Toggle checked={emailNotif} onChange={setEmailNotif} label="Email Notifications" desc="Receive summaries and alerts via email" />
+          <Toggle checked={loginAlert} onChange={setLoginAlert} label="Login Alerts" desc="Get notified when a new login is detected" />
         </div>
       </div>
 
-      <div className="card bg-white p-6">
-        <div className="flex items-center gap-2 mb-5">
-          <Globe className="w-5 h-5 text-slate-600" />
-          <h3 className="text-base font-semibold text-slate-800">System</h3>
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all space-y-4">
+        <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+          <div className="p-2 bg-rose-50 rounded-lg text-rose-600">
+            <Shield className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Security Settings</h3>
+            <p className="text-[10px] text-slate-400 font-semibold">Secure your profile credentials</p>
+          </div>
         </div>
-        <div className="py-3 border-b border-slate-100 flex justify-between items-center">
-          <p className="text-sm font-medium text-slate-700">Default Language</p>
-          <select className="input-field w-auto text-sm"><option>English</option><option>Tamil</option><option>Hindi</option></select>
-        </div>
-        <div className="py-3 flex justify-between items-center">
-          <p className="text-sm font-medium text-slate-700">Timezone</p>
-          <select className="input-field w-auto text-sm"><option>Asia/Kolkata (IST)</option><option>UTC</option></select>
+        <div className="space-y-2">
+          <Toggle checked={twoFA} onChange={setTwoFA} label="Two-Factor Authentication" desc="Require a second factor at login" />
+          <div className="py-3.5 border-b border-slate-100 flex justify-between items-center px-2 rounded-xl">
+            <div>
+              <p className="text-sm font-semibold text-slate-700">Session Timeout</p>
+              <p className="text-xs text-slate-400 mt-0.5 font-medium">Automatically sign out after inactivity</p>
+            </div>
+            <select className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option>8 hours</option>
+              <option>4 hours</option>
+              <option>1 hour</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      <div className="card bg-white p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Database className="w-5 h-5 text-slate-600" />
-          <h3 className="text-base font-semibold text-slate-800">About</h3>
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all space-y-4">
+        <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+          <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+            <Globe className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Localization</h3>
+            <p className="text-[10px] text-slate-400 font-semibold">Select language & timezone preference</p>
+          </div>
+        </div>
+        <div className="space-y-3">
+          <div className="py-2 border-b border-slate-100 flex justify-between items-center px-2 rounded-xl">
+            <p className="text-sm font-semibold text-slate-700">Default Language</p>
+            <select className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"><option>English</option><option>Tamil</option><option>Hindi</option></select>
+          </div>
+          <div className="py-2 flex justify-between items-center px-2 rounded-xl">
+            <p className="text-sm font-semibold text-slate-700">Timezone</p>
+            <select className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"><option>Asia/Kolkata (IST)</option><option>UTC</option></select>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all space-y-4">
+        <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+          <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
+            <Database className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">System Details</h3>
+            <p className="text-[10px] text-slate-400 font-semibold">General platform versions and metadata</p>
+          </div>
         </div>
         <div className="space-y-2 text-sm">
           {[
             { label: 'Application', value: 'Flashgard CRM' },
             { label: 'Version', value: '2.0.0' },
-            //{ label: 'Backend', value: 'NestJS + Prisma 5 + PostgreSQL' },
           ].map(({ label, value }) => (
-            <div key={label} className="flex justify-between py-2 border-b border-slate-50 last:border-0">
-              <span className="text-slate-500">{label}</span>
-              <span className="text-slate-700 font-medium">{value}</span>
+            <div key={label} className="flex justify-between py-2.5 border-b border-slate-50 last:border-0 px-2 rounded-xl hover:bg-slate-50/30">
+              <span className="text-slate-500 font-medium">{label}</span>
+              <span className="text-slate-700 font-bold">{value}</span>
             </div>
           ))}
         </div>
@@ -180,6 +184,7 @@ const GeneralTab = () => {
     </div>
   );
 };
+
 
 // ─── System Roles Tab ───────────────────────────────
 const RoleModal = ({ role, onClose, onSave }: any) => {
@@ -2284,11 +2289,12 @@ const MaterialsTab = () => {
   );
 };
 
-// ─── Audit Logs Tab ───────────────────────────────
 const AuditLogsTab = () => {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 25;
 
   const load = async () => {
     setLoading(true);
@@ -2307,6 +2313,40 @@ const AuditLogsTab = () => {
     l.entity.toLowerCase().includes(search.toLowerCase())
   );
 
+  const paginatedLogs = React.useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filtered.slice(start, start + itemsPerPage);
+  }, [filtered, currentPage]);
+
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+    return (
+      <div className="flex items-center justify-between px-6 py-4 bg-white border-t border-slate-100">
+        <p className="text-[10px] font-bold text-slate-400 uppercase">
+          Page {currentPage} of {totalPages} (Total {filtered.length} entries)
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all text-slate-600 cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all text-slate-600 cursor-pointer"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -2316,57 +2356,74 @@ const AuditLogsTab = () => {
         </div>
       </div>
 
-      <div className="relative max-w-xs">
-        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-        <input className="input-field pl-9 py-1.5 text-sm" placeholder="Search logs..." value={search} onChange={e => setSearch(e.target.value)} />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="relative max-w-xs w-full">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            className="input-field pl-9 py-1.5 text-sm"
+            placeholder="Search logs..."
+            value={search}
+            onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+          />
+        </div>
+        {/* Top Pagination Controls */}
+        <div className="flex-shrink-0">
+          {renderPagination()}
+        </div>
       </div>
 
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-[var(--color-accent)] animate-spin" /></div>
       ) : (
-        <div className="card bg-white overflow-hidden">
+        <div className="card bg-white overflow-hidden shadow-sm border border-slate-100 rounded-xl">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <List className="w-10 h-10 text-slate-300 mb-3" />
               <p className="text-slate-500 font-medium">No audit logs found</p>
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-100">
-                <tr>
-                  {['Timestamp', 'User', 'Action', 'Entity', 'Details'].map(h => (
-                    <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {filtered.map(log => (
-                  <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="px-5 py-4 whitespace-nowrap text-xs text-slate-500">{new Date(log.createdAt).toLocaleString()}</td>
-                    <td className="px-5 py-4">
-                      {log.user ? (
-                        <div>
-                          <p className="font-semibold text-slate-800">{[log.user.firstName, log.user.lastName].filter(Boolean).join(' ') || '—'}</p>
-                          <p className="text-xs text-slate-500">{log.user.email}</p>
-                        </div>
-                      ) : (
-                        <span className="text-xs font-semibold text-slate-400">System Activity</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold
-                        ${log.action === 'CREATE' ? 'bg-emerald-100 text-emerald-700' :
-                          log.action === 'UPDATE' ? 'bg-[var(--color-gold-muted)] text-[var(--color-accent)]' :
-                            'bg-red-100 text-red-700'}`}>
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 font-mono text-xs text-slate-600">{log.entity} <br /><span className="text-slate-400 text-[10px] break-all">{log.entityId}</span></td>
-                    <td className="px-5 py-4 text-xs text-slate-500 max-w-xs truncate" title={JSON.stringify(log.details)}>{JSON.stringify(log.details)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <>
+              <div className="overflow-x-auto w-full">
+                <table className="w-full text-sm min-w-[800px]">
+                  <thead className="bg-slate-50 border-b border-slate-100">
+                    <tr>
+                      {['Timestamp', 'User', 'Action', 'Entity', 'Details'].map(h => (
+                        <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {paginatedLogs.map(log => (
+                      <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="px-5 py-4 whitespace-nowrap text-xs text-slate-500">{new Date(log.createdAt).toLocaleString()}</td>
+                        <td className="px-5 py-4">
+                          {log.user ? (
+                            <div>
+                              <p className="font-semibold text-slate-800">{[log.user.firstName, log.user.lastName].filter(Boolean).join(' ') || '—'}</p>
+                              <p className="text-xs text-slate-500">{log.user.email}</p>
+                            </div>
+                          ) : (
+                            <span className="text-xs font-semibold text-slate-400">System Activity</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold
+                            ${log.action === 'CREATE' ? 'bg-emerald-100 text-emerald-700' :
+                              log.action === 'UPDATE' ? 'bg-[var(--color-gold-muted)] text-[var(--color-accent)]' :
+                                'bg-red-100 text-red-700'}`}>
+                            {log.action}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 font-mono text-xs text-slate-600">{log.entity} <br /><span className="text-slate-400 text-[10px] break-all">{log.entityId}</span></td>
+                        <td className="px-5 py-4 text-xs text-slate-500 max-w-xs truncate" title={JSON.stringify(log.details)}>{JSON.stringify(log.details)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* Bottom Pagination Controls */}
+              {renderPagination()}
+            </>
           )}
         </div>
       )}
@@ -2382,12 +2439,12 @@ const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState('general');
 
   const tabs = [
-    { id: 'general', label: 'General', icon: Globe },
-    { id: 'users', label: 'Users', icon: Users }
+    { id: 'general', label: 'General Settings', icon: Globe },
+    { id: 'users', label: 'Users Directory', icon: Users }
   ];
   if (user?.isSuperAdmin || hasPermission('roles:read')) {
     tabs.push(
-      { id: 'roles', label: 'Roles', icon: ShieldCheck }
+      { id: 'roles', label: 'Access Roles', icon: ShieldCheck }
     );
   }
   if (user?.isSuperAdmin || (user as any)?.role?.isSystemRole) {
@@ -2397,36 +2454,65 @@ const SettingsPage = () => {
   }
   if (user?.isSuperAdmin) {
     tabs.push(
-      { id: 'orgTypes', label: 'Org Type', icon: Building },
-      { id: 'materials', label: 'Materials', icon: ScrollText }
+      { id: 'orgTypes', label: 'Organization Types', icon: Building },
+      { id: 'materials', label: 'Materials Settings', icon: ScrollText }
     );
   }
-  tabs.push({ id: 'Audit Logs', label: 'Audit Logs', icon: List });
+  tabs.push({ id: 'Audit Logs', label: 'System Audit Logs', icon: List });
 
   return (
-    <div className="space-y-0 -mx-6 -mt-6">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="px-8 pt-6 pb-0 bg-white border-b border-slate-200">
-        <div className="mb-4">
-          <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
-          <p className="text-slate-500 text-sm mt-1">Manage system preferences, roles, and system users</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/60 pb-5">
+        <div className="flex items-center gap-3.5">
+          <div className="p-3 bg-indigo-900 rounded-2xl shadow-lg shadow-indigo-950/20 text-white">
+            <ShieldCheck className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-black text-slate-800 tracking-tight">System Settings</h1>
+            <p className="text-slate-500 text-sm mt-0.5">Configure system parameters, role controls, organizations, and user directories.</p>
+          </div>
         </div>
-        <TabBar tabs={tabs} active={activeTab} onChange={setActiveTab} />
       </div>
 
-      {/* Tab Content */}
-      <div className="bg-slate-50 min-h-[calc(100vh-16rem)]">
-        {activeTab === 'general' && <GeneralTab />}
-        {activeTab === 'users' && <UsersTab />}
-        {activeTab === 'roles' && <RolesTabSettings />}
-        {activeTab === 'permissions' && <RolePermissionsTab />}
-        {activeTab === 'orgTypes' && <OrganizationTypesTab />}
-        {activeTab === 'materials' && <MaterialsTab />}
-        {activeTab === 'Audit Logs' && (
-          <HasPermission permission="audit_logs:read" fallback={<div className="p-12 text-center text-slate-500 font-medium">You don't have permission to view audit logs.</div>}>
-            <AuditLogsTab />
-          </HasPermission>
-        )}
+      {/* Side-by-side modern split container */}
+      <div className="bg-slate-50/50 border border-slate-200/80 rounded-3xl overflow-hidden flex flex-col lg:flex-row min-h-[650px] shadow-sm">
+        {/* Navigation Sidebar */}
+        <div className="w-full lg:w-64 border-b lg:border-b-0 lg:border-r border-slate-200/80 bg-white p-4 flex flex-col gap-1.5 shrink-0">
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider px-3 mb-2">Control Categories</p>
+          {tabs.map(tab => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-3 px-4 py-3 text-xs font-bold rounded-xl transition-all text-left cursor-pointer border
+                  ${isActive 
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/10 font-black' 
+                    : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+              >
+                <tab.icon className="w-4 h-4 shrink-0" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Dynamic Settings Content Panel */}
+        <div className="flex-1 bg-white min-w-0">
+          {activeTab === 'general' && <GeneralTab />}
+          {activeTab === 'users' && <UsersTab />}
+          {activeTab === 'roles' && <RolesTabSettings />}
+          {activeTab === 'permissions' && <RolePermissionsTab />}
+          {activeTab === 'orgTypes' && <OrganizationTypesTab />}
+          {activeTab === 'materials' && <MaterialsTab />}
+          {activeTab === 'Audit Logs' && (
+            <HasPermission permission="audit_logs:read" fallback={<div className="p-12 text-center text-slate-500 font-medium">You don't have permission to view audit logs.</div>}>
+              <AuditLogsTab />
+            </HasPermission>
+          )}
+        </div>
       </div>
     </div>
   );
