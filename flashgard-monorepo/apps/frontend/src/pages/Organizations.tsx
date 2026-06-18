@@ -488,7 +488,7 @@ export const OrgRoleModal = ({ role, orgId, onClose, onSave }: any) => {
 };
 
 // ─── Tab Contents ─────────────────────────────────────
-const DetailsTab = ({ org, onEdit }: { org: any; onEdit: () => void }) => {
+const DetailsTab = ({ org, orgs, onEdit }: { org: any; orgs: any[]; onEdit: () => void }) => {
   const typeColors: Record<string, string> = {
     internal: 'bg-purple-100 text-purple-700',
     distributor: 'bg-blue-100 text-blue-700',
@@ -497,6 +497,7 @@ const DetailsTab = ({ org, onEdit }: { org: any; onEdit: () => void }) => {
     supplier: 'bg-rose-100 text-rose-700',
   };
   const wallet = org.tenantWallets?.[0];
+  const parentOrg = (orgs || []).find((o: any) => o.id === org.parentId);
 
   return (
     <div className="p-6 space-y-5">
@@ -513,7 +514,7 @@ const DetailsTab = ({ org, onEdit }: { org: any; onEdit: () => void }) => {
           { label: 'Name', value: org.name },
           { label: 'Type', value: <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${typeColors[org.type] || 'bg-slate-100 text-slate-600'}`}>{org.type}</span> },
           { label: 'Status', value: <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${org.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{org.isActive ? 'Active' : 'Inactive'}</span> },
-          { label: 'Organization ID', value: `#${org.id}` },
+          { label: 'Parent Organization', value: parentOrg ? parentOrg.name : 'None (Top-level)' },
           { label: 'Available Credits', value: <span className="font-bold text-indigo-600">{wallet?.balance || 0}</span> },
           { label: 'Used Credits', value: <span className="text-slate-600">{wallet?.usedCredits || 0}</span> },
         ].map(({ label, value }) => (
@@ -959,13 +960,11 @@ const CreditsTab = ({ orgId, org, orgs, reload }: { orgId: string, org: any, org
 
       <div className="flex justify-between items-center">
         <h3 className="font-semibold text-slate-700">Assignment History</h3>
-        {(org?.type || org?.organizationType?.name)?.toLowerCase() !== 'retailer' && (
-          <HasPermission permission="licenses:write">
-            <button onClick={() => setModal(true)} className="btn-primary text-sm flex items-center gap-1.5 py-1.5 px-3">
-              <Plus className="w-3.5 h-3.5" /> Assign Credit
-            </button>
-          </HasPermission>
-        )}
+        <HasPermission permission="licenses:write">
+          <button onClick={() => setModal(true)} className="btn-primary text-sm flex items-center gap-1.5 py-1.5 px-3">
+            <Plus className="w-3.5 h-3.5" /> Assign Credit
+          </button>
+        </HasPermission>
       </div>
       
       {modal && <TransferCreditsModal initialOrgId={orgId} orgs={orgs} isAssignMode={true} onClose={() => setModal(false)} onSave={() => { setModal(false); reload(); }} />}
@@ -1059,7 +1058,7 @@ const Organizations = () => {
   const fetchOrgs = async (keepSelected?: boolean) => {
     setLoading(true);
     try {
-      const res: any = await orgsApi.getAll(debouncedSearch);
+      const res: any = await orgsApi.getAll();
       const data = Array.isArray(res) ? res : (res.data || res.items || []);
       setOrgs(data);
       
@@ -1086,13 +1085,46 @@ const Organizations = () => {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchOrgs(); }, [debouncedSearch]);
+  useEffect(() => { fetchOrgs(); }, []);
 
   const selectOrg = async (org: any) => {
     setActiveTab('Details');
     const detail = await orgsApi.getOne(org.id);
+    if (detail && !detail.type && detail.organizationType?.name) {
+      detail.type = detail.organizationType.name.toLowerCase();
+    }
     setSelected(detail);
   };
+
+  // Client-side search: auto-expand parent paths and select matching organization
+  useEffect(() => {
+    if (!debouncedSearch || orgs.length === 0) return;
+    
+    const matched = orgs.find((org: any) => 
+      org.name.toLowerCase().includes(debouncedSearch.toLowerCase())
+    );
+    
+    if (matched) {
+      const parentIdsToExpand: string[] = [];
+      let currentParentId = matched.parentId;
+      const orgMap = new Map(orgs.map(o => [o.id, o]));
+      while (currentParentId) {
+        parentIdsToExpand.push(currentParentId);
+        const parent = orgMap.get(currentParentId);
+        currentParentId = parent ? parent.parentId : null;
+      }
+      
+      if (parentIdsToExpand.length > 0) {
+        setExpandedIds(prev => {
+          const next = new Set(prev);
+          parentIdsToExpand.forEach(id => next.add(id));
+          return next;
+        });
+      }
+      
+      selectOrg(matched);
+    }
+  }, [debouncedSearch, orgs]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this organization? All contacts, addresses, and users will be affected.')) return;
@@ -1272,7 +1304,7 @@ const Organizations = () => {
 
           {/* Tab Content */}
           <div className="flex-1 overflow-y-auto">
-            {activeTab === 'Details' && <DetailsTab org={selected} onEdit={() => setOrgModal(selected)} />}
+            {activeTab === 'Details' && <DetailsTab org={selected} orgs={orgs} onEdit={() => setOrgModal(selected)} />}
             {activeTab === 'Contacts' && <ContactsTab orgId={selected.id} />}
             {activeTab === 'Users' && <UsersTab orgId={selected.id} />}
             {activeTab === 'Addresses' && <AddressesTab orgId={selected.id} />}

@@ -426,9 +426,11 @@ export class LicensesService {
     const where: any = {};
 
     if (!isSuperAdmin && orgId) {
-      where.dealerId = orgId;
+      const orgIds = await this.getDescendantOrgIds(orgId);
+      where.dealerId = { in: orgIds };
     } else if (orgId) {
-      where.dealerId = orgId;
+      const orgIds = await this.getDescendantOrgIds(orgId);
+      where.dealerId = { in: orgIds };
     }
 
     if (search) {
@@ -454,6 +456,24 @@ export class LicensesService {
     ]);
 
     return { items, total };
+  }
+
+  private async getDescendantOrgIds(rootOrgId: string): Promise<string[]> {
+    if (!rootOrgId) return [];
+    const allOrgIds = new Set<string>();
+    allOrgIds.add(rootOrgId);
+    let currentLevelIds = [rootOrgId];
+    while (currentLevelIds.length > 0) {
+      const children = await this.prisma.organization.findMany({
+        where: { parentId: { in: currentLevelIds } },
+        select: { id: true },
+      });
+      const childIds = children.map(c => c.id);
+      if (childIds.length === 0) break;
+      childIds.forEach(id => allOrgIds.add(id));
+      currentLevelIds = childIds;
+    }
+    return Array.from(allOrgIds);
   }
 }
 

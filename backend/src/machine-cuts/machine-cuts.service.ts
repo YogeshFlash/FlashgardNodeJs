@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { decryptLicenseKey } from '../utils/encryption';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class MachineCutsService {
@@ -168,10 +169,12 @@ export class MachineCutsService {
 
     if (!isSuperAdmin) {
       if (orgId) {
-        where.organizationId = orgId;
+        const orgIds = await this.getDescendantOrgIds(orgId);
+        where.organizationId = { in: orgIds };
       }
     } else if (orgId) {
-      where.organizationId = orgId;
+      const orgIds = await this.getDescendantOrgIds(orgId);
+      where.organizationId = { in: orgIds };
     }
 
     if (licenseId) {
@@ -337,10 +340,12 @@ export class MachineCutsService {
     const whereCuts: any = {};
     const whereWallet: any = {};
 
+    const orgIds = targetOrgId ? await this.getDescendantOrgIds(targetOrgId) : [];
+
     if (targetOrgId) {
-      whereLicense.tenantId = targetOrgId;
-      whereCuts.organizationId = targetOrgId;
-      whereWallet.tenantId = targetOrgId;
+      whereLicense.tenantId = { in: orgIds };
+      whereCuts.organizationId = { in: orgIds };
+      whereWallet.tenantId = { in: orgIds };
     }
 
     // 1. Total Cuts
@@ -374,7 +379,7 @@ export class MachineCutsService {
                 COUNT(*)::integer AS value
               FROM machine_cut_logs
               WHERE created_at >= NOW() - INTERVAL '12 months'
-                AND organization_id = ${targetOrgId}::uuid
+                AND organization_id = ANY(${orgIds}::uuid[])
               GROUP BY TO_CHAR(created_at, 'YYYY-MM')
               ORDER BY month_key ASC
             `
@@ -384,7 +389,7 @@ export class MachineCutsService {
                 COUNT(*)::integer AS value
               FROM machine_cut_logs
               WHERE created_at >= NOW() - INTERVAL '6 months'
-                AND organization_id = ${targetOrgId}::uuid
+                AND organization_id = ANY(${orgIds}::uuid[])
               GROUP BY TO_CHAR(created_at, 'YYYY-MM')
               ORDER BY month_key ASC
             `)
@@ -433,7 +438,7 @@ export class MachineCutsService {
           SELECT b.license_type AS type, COUNT(l.id)::integer AS count
           FROM org_licenses l
           JOIN org_license_batches b ON l.batch_id = b.id
-          WHERE l.status = 'ACTIVE' AND l.tenant_id = ${targetOrgId}::uuid
+          WHERE l.status = 'ACTIVE' AND l.tenant_id = ANY(${orgIds}::uuid[])
           GROUP BY b.license_type
         `
       : await this.prisma.$queryRaw<any[]>`
@@ -470,9 +475,11 @@ export class MachineCutsService {
     const where: any = {};
 
     if (!isSuperAdmin && orgId) {
-      where.organizationId = orgId;
+      const orgIds = await this.getDescendantOrgIds(orgId);
+      where.organizationId = { in: orgIds };
     } else if (orgId) {
-      where.organizationId = orgId;
+      const orgIds = await this.getDescendantOrgIds(orgId);
+      where.organizationId = { in: orgIds };
     }
 
     if (startDate || endDate) {
@@ -671,6 +678,24 @@ export class MachineCutsService {
     });
 
     return { items: formatted, total };
+  }
+
+  private async getDescendantOrgIds(rootOrgId: string): Promise<string[]> {
+    if (!rootOrgId) return [];
+    const allOrgIds = new Set<string>();
+    allOrgIds.add(rootOrgId);
+    let currentLevelIds = [rootOrgId];
+    while (currentLevelIds.length > 0) {
+      const children = await this.prisma.organization.findMany({
+        where: { parentId: { in: currentLevelIds } },
+        select: { id: true },
+      });
+      const childIds = children.map(c => c.id);
+      if (childIds.length === 0) break;
+      childIds.forEach(id => allOrgIds.add(id));
+      currentLevelIds = childIds;
+    }
+    return Array.from(allOrgIds);
   }
 }
 

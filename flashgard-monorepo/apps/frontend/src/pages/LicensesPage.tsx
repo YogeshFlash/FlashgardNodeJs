@@ -925,36 +925,34 @@ const LicensesPage = () => {
           </div>
         </div>
         
-        {user?.isSuperAdmin && (
-          <div className="flex gap-2">
-            <button onClick={fetchData} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors" title="Refresh Inventory">
-              <RotateCcw className={`w-4 h-4 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <button onClick={() => setModal('org-license')} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg transition-all text-sm">
-              <Plus className="w-4 h-4" /> Issue License
-            </button>
-            <button onClick={() => setModal('cut-credits')} className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 shadow-lg transition-all text-sm">
-              <Plus className="w-4 h-4" /> Assign Credits
-            </button>
-          </div>
-        )}
-        {!user?.isSuperAdmin && (
-           <button onClick={fetchData} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center gap-2" title="Refresh Inventory">
-             <RotateCcw className={`w-4 h-4 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
-             <span className="text-sm font-medium text-slate-500">Refresh</span>
-           </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={fetchData} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center" title="Refresh Inventory">
+            <RotateCcw className={`w-4 h-4 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
+            {!user?.isSuperAdmin && <span className="text-sm font-medium text-slate-500 ml-2">Refresh</span>}
+          </button>
 
-        {tab === 'credits' && (user?.isSuperAdmin || user?.organization?.type?.toLowerCase() !== 'retailer') && (
-          <button onClick={() => setModal('transfer-credits')} className="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-xl animate-in slide-in-from-right-4 transition-all">
-            <Send className="w-4 h-4" /> Transfer Credits
-          </button>
-        )}
-        {tab === 'licenses' && selectedIds.length > 0 && (
-          <button onClick={() => setModal('dispatch')} className="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-xl animate-in slide-in-from-right-4 transition-all">
-            <Send className="w-4 h-4" /> Dispatch Selected ({selectedIds.length})
-          </button>
-        )}
+          {user?.isSuperAdmin && (
+            <>
+              <button onClick={() => setModal('org-license')} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-md transition-all text-xs sm:text-sm">
+                <Plus className="w-3.5 h-3.5" /> Issue License
+              </button>
+              <button onClick={() => setModal('cut-credits')} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 shadow-md transition-all text-xs sm:text-sm">
+                <Plus className="w-3.5 h-3.5" /> Assign Credits
+              </button>
+            </>
+          )}
+
+          {tab === 'credits' && (user?.isSuperAdmin || user?.organization?.type?.toLowerCase() !== 'retailer') && (
+            <button onClick={() => setModal('transfer-credits')} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-md transition-all text-xs sm:text-sm animate-in slide-in-from-right-4">
+              <Send className="w-3.5 h-3.5" /> Transfer Credits
+            </button>
+          )}
+          {tab === 'licenses' && selectedIds.length > 0 && (
+            <button onClick={() => setModal('dispatch')} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-md transition-all text-xs sm:text-sm animate-in slide-in-from-right-4">
+              <Send className="w-3.5 h-3.5" /> Dispatch Selected ({selectedIds.length})
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

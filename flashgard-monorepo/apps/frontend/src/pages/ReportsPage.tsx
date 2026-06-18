@@ -390,6 +390,36 @@ const ReportsPage = () => {
             </button>
           </div>
 
+          {/* Top Pagination Controls */}
+          {reportTotal > 0 && (
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-500 select-none bg-slate-50/30">
+              <span>
+                Showing <strong className="text-slate-700">{skip + 1}</strong> to{' '}
+                <strong className="text-slate-700">{Math.min(skip + take, reportTotal)}</strong> of{' '}
+                <strong className="text-slate-700">{reportTotal.toLocaleString()}</strong> entries
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePrevPage}
+                  disabled={skip === 0}
+                  className="p-1.5 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-slate-700">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  onClick={handleNextPage}
+                  disabled={skip + take >= reportTotal}
+                  className="p-1.5 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Table Container */}
           <div className="overflow-x-auto relative min-h-[300px]">
             {reportLoading && (

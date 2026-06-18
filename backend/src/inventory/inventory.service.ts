@@ -987,12 +987,8 @@ export class InventoryService {
 
   async createDispatch(data: any, user: any) {
     const { toOrgId, items, notes } = data; // items: Array<{ batchId: string, quantity: number }>
-    const fromOrgId = user.organizationId;
+    const fromOrgId = await this.resolveOrgId(user);
     
-    if (!fromOrgId) {
-      throw new InventoryException('UNAUTHORIZED', 'User has no organization assigned', HttpStatus.UNAUTHORIZED);
-    }
-
     const fromOrgType = await this.getOrgType(fromOrgId);
     const toOrgType = await this.getOrgType(toOrgId);
 
@@ -1000,8 +996,8 @@ export class InventoryService {
     const isHQ = fromOrgType === 'parent' || fromOrgType === 'internal';
     const isDist = fromOrgType === 'distributor';
 
-    if (isHQ && toOrgType !== 'distributor') {
-      throw new InventoryException('INVALID_TRANSFER', 'HQ can only dispatch to Distributors');
+    if (isHQ && toOrgType !== 'distributor' && toOrgType !== 'dealer' && toOrgType !== 'retailer') {
+      throw new InventoryException('INVALID_TRANSFER', 'HQ can only dispatch to Distributors, Dealers, or Retailers');
     }
     if (isDist && toOrgType !== 'dealer' && toOrgType !== 'retailer') {
       throw new InventoryException('INVALID_TRANSFER', 'Distributors can only dispatch to Dealers or Retailers');
@@ -1068,7 +1064,7 @@ export class InventoryService {
         // 2. Create Transit Batch (Child)
         const transitBatch = await tx.filmBatch.create({
           data: {
-            batchCode: batch.batchCode,
+            batchCode: `${batch.batchCode}-T${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
             filmTypeId: batch.filmTypeId,
             vendorId: batch.vendorId,
             orgId: fromOrgId,

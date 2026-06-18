@@ -280,6 +280,85 @@ const PredictiveBatchSelect = ({ onChange, placeholder = "Select Batch…" }: { 
   );
 };
 
+const PredictiveOrgSelect = ({
+  hierarchicalOrgs,
+  value,
+  onChange,
+  placeholder = "Select destination…"
+}: {
+  hierarchicalOrgs: { org: any; depth: number }[];
+  value: string;
+  onChange: (id: string) => void;
+  placeholder?: string;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const selectedEntry = hierarchicalOrgs.find(item => item.org.id === value);
+  const displayValue = selectedEntry ? selectedEntry.org.name : '';
+
+  const filtered = hierarchicalOrgs.filter(item =>
+    item.org.name.toLowerCase().includes(search.toLowerCase()) ||
+    (item.org.organizationType?.name || '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="relative">
+      <div className="relative group text-left">
+        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 group-focus-within:text-[var(--color-accent)] transition-colors" />
+        <input
+          className={`${inputCls} pl-9 pr-10`}
+          placeholder={placeholder}
+          value={isOpen ? search : displayValue}
+          onFocus={() => { setIsOpen(true); setSearch(''); }}
+          onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+          onChange={e => setSearch(e.target.value)}
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => { onChange(''); setSearch(''); }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-2 py-2 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 duration-200 text-left">
+          {filtered.length === 0 ? (
+            <div className="px-4 py-3 text-sm text-slate-400 italic text-center">
+              No matching organizations found
+            </div>
+          ) : (
+            filtered.map(({ org, depth }) => (
+              <div
+                key={org.id}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(org.id);
+                  setIsOpen(false);
+                  setSearch('');
+                }}
+                className={`px-4 py-2 hover:bg-slate-50 cursor-pointer text-sm transition-colors flex justify-between items-center ${value === org.id ? 'bg-indigo-50/50 text-[var(--color-accent)] font-semibold' : 'text-slate-700'}`}
+                style={{ paddingLeft: `${1 + depth * 0.75}rem` }}
+              >
+                <span className="truncate">
+                  {depth > 0 ? '└ ' : ''}{org.name}
+                </span>
+                <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded ml-2">
+                  {org.organizationType?.name}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 // ─── Inward Modal ─────────────────────────────────────────────────────────────
 const InwardProcurementModal = ({ onClose, onSave, initialInwardReceiptId }: { onClose: () => void; onSave: () => void; initialInwardReceiptId?: string | null }) => {
@@ -1278,14 +1357,12 @@ const DispatchModal = ({ onClose, onSave }: any) => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <FormField label="Dispatch To" required>
-            <select className={selectCls} value={toOrgId} onChange={e => setToOrgId(e.target.value)}>
-              <option value="">Select destination…</option>
-              {hierarchicalOrgs.map(({ org, depth }) => (
-                <option key={org.id} value={org.id}>
-                  {'\u00A0'.repeat(depth * 3)}{depth > 0 ? '└ ' : ''}{org.name} ({org.organizationType?.name})
-                </option>
-              ))}
-            </select>
+            <PredictiveOrgSelect
+              hierarchicalOrgs={hierarchicalOrgs}
+              value={toOrgId}
+              onChange={setToOrgId}
+              placeholder="Search or select destination…"
+            />
           </FormField>
 
           <FormField label="Select Batch to Dispatch" required>
@@ -1555,7 +1632,10 @@ const AddReceiptModal = ({ onClose, onSave }: any) => {
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   };
 
-  const hierarchicalOrgs = flattenOrgsHierarchy(orgs || []);
+  const vendors = flattenOrgsHierarchy(orgs || []).filter(({ org }) => {
+    const typeStr = (org.type || org.organizationType?.name || '').toLowerCase();
+    return typeStr === 'vendor' || typeStr === 'supplier';
+  });
 
   return (
     <Modal title="Add Inward Receipt" onClose={onClose}>
@@ -1564,7 +1644,7 @@ const AddReceiptModal = ({ onClose, onSave }: any) => {
         <FormField label="Vendor / Supplier" required>
           <select className={selectCls} value={vendorId} onChange={e => setVendorId(e.target.value)}>
             <option value="">Select vendor…</option>
-            {hierarchicalOrgs.map(({ org, depth }) => (
+            {vendors.map(({ org, depth }) => (
               <option key={org.id} value={org.id}>
                 {'\u00A0'.repeat(depth * 3)}{depth > 0 ? '└ ' : ''}{org.name}
               </option>
