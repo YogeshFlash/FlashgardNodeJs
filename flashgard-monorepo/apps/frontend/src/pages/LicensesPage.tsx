@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ShieldCheck, Plus, Send, X, AlertCircle, RotateCcw, Search, ChevronLeft, ChevronRight, Gift
+  ShieldCheck, Plus, Send, X, AlertCircle, RotateCcw, Search, ChevronLeft, ChevronRight, Gift,
+  Ticket, List, History
 } from 'lucide-react';
 import { licensesApi, cutCreditsApi, orgsApi, modelCategoriesApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -734,6 +735,24 @@ const DispatchModal = ({ onClose, onSave, orgs, type, selectedIds, items }: any)
 const LicensesPage = () => {
   const { user } = useAuth();
   const [tab, setTab] = useState<'licenses' | 'credits' | 'cut-logs' | 'master-qrs' | 'history'>('licenses');
+  const handleTabChange = (newTab: 'licenses' | 'credits' | 'cut-logs' | 'master-qrs' | 'history') => {
+    setTab(newTab);
+    setPage(1);
+    setSelectedIds([]);
+    setSearchQuery('');
+    setSearchText('');
+    setSelectedPlanType('');
+    setSelectedIsPositiveCut('');
+    setSelectedCategory('');
+  };
+
+  const tabsList = [
+    { id: 'licenses', label: 'Org Licenses', icon: ShieldCheck },
+    { id: 'credits', label: 'Cut Credits', icon: Ticket },
+    { id: 'cut-logs', label: 'Cut Logs', icon: List },
+    { id: 'master-qrs', label: 'Master QRs', icon: Search },
+    { id: 'history', label: 'History', icon: History }
+  ];
   const [orgLicenses, setOrgLicenses] = useState<any[]>([]);
   const [cutCredits, setCutCredits] = useState<any[]>([]);
   const [transfers, setTransfers] = useState<any[]>([]);
@@ -956,12 +975,27 @@ const LicensesPage = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200">
-        <button onClick={() => { setTab('licenses'); setPage(1); setSelectedIds([]); setSearchQuery(''); setSearchText(''); setSelectedPlanType(''); setSelectedIsPositiveCut(''); setSelectedCategory(''); }} className={`px-6 py-3 font-semibold text-sm border-b-2 transition-all ${tab === 'licenses' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500'}`}>Org Licenses</button>
-        <button onClick={() => { setTab('credits'); setPage(1); setSelectedIds([]); setSearchQuery(''); setSearchText(''); setSelectedPlanType(''); setSelectedIsPositiveCut(''); setSelectedCategory(''); }} className={`px-6 py-3 font-semibold text-sm border-b-2 transition-all ${tab === 'credits' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500'}`}>Cut Credits</button>
-        <button onClick={() => { setTab('cut-logs'); setPage(1); setSelectedIds([]); setSearchQuery(''); setSearchText(''); setSelectedPlanType(''); setSelectedIsPositiveCut(''); setSelectedCategory(''); }} className={`px-6 py-3 font-semibold text-sm border-b-2 transition-all ${tab === 'cut-logs' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500'}`}>Cut Logs</button>
-        <button onClick={() => { setTab('master-qrs'); setPage(1); setSelectedIds([]); setSearchQuery(''); setSearchText(''); setSelectedPlanType(''); setSelectedIsPositiveCut(''); setSelectedCategory(''); }} className={`px-6 py-3 font-semibold text-sm border-b-2 transition-all ${tab === 'master-qrs' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500'}`}>Master QRs</button>
-        <button onClick={() => { setTab('history'); setPage(1); setSelectedIds([]); setSearchQuery(''); setSearchText(''); setSelectedPlanType(''); setSelectedIsPositiveCut(''); setSelectedCategory(''); }} className={`px-6 py-3 font-semibold text-sm border-b-2 transition-all ${tab === 'history' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500'}`}>History</button>
+      <div className="flex border-b border-slate-200 bg-white sticky top-0 z-10 px-2">
+        <div className="flex overflow-x-auto no-scrollbar">
+          {tabsList.map(t => {
+            const Icon = t.icon;
+            const isActive = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => handleTabChange(t.id as any)}
+                className={`flex items-center gap-2 px-4 py-3 text-xs font-bold transition-all whitespace-nowrap border-b-2 cursor-pointer
+                  ${isActive
+                    ? 'border-[var(--color-accent)] text-[var(--color-accent)] bg-[var(--color-accent)]/5'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                  }`}
+              >
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[var(--color-accent)]' : 'text-slate-400'}`} />
+                <span>{t.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {loading ? (
