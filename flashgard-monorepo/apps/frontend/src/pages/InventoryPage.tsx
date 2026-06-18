@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Package, Plus, Search, Loader2, RefreshCw,
-  Layers, ClipboardList, Truck, QrCode, X, AlertCircle,
+  Layers, ClipboardList, Truck, QrCode, X, AlertCircle, ChevronDown,
   CheckCircle2, ArrowRight, Zap, RotateCcw,
   Send, Edit2, Trash2, FileText, Package2, PlusCircle
 } from 'lucide-react';
@@ -369,11 +369,27 @@ const InwardProcurementModal = ({ onClose, onSave, initialInwardReceiptId }: { o
   ]);
   const [showAddReceipt, setShowAddReceipt] = useState(false);
 
+  const [searchReceipt, setSearchReceipt] = useState('');
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+
   const [filmTypes, setFilmTypes] = useState<any[]>([]);
   const [receipts, setReceipts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successItems, setSuccessItems] = useState<string[] | null>(null);
+
+  const filteredReceipts = useMemo(() => {
+    if (!searchReceipt) return receipts;
+    return receipts.filter((r: any) => {
+      const code = String(r.receiptCode || '').toLowerCase();
+      const vendorName = String(r.vendor?.name || '').toLowerCase();
+      const invoice = String(r.invoiceNumber || '').toLowerCase();
+      const search = searchReceipt.toLowerCase();
+      return code.includes(search) || vendorName.includes(search) || invoice.includes(search);
+    });
+  }, [receipts, searchReceipt]);
+
+  const selectedReceipt = receipts.find((r: any) => r.id === inwardReceiptId);
 
   const loadReceipts = useCallback(() => {
     inventoryApi.getInwardReceipts({ limit: 100 }).then(d => setReceipts(d.items || [])).catch(() => setReceipts([]));
@@ -484,14 +500,48 @@ const InwardProcurementModal = ({ onClose, onSave, initialInwardReceiptId }: { o
               <Plus className="w-3 h-3" /> New Receipt
             </button>
           </div>
-          <select className={selectCls} value={inwardReceiptId} onChange={e => setInwardReceiptId(e.target.value)}>
-            <option value="">Select receipt…</option>
-            {receipts.map((r: any) => (
-              <option key={r.id} value={r.id}>
-                {r.receiptCode} - {r.vendor?.name} (Inv: {r.invoiceNumber || 'N/A'}, Date: {new Date(r.receivedDate).toLocaleDateString()})
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <div 
+              onClick={() => setIsReceiptOpen(!isReceiptOpen)}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between cursor-pointer focus:ring-2 focus:ring-[var(--color-accent)]/20 text-sm bg-white"
+            >
+              <span className="truncate">
+                {inwardReceiptId ? (
+                  `${selectedReceipt?.receiptCode} - ${selectedReceipt?.vendor?.name} (Inv: ${selectedReceipt?.invoiceNumber || 'N/A'}, Date: ${new Date(selectedReceipt?.receivedDate).toLocaleDateString()})`
+                ) : 'Select receipt...'}
+              </span>
+              <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+            </div>
+            {isReceiptOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setIsReceiptOpen(false)} />
+                <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden">
+                  <div className="p-2 border-b border-slate-100 bg-white">
+                    <input 
+                      autoFocus
+                      type="text"
+                      placeholder="Search receipts..."
+                      value={searchReceipt}
+                      onChange={e => setSearchReceipt(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div className="overflow-y-auto p-1 max-h-48 custom-scrollbar">
+                    {filteredReceipts.map((r: any) => (
+                      <div
+                        key={r.id}
+                        onClick={() => { setInwardReceiptId(r.id); setIsReceiptOpen(false); setSearchReceipt(''); }}
+                        className={`px-3 py-1.5 text-xs rounded-lg cursor-pointer hover:bg-slate-50 ${inwardReceiptId === r.id ? 'bg-indigo-50 text-[var(--color-accent)] font-bold' : 'text-slate-700'}`}
+                      >
+                        {r.receiptCode} - {r.vendor?.name} (Inv: {r.invoiceNumber || 'N/A'}, Date: {new Date(r.receivedDate).toLocaleDateString()})
+                      </div>
+                    ))}
+                    {filteredReceipts.length === 0 && <div className="p-3 text-xs text-slate-400 text-center">No results found</div>}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {showAddReceipt && (
@@ -1620,6 +1670,9 @@ const AddReceiptModal = ({ onClose, onSave }: any) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const [searchVendor, setSearchVendor] = useState('');
+  const [isVendorOpen, setIsVendorOpen] = useState(false);
+
   useEffect(() => { orgsApi.getAll().then(d => setOrgs(Array.isArray(d) ? d : [])); }, []);
 
   const handleSave = async () => {
@@ -1637,19 +1690,66 @@ const AddReceiptModal = ({ onClose, onSave }: any) => {
     return typeStr === 'vendor' || typeStr === 'supplier';
   });
 
+  const filteredVendors = useMemo(() => {
+    if (!searchVendor) return vendors;
+    return vendors.filter(({ org }) => org.name.toLowerCase().includes(searchVendor.toLowerCase()));
+  }, [vendors, searchVendor]);
+
+  const selectedVendor = vendors.find(({ org }) => org.id === vendorId);
+
   return (
     <Modal title="Add Inward Receipt" onClose={onClose}>
       <div className="space-y-4">
         {error && <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>}
         <FormField label="Vendor / Supplier" required>
-          <select className={selectCls} value={vendorId} onChange={e => setVendorId(e.target.value)}>
-            <option value="">Select vendor…</option>
-            {vendors.map(({ org, depth }) => (
-              <option key={org.id} value={org.id}>
-                {'\u00A0'.repeat(depth * 3)}{depth > 0 ? '└ ' : ''}{org.name}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <div 
+              onClick={() => setIsVendorOpen(!isVendorOpen)}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between cursor-pointer focus:ring-2 focus:ring-[var(--color-accent)]/20 text-sm"
+            >
+              <span className="truncate">
+                {vendorId ? (selectedVendor?.org?.name || 'Unknown') : 'Select vendor...'}
+              </span>
+              <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+            </div>
+            {isVendorOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setIsVendorOpen(false)} />
+                <div className="absolute z-25 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden">
+                  <div className="p-2 border-b border-slate-100 bg-white">
+                    <input 
+                      autoFocus
+                      type="text"
+                      placeholder="Search vendors..."
+                      value={searchVendor}
+                      onChange={e => setSearchVendor(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div className="overflow-y-auto p-1 max-h-48 custom-scrollbar">
+                    {filteredVendors.map(({ org, depth }) => (
+                      <div
+                        key={org.id}
+                        onClick={() => { setVendorId(org.id); setIsVendorOpen(false); setSearchVendor(''); }}
+                        className={`px-3 py-1.5 text-xs rounded-lg cursor-pointer hover:bg-slate-50 ${vendorId === org.id ? 'bg-indigo-50 text-[var(--color-accent)] font-bold' : 'text-slate-700'}`}
+                      >
+                        {!searchVendor ? (
+                          <span className="whitespace-pre truncate">
+                            {'\u00A0'.repeat(depth * 3)}
+                            {depth > 0 ? '↳ ' : ''}
+                            {org.name}
+                          </span>
+                        ) : (
+                          <span className="truncate">{org.name}</span>
+                        )}
+                      </div>
+                    ))}
+                    {filteredVendors.length === 0 && <div className="p-3 text-xs text-slate-400 text-center">No results found</div>}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </FormField>
         <FormField label="Invoice Number">
           <input className={inputCls} value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder="e.g. INV-12345" />

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { modelCategoriesApi } from '../../lib/api';
 
 interface ModelCategoryModalProps {
@@ -9,10 +9,105 @@ interface ModelCategoryModalProps {
   onSave: () => void;
 }
 
+function buildCategoryRows(categories: any[]) {
+  const byParent = new Map<string, any[]>();
+  const byId = new Map<string, any>();
+
+  for (const cat of categories || []) {
+    if (!cat?.id) continue;
+    byId.set(cat.id, cat);
+    const parentKey = cat.parentId || '__root__';
+    const arr = byParent.get(parentKey) || [];
+    arr.push(cat);
+    byParent.set(parentKey, arr);
+  }
+
+  for (const arr of byParent.values()) {
+    arr.sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')));
+  }
+
+  const roots = (byParent.get('__root__') || []).slice();
+  for (const cat of categories || []) {
+    if (cat?.parentId && !byId.has(cat.parentId)) roots.push(cat);
+  }
+
+  const seenRootIds = new Set<string>();
+  const dedupedRoots = roots.filter((c) =>
+    c?.id && !seenRootIds.has(c.id) ? (seenRootIds.add(c.id), true) : false
+  );
+
+  const rows: { category: any; depth: number; hasChildren: boolean }[] = [];
+  const visiting = new Set<string>();
+
+  const walk = (node: any, depth: number) => {
+    if (!node?.id) return;
+    if (visiting.has(node.id)) return; // cycle guard
+    visiting.add(node.id);
+
+    const kids = byParent.get(node.id) || [];
+    rows.push({ category: node, depth, hasChildren: kids.length > 0 });
+    for (const child of kids) walk(child, depth + 1);
+
+    visiting.delete(node.id);
+  };
+
+  dedupedRoots
+    .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')))
+    .forEach((r) => walk(r, 0));
+
+  return rows;
+}
+
 const ModelCategoryModal: React.FC<ModelCategoryModalProps> = ({ item, categories, onClose, onSave }) => {
   const [form, setForm] = useState(item || { name: '', parentId: '', sortOrder: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const [searchCategory, setSearchCategory] = useState('');
+  const [isParentOpen, setIsParentOpen] = useState(false);
+
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    // Pre-expand all categories by default so the tree is fully visible
+    (categories || []).forEach((c: any) => {
+      initial.add(c.id);
+    });
+    return initial;
+  });
+
+  const validParents = React.useMemo(() => {
+    const excludedIds = new Set<string>();
+    if (item?.id) {
+      excludedIds.add(item.id);
+      let currentLevelIds = [item.id];
+      while (currentLevelIds.length > 0) {
+        const children = (categories || []).filter((c: any) => c.parentId && currentLevelIds.includes(c.parentId));
+        const childIds = children.map(c => c.id);
+        if (childIds.length === 0) break;
+        childIds.forEach(id => excludedIds.add(id));
+        currentLevelIds = childIds;
+      }
+    }
+    return (categories || []).filter((c: any) => !excludedIds.has(c.id));
+  }, [categories, item?.id]);
+
+  const filteredParents = React.useMemo(() => {
+    const rows = buildCategoryRows(validParents);
+    if (searchCategory) {
+      return rows.filter((r: any) => r.category.name.toLowerCase().includes(searchCategory.toLowerCase())).slice(0, 150);
+    }
+    const catMap = new Map(validParents.map((c: any) => [c.id, c]));
+    return rows.filter((row: any) => {
+      let p = catMap.get(row.category.parentId);
+      while (p) {
+        if (!expandedCategories.has(p.id)) return false;
+        p = catMap.get(p.parentId);
+      }
+      return true;
+    });
+  }, [validParents, searchCategory, expandedCategories]);
+
+  const selectedParent = validParents.find((c: any) => c.id === form.parentId);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,20 +149,91 @@ const ModelCategoryModal: React.FC<ModelCategoryModalProps> = ({ item, categorie
             />
           </div>
 
-          <div>
+          <div className="relative">
             <label className="text-sm font-medium text-slate-700 block mb-1">Parent Category</label>
-            <select 
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--color-accent)]/20 outline-none"
-              value={form.parentId || ''} 
-              onChange={e => setForm({ ...form, parentId: e.target.value })}
-            >
-              <option value="">None (Top-level)</option>
-              {categories
-                .filter(c => c.id !== item?.id)
-                .map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-            </select>
+            <div className="relative">
+              <div 
+                onClick={() => setIsParentOpen(!isParentOpen)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between cursor-pointer focus:ring-2 focus:ring-[var(--color-accent)]/20"
+              >
+                <span className="text-sm truncate">
+                  {form.parentId ? (selectedParent?.name || 'Unknown') : 'None (Top-level)'}
+                </span>
+                <ChevronDown className="w-4 h-4 text-slate-400" />
+              </div>
+              {isParentOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsParentOpen(false)} />
+                  <div className="absolute z-20 w-full bottom-full mb-1 bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden">
+                    <div className="p-2 border-b border-slate-100 bg-white">
+                      <input 
+                        autoFocus
+                        type="text"
+                        placeholder="Search categories..."
+                        value={searchCategory}
+                        onChange={e => setSearchCategory(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div className="overflow-y-auto p-1 max-h-48 custom-scrollbar">
+                      {!searchCategory && (
+                        <div
+                          onClick={() => { setForm({ ...form, parentId: '' }); setIsParentOpen(false); setSearchCategory(''); }}
+                          className={`px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-slate-50 ${!form.parentId ? 'bg-indigo-50 text-[var(--color-accent)] font-bold' : 'text-slate-700'}`}
+                        >
+                          None (Top-level)
+                        </div>
+                      )}
+                      {filteredParents.map((row: any) => {
+                        const c = row.category;
+                        const depth = row.depth;
+                        const hasChildren = row.hasChildren;
+                        const isExpanded = expandedCategories.has(c.id);
+                        return (
+                          <div
+                            key={c.id}
+                            className={`flex items-center justify-between px-3 py-1 text-sm rounded-lg cursor-pointer hover:bg-slate-50 ${form.parentId === c.id ? 'bg-indigo-50 text-[var(--color-accent)] font-bold' : 'text-slate-700'}`}
+                          >
+                            <div
+                              onClick={() => { setForm({ ...form, parentId: c.id }); setIsParentOpen(false); setSearchCategory(''); }}
+                              className="flex-1 flex items-center min-w-0 py-1"
+                            >
+                              {!searchCategory ? (
+                                <span className="whitespace-pre truncate">
+                                  {'\u00A0'.repeat(depth * 3)}
+                                  {depth > 0 ? '↳ ' : ''}
+                                  {c.name}
+                                </span>
+                              ) : (
+                                <span className="truncate">{c.name}</span>
+                              )}
+                            </div>
+                            {!searchCategory && hasChildren && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedCategories(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(c.id)) next.delete(c.id);
+                                    else next.add(c.id);
+                                    return next;
+                                  });
+                                }}
+                                className="p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 shrink-0"
+                              >
+                                <ChevronRight className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {filteredParents.length === 0 && <div className="p-3 text-sm text-slate-400 text-center">No results found</div>}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           <div>

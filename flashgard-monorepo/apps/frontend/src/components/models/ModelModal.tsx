@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { modelsApi } from '../../lib/api';
 
 interface ModelModalProps {
@@ -10,10 +10,98 @@ interface ModelModalProps {
   onSave: () => void;
 }
 
+function buildCategoryRows(categories: any[]) {
+  const byParent = new Map<string, any[]>();
+  const byId = new Map<string, any>();
+
+  for (const cat of categories || []) {
+    if (!cat?.id) continue;
+    byId.set(cat.id, cat);
+    const parentKey = cat.parentId || '__root__';
+    const arr = byParent.get(parentKey) || [];
+    arr.push(cat);
+    byParent.set(parentKey, arr);
+  }
+
+  for (const arr of byParent.values()) {
+    arr.sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')));
+  }
+
+  const roots = (byParent.get('__root__') || []).slice();
+  for (const cat of categories || []) {
+    if (cat?.parentId && !byId.has(cat.parentId)) roots.push(cat);
+  }
+
+  const seenRootIds = new Set<string>();
+  const dedupedRoots = roots.filter((c) =>
+    c?.id && !seenRootIds.has(c.id) ? (seenRootIds.add(c.id), true) : false
+  );
+
+  const rows: { category: any; depth: number; hasChildren: boolean }[] = [];
+  const visiting = new Set<string>();
+
+  const walk = (node: any, depth: number) => {
+    if (!node?.id) return;
+    if (visiting.has(node.id)) return; // cycle guard
+    visiting.add(node.id);
+
+    const kids = byParent.get(node.id) || [];
+    rows.push({ category: node, depth, hasChildren: kids.length > 0 });
+    for (const child of kids) walk(child, depth + 1);
+
+    visiting.delete(node.id);
+  };
+
+  dedupedRoots
+    .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')))
+    .forEach((r) => walk(r, 0));
+
+  return rows;
+}
+
 const ModelModal: React.FC<ModelModalProps> = ({ item, brands, categories, onClose, onSave }) => {
   const [form, setForm] = useState(item || { name: '', brandId: '', categoryId: '', sortOrder: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const [searchCategory, setSearchCategory] = useState('');
+  const [isCategoryOpen, setIsCategoryOpen] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    (categories || []).forEach((c: any) => {
+      initial.add(c.id);
+    });
+    return initial;
+  });
+
+  const [searchBrand, setSearchBrand] = useState('');
+  const [isBrandOpen, setIsBrandOpen] = useState(false);
+
+  const filteredCategories = React.useMemo(() => {
+    const rows = buildCategoryRows(categories);
+    if (searchCategory) {
+      return rows.filter((r: any) => r.category.name.toLowerCase().includes(searchCategory.toLowerCase())).slice(0, 150);
+    }
+    const catMap = new Map(categories.map((c: any) => [c.id, c]));
+    return rows.filter((row: any) => {
+      let p = catMap.get(row.category.parentId);
+      while (p) {
+        if (!expandedCategories.has(p.id)) return false;
+        p = catMap.get(p.parentId);
+      }
+      return true;
+    });
+  }, [categories, searchCategory, expandedCategories]);
+
+  const selectedCategory = categories.find((c: any) => c.id === form.categoryId);
+
+  const filteredBrands = React.useMemo(() => {
+    const sorted = [...(brands || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    if (!searchBrand) return sorted;
+    return sorted.filter((b: any) => b.name.toLowerCase().includes(searchBrand.toLowerCase()));
+  }, [brands, searchBrand]);
+
+  const selectedBrand = brands.find((b: any) => b.id === form.brandId);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,32 +145,133 @@ const ModelModal: React.FC<ModelModalProps> = ({ item, brands, categories, onClo
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
+            <div className="relative">
               <label className="text-sm font-medium text-slate-700 block mb-1">Category</label>
-              <select 
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--color-accent)]/20 outline-none"
-                value={form.categoryId} 
-                onChange={e => setForm({ ...form, categoryId: e.target.value })}
-                required
-              >
-                <option value="">Select Category</option>
-                {categories.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              <div className="relative">
+                <div 
+                  onClick={() => setIsCategoryOpen(!isCategoryOpen)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between cursor-pointer focus:ring-2 focus:ring-[var(--color-accent)]/20 text-sm"
+                >
+                  <span className="truncate">
+                    {form.categoryId ? (selectedCategory?.name || 'Unknown') : 'Select Category'}
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                </div>
+                {isCategoryOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setIsCategoryOpen(false)} />
+                    <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden">
+                      <div className="p-2 border-b border-slate-100 bg-white">
+                        <input 
+                          autoFocus
+                          type="text"
+                          placeholder="Search categories..."
+                          value={searchCategory}
+                          onChange={e => setSearchCategory(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="overflow-y-auto p-1 max-h-48 custom-scrollbar">
+                        {filteredCategories.map((row: any) => {
+                          const c = row.category;
+                          const depth = row.depth;
+                          const hasChildren = row.hasChildren;
+                          const isExpanded = expandedCategories.has(c.id);
+                          return (
+                            <div
+                              key={c.id}
+                              className={`flex items-center justify-between px-2 py-1 text-xs rounded-lg cursor-pointer hover:bg-slate-50 ${form.categoryId === c.id ? 'bg-indigo-50 text-[var(--color-accent)] font-bold' : 'text-slate-700'}`}
+                            >
+                              <div
+                                onClick={() => { setForm({ ...form, categoryId: c.id }); setIsCategoryOpen(false); setSearchCategory(''); }}
+                                className="flex-1 flex items-center min-w-0 py-1"
+                              >
+                                {!searchCategory ? (
+                                  <span className="whitespace-pre truncate">
+                                    {'\u00A0'.repeat(depth * 2)}
+                                    {depth > 0 ? '↳ ' : ''}
+                                    {c.name}
+                                  </span>
+                                ) : (
+                                  <span className="truncate">{c.name}</span>
+                                )}
+                              </div>
+                              {!searchCategory && hasChildren && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedCategories(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(c.id)) next.delete(c.id);
+                                      else next.add(c.id);
+                                      return next;
+                                    });
+                                  }}
+                                  className="p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 shrink-0"
+                                >
+                                  <ChevronRight className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {filteredCategories.length === 0 && <div className="p-3 text-xs text-slate-400 text-center">No results found</div>}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-            <div>
+            
+            <div className="relative">
               <label className="text-sm font-medium text-slate-700 block mb-1">Brand (Optional)</label>
-              <select 
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--color-accent)]/20 outline-none"
-                value={form.brandId} 
-                onChange={e => setForm({ ...form, brandId: e.target.value })}
-              >
-                <option value="">None / Not Applicable</option>
-                {brands.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
+              <div className="relative">
+                <div 
+                  onClick={() => setIsBrandOpen(!isBrandOpen)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between cursor-pointer focus:ring-2 focus:ring-[var(--color-accent)]/20 text-sm"
+                >
+                  <span className="truncate">
+                    {form.brandId ? (selectedBrand?.name || 'Unknown') : 'None / Not Applicable'}
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                </div>
+                {isBrandOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setIsBrandOpen(false)} />
+                    <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden">
+                      <div className="p-2 border-b border-slate-100 bg-white">
+                        <input 
+                          autoFocus
+                          type="text"
+                          placeholder="Search brands..."
+                          value={searchBrand}
+                          onChange={e => setSearchBrand(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="overflow-y-auto p-1 max-h-48 custom-scrollbar">
+                        <div
+                          onClick={() => { setForm({ ...form, brandId: '' }); setIsBrandOpen(false); setSearchBrand(''); }}
+                          className={`px-3 py-2 text-xs rounded-lg cursor-pointer hover:bg-slate-50 ${!form.brandId ? 'bg-indigo-50 text-[var(--color-accent)] font-bold' : 'text-slate-700'}`}
+                        >
+                          None / Not Applicable
+                        </div>
+                        {filteredBrands.map((b: any) => (
+                          <div
+                            key={b.id}
+                            onClick={() => { setForm({ ...form, brandId: b.id }); setIsBrandOpen(false); setSearchBrand(''); }}
+                            className={`px-3 py-1.5 text-xs rounded-lg cursor-pointer hover:bg-slate-50 ${form.brandId === b.id ? 'bg-indigo-50 text-[var(--color-accent)] font-bold' : 'text-slate-700'}`}
+                          >
+                            {b.name}
+                          </div>
+                        ))}
+                        {filteredBrands.length === 0 && <div className="p-3 text-xs text-slate-400 text-center">No results found</div>}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 

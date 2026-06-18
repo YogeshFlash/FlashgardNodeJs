@@ -59,6 +59,63 @@ const OrgComboBox = ({ value, onChange, disabled, orgs }: any) => {
     </div>
   );
 };
+
+const RoleComboBox = ({ value, onChange, disabled, roles, placeholder }: any) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filteredRoles = React.useMemo(() => {
+    const sorted = [...(roles || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    if (!search) return sorted;
+    return sorted.filter((r: any) => r.name.toLowerCase().includes(search.toLowerCase()));
+  }, [roles, search]);
+
+  const selected = roles.find((r: any) => r.id === value);
+
+  return (
+    <div className="relative">
+      <div 
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        className={`w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg flex items-center justify-between text-sm ${disabled ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'cursor-pointer hover:border-slate-300'}`}
+      >
+        <span className="truncate">{selected ? `${selected.name}${selected.isSystemRole ? ' (System)' : ''}` : placeholder || 'Select Role'}</span>
+        <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+      </div>
+      
+      {isOpen && !disabled && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+          <div className="absolute z-20 w-full bottom-full mb-1 bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden">
+            <div className="p-2 border-b border-slate-100 bg-white">
+              <input 
+                autoFocus
+                type="text"
+                placeholder="Search..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="overflow-y-auto p-1 max-h-48 custom-scrollbar">
+              {filteredRoles.length === 0 ? (
+                <div className="p-3 text-sm text-slate-400 text-center">No results</div>
+              ) : filteredRoles.map((r: any) => (
+                <div
+                  key={r.id}
+                  onClick={() => { onChange(r.id); setIsOpen(false); setSearch(''); }}
+                  className={`px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-slate-50 ${value === r.id ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'}`}
+                >
+                  {r.name} {r.isSystemRole ? '(System)' : ''}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 export function UserModal({ user: u, defaultOrgId, onClose, onSave }: { user: any; defaultOrgId?: string; onClose: () => void; onSave: () => void }) {
   const { user: currentUser } = useAuth();
   
@@ -164,24 +221,16 @@ export function UserModal({ user: u, defaultOrgId, onClose, onSave }: { user: an
                       />
                     </div>
                     <div>
-                      <select 
-                        className="input-field text-sm py-1.5" 
-                        value={assign.roleId} 
-                        onChange={e => {
+                      <RoleComboBox 
+                        value={assign.roleId}
+                        roles={roles}
+                        disabled={form.isSuperAdmin}
+                        onChange={(val: string) => {
                           const newOrgs = [...userOrgs];
-                          newOrgs[index].roleId = e.target.value;
+                          newOrgs[index].roleId = val;
                           setUserOrgs(newOrgs);
                         }}
-                        disabled={form.isSuperAdmin}
-                        required
-                      >
-                        <option value="" disabled>Select Role</option>
-                        {roles.map(r => (
-                          <option key={r.id} value={r.id}>
-                            {r.name} {r.isSystemRole ? '(System)' : ''}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </div>
                   </div>
                   <div className="mt-2 flex items-center justify-between">

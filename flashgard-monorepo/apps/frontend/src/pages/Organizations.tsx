@@ -125,19 +125,44 @@ const OrgModal = ({ org, allOrgs, defaultParentId, onClose, onSave }: any) => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
   const [searchOrg, setSearchOrg] = useState('');
   const [isParentOpen, setIsParentOpen] = useState(false);
-  
+
+  const [expandedParents, setExpandedParents] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    const effectiveParent = form.parentId || defaultParentId;
+    if (effectiveParent) {
+      initial.add(effectiveParent);
+      let pId = effectiveParent;
+      const orgMap = new Map((allOrgs || []).map((o: any) => [o.id, o]));
+      while (pId) {
+        initial.add(pId);
+        const parent = orgMap.get(pId);
+        pId = parent ? parent.parentId : null;
+      }
+    }
+    return initial;
+  });
+
   const validParents = React.useMemo(() => {
     return (allOrgs || []).filter((o: any) => o.id !== org?.id);
   }, [allOrgs, org?.id]);
 
   const filteredParents = React.useMemo(() => {
     const rows = buildOrgRows(validParents);
-    if (!searchOrg) return rows.slice(0, 150);
-    return rows.filter((r: any) => r.org.name.toLowerCase().includes(searchOrg.toLowerCase())).slice(0, 150);
-  }, [validParents, searchOrg]);
+    if (searchOrg) {
+      return rows.filter((r: any) => r.org.name.toLowerCase().includes(searchOrg.toLowerCase())).slice(0, 150);
+    }
+    const orgMap = new Map(validParents.map((o: any) => [o.id, o]));
+    return rows.filter((row: any) => {
+      let p = orgMap.get(row.org.parentId);
+      while (p) {
+        if (!expandedParents.has(p.id)) return false;
+        p = orgMap.get(p.parentId);
+      }
+      return true;
+    });
+  }, [validParents, searchOrg, expandedParents]);
 
   const selectedParent = validParents.find((o: any) => o.id === form.parentId);
 
@@ -214,20 +239,48 @@ const OrgModal = ({ org, allOrgs, defaultParentId, onClose, onSave }: any) => {
                       {filteredParents.map((row: any) => {
                         const o = row.org;
                         const depth = row.depth;
+                        const hasChildren = row.hasChildren;
+                        const isExpanded = expandedParents.has(o.id);
                         return (
                           <div
                             key={o.id}
-                            onClick={() => { setForm({ ...form, parentId: o.id }); setIsParentOpen(false); setSearchOrg(''); }}
-                            className={`px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-slate-50 ${form.parentId === o.id ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'}`}
+                            className={`flex items-center justify-between px-3 py-1 text-sm rounded-lg cursor-pointer hover:bg-slate-50 ${form.parentId === o.id ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'}`}
                           >
-                            {!searchOrg ? (
-                              <span className="whitespace-pre">
-                                {'\u00A0'.repeat(depth * 3)}
-                                {depth > 0 ? '↳ ' : ''}
-                                {o.name}
-                              </span>
-                            ) : (
-                              <span>{o.name}</span>
+                            <div
+                              onClick={() => { setForm({ ...form, parentId: o.id }); setIsParentOpen(false); setSearchOrg(''); }}
+                              className="flex-1 flex items-center gap-2 min-w-0 py-1"
+                            >
+                              {!searchOrg ? (
+                                <span className="whitespace-pre truncate">
+                                  {'\u00A0'.repeat(depth * 3)}
+                                  {depth > 0 ? '↳ ' : ''}
+                                  {o.name}
+                                </span>
+                              ) : (
+                                <span className="truncate">{o.name}</span>
+                              )}
+                              {o.type && (
+                                <span className="text-[10px] text-slate-400 capitalize shrink-0 font-normal">
+                                  ({o.type})
+                                </span>
+                              )}
+                            </div>
+                            {!searchOrg && hasChildren && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedParents(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(o.id)) next.delete(o.id);
+                                    else next.add(o.id);
+                                    return next;
+                                  });
+                                }}
+                                className="p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 shrink-0"
+                              >
+                                <ChevronRight className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                              </button>
                             )}
                           </div>
                         );
