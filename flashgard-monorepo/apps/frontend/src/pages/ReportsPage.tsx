@@ -44,6 +44,37 @@ const ReportsPage = () => {
   const [take] = useState<number>(20);
   const [exporting, setExporting] = useState<boolean>(false);
 
+  // Customized Filter States (Real time local/remote refinement)
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [plotterFilter, setPlotterFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<string>('date-desc'); // date-desc, date-asc, model-asc, brand-asc
+
+  // Real-time custom lists populated from data
+  const [uniquePlotters, setUniquePlotters] = useState<string[]>([]);
+  const [uniqueCategories, setUniqueCategories] = useState<string[]>([]);
+
+  // Column Visibility Selection
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({
+    categoryName: true,
+    brand: true,
+    model: true,
+    dealer: true,
+    licenseKey: true,
+    licenseRefName: true,
+    filmCategory: true,
+    productName: true,
+    cutType: true,
+    plotter: true,
+    updatedDate: true,
+    parentDealer: true,
+    promoterName: true,
+    cutQRCode: true,
+    cutStatus: true,
+    cutReview: true
+  });
+  const [showColumnSettings, setShowColumnSettings] = useState<boolean>(false);
+
   // Analytics states
   const [showAnalytics, setShowAnalytics] = useState<boolean>(true);
   const [analyticsLoading, setAnalyticsLoading] = useState<boolean>(false);
@@ -73,19 +104,62 @@ const ReportsPage = () => {
     }
   }, [range, activeTab]);
 
-  // Fetch Model Wise Cut Report items
+  // Fetch Model Wise Cut Report items with real-time customized filtering and sorting
   const fetchReport = () => {
     setReportLoading(true);
+    // Fetch all relevant filtered records up to 5000 items to support dynamic real-time local filtering, customization, sorting, and analytics
     licensesApi.getReportsCutReport({
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       search: search || undefined,
-      skip,
-      take
+      skip: 0,
+      take: 5000
     })
       .then((res: any) => {
-        setReportItems(res.items || []);
-        setReportTotal(res.total || 0);
+        const items = res.items || [];
+        
+        // Extract unique plotters and categories for the filter selectors
+        const plottersSet = new Set<string>();
+        const categoriesSet = new Set<string>();
+        items.forEach((item: any) => {
+          if (item.plotter && item.plotter !== 'N/A') plottersSet.add(item.plotter);
+          if (item.categoryName && item.categoryName !== 'N/A') categoriesSet.add(item.categoryName);
+        });
+        setUniquePlotters(Array.from(plottersSet).sort());
+        setUniqueCategories(Array.from(categoriesSet).sort());
+
+        // Apply customization filtering
+        let processed = [...items];
+        if (statusFilter !== 'all') {
+          processed = processed.filter(item => item.cutStatus === statusFilter);
+        }
+        if (plotterFilter !== 'all') {
+          processed = processed.filter(item => item.plotter === plotterFilter);
+        }
+        if (categoryFilter !== 'all') {
+          processed = processed.filter(item => item.categoryName === categoryFilter);
+        }
+
+        // Apply customized sorting
+        processed.sort((a, b) => {
+          if (sortBy === 'date-desc') {
+            return new Date(b.updatedDate).getTime() - new Date(a.updatedDate).getTime();
+          }
+          if (sortBy === 'date-asc') {
+            return new Date(a.updatedDate).getTime() - new Date(b.updatedDate).getTime();
+          }
+          if (sortBy === 'model-asc') {
+            return a.model.localeCompare(b.model);
+          }
+          if (sortBy === 'brand-asc') {
+            return a.brand.localeCompare(b.brand);
+          }
+          return 0;
+        });
+
+        // Set state for table display based on pagination offset
+        setReportTotal(processed.length);
+        setReportItems(processed);
       })
       .catch((err: any) => {
         console.error('Failed to load report:', err);
@@ -107,7 +181,19 @@ const ReportsPage = () => {
       take: 5000
     })
       .then((res: any) => {
-        const items = res.items || [];
+        let items = res.items || [];
+
+        // Apply the same real-time filters to analytics representation
+        if (statusFilter !== 'all') {
+          items = items.filter((item: any) => item.cutStatus === statusFilter);
+        }
+        if (plotterFilter !== 'all') {
+          items = items.filter((item: any) => item.plotter === plotterFilter);
+        }
+        if (categoryFilter !== 'all') {
+          items = items.filter((item: any) => item.categoryName === categoryFilter);
+        }
+
         const totalCuts = items.length;
 
         // Calculate success/failure rate
@@ -174,13 +260,13 @@ const ReportsPage = () => {
     if (activeTab === 'modelReport') {
       fetchReport();
     }
-  }, [startDate, endDate, search, skip, take, activeTab]);
+  }, [startDate, endDate, search, statusFilter, plotterFilter, categoryFilter, sortBy, activeTab]);
 
   useEffect(() => {
     if (activeTab === 'modelReport') {
       fetchAnalytics();
     }
-  }, [startDate, endDate, search, showAnalytics, activeTab]);
+  }, [startDate, endDate, search, statusFilter, plotterFilter, categoryFilter, showAnalytics, activeTab]);
 
   const handleExport = async () => {
     setExporting(true);
@@ -432,67 +518,178 @@ const ReportsPage = () => {
         /* Model Wise Cut Report Tab */
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
           {/* Filtering Header */}
-          <div className="p-6 border-b border-slate-200/80 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-4">
-              {/* Date Filters */}
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-slate-400" />
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => { setStartDate(e.target.value); setSkip(0); }}
-                  className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Start Date"
-                />
-                <span className="text-slate-400 text-xs">to</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => { setEndDate(e.target.value); setSkip(0); }}
-                  className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="End Date"
-                />
+          <div className="p-6 border-b border-slate-200/80 bg-slate-50/50 flex flex-col gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-4">
+                {/* Date Filters */}
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-slate-400" />
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => { setStartDate(e.target.value); setSkip(0); }}
+                    className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Start Date"
+                  />
+                  <span className="text-slate-400 text-xs">to</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => { setEndDate(e.target.value); setSkip(0); }}
+                    className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="End Date"
+                  />
+                </div>
+
+                {/* Text Search */}
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => { setSearch(e.target.value); setSkip(0); }}
+                    className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Search brand, model, plotter, QR..."
+                  />
+                </div>
               </div>
 
-              {/* Text Search */}
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => { setSearch(e.target.value); setSkip(0); }}
-                  className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Search brand, model, plotter, QR..."
-                />
+              {/* Toggle Graphs, Columns & Export Buttons */}
+              <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+                <button
+                  onClick={() => setShowAnalytics(!showAnalytics)}
+                  className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    showAnalytics
+                      ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  title="Toggle Visual Analytics Dashboard"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  {showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
+                </button>
+
+                <button
+                  onClick={() => setShowColumnSettings(!showColumnSettings)}
+                  className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    showColumnSettings
+                      ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Customize Columns
+                </button>
+                
+                <button
+                  onClick={handleExport}
+                  disabled={exporting}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-500/10 cursor-pointer"
+                >
+                  {exporting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="w-4 h-4" />
+                  )}
+                  {exporting ? 'Exporting...' : 'Export CSV'}
+                </button>
               </div>
             </div>
 
-            {/* Toggle Graphs & Export CSV Button */}
-            <div className="flex items-center gap-2 self-start md:self-auto">
-              <button
-                onClick={() => setShowAnalytics(!showAnalytics)}
-                className={`flex items-center justify-center gap-1.5 px-4 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  showAnalytics
-                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <BarChart3 className="w-4 h-4" />
-                {showAnalytics ? 'Hide Analytics Dashboard' : 'Show Analytics Dashboard'}
-              </button>
-              
-              <button
-                onClick={handleExport}
-                disabled={exporting}
-                className="flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-500/10 cursor-pointer"
-              >
-                {exporting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <FileSpreadsheet className="w-4 h-4" />
-                )}
-                {exporting ? 'Exporting...' : 'Export CSV'}
-              </button>
+            {/* Customize Columns Settings Dropdown Block */}
+            {showColumnSettings && (
+              <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-inner space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Select Columns to Display</h4>
+                  <button 
+                    onClick={() => setVisibleColumns(Object.keys(visibleColumns).reduce((acc, k) => ({ ...acc, [k]: true }), {}))}
+                    className="text-[10px] text-indigo-600 hover:underline font-bold"
+                  >
+                    Reset Defaults
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                  {Object.keys(visibleColumns).map((colKey) => {
+                    const label = colKey
+                      .replace(/([A-Z])/g, ' $1')
+                      .replace(/^./, (str) => str.toUpperCase())
+                      .replace('Ref Name', 'Ref')
+                      .replace('Q R Code', 'QR Code');
+                    return (
+                      <label key={colKey} className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none hover:text-slate-950 font-medium">
+                        <input
+                          type="checkbox"
+                          checked={visibleColumns[colKey]}
+                          onChange={(e) => setVisibleColumns({ ...visibleColumns, [colKey]: e.target.checked })}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
+                        />
+                        <span>{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Real-time Customization Bar */}
+            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-200/50">
+              {/* Status Filter */}
+              <div className="flex flex-col gap-1 min-w-[120px]">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Cut Status</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => { setStatusFilter(e.target.value); setSkip(0); }}
+                  className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="Success">Success</option>
+                  <option value="Failed">Failed</option>
+                </select>
+              </div>
+
+              {/* Plotter Filter */}
+              <div className="flex flex-col gap-1 min-w-[140px]">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Plotter / Machine</label>
+                <select
+                  value={plotterFilter}
+                  onChange={(e) => { setPlotterFilter(e.target.value); setSkip(0); }}
+                  className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value="all">All Plotters</option>
+                  {uniquePlotters.map(p => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Device Category Filter */}
+              <div className="flex flex-col gap-1 min-w-[140px]">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Device Category</label>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => { setCategoryFilter(e.target.value); setSkip(0); }}
+                  className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value="all">All Categories</option>
+                  {uniqueCategories.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Sort Configuration */}
+              <div className="flex flex-col gap-1 min-w-[150px] ml-auto">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Sort Report By</label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value="date-desc">Date (Newest First)</option>
+                  <option value="date-asc">Date (Oldest First)</option>
+                  <option value="model-asc">Model Name (A-Z)</option>
+                  <option value="brand-asc">Brand (A-Z)</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -702,53 +899,63 @@ const ReportsPage = () => {
             <table className="w-full text-left border-collapse min-w-[1800px]">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-                  <th className="px-6 py-4">Category Name</th>
-                  <th className="px-6 py-4">Brand</th>
-                  <th className="px-6 py-4">Model</th>
-                  <th className="px-6 py-4">Dealer / LFR</th>
-                  <th className="px-6 py-4">License Key</th>
-                  <th className="px-6 py-4">License Ref Name</th>
-                  <th className="px-6 py-4">Film Category</th>
-                  <th className="px-6 py-4">Product Name</th>
-                  <th className="px-6 py-4">Cut Type</th>
-                  <th className="px-6 py-4">Plotter</th>
-                  <th className="px-6 py-4">Updated Date</th>
-                  <th className="px-6 py-4">Parent Dealer</th>
-                  <th className="px-6 py-4">Promoter Name</th>
-                  <th className="px-6 py-4">Cut QRCode</th>
-                  <th className="px-6 py-4">Cut Status</th>
-                  <th className="px-6 py-4">Cut Review</th>
+                  {visibleColumns.categoryName && <th className="px-6 py-4">Category Name</th>}
+                  {visibleColumns.brand && <th className="px-6 py-4">Brand</th>}
+                  {visibleColumns.model && <th className="px-6 py-4">Model</th>}
+                  {visibleColumns.dealer && <th className="px-6 py-4">Dealer / LFR</th>}
+                  {visibleColumns.licenseKey && <th className="px-6 py-4">License Key</th>}
+                  {visibleColumns.licenseRefName && <th className="px-6 py-4">License Ref Name</th>}
+                  {visibleColumns.filmCategory && <th className="px-6 py-4">Film Category</th>}
+                  {visibleColumns.productName && <th className="px-6 py-4">Product Name</th>}
+                  {visibleColumns.cutType && <th className="px-6 py-4">Cut Type</th>}
+                  {visibleColumns.plotter && <th className="px-6 py-4">Plotter</th>}
+                  {visibleColumns.updatedDate && <th className="px-6 py-4">Updated Date</th>}
+                  {visibleColumns.parentDealer && <th className="px-6 py-4">Parent Dealer</th>}
+                  {visibleColumns.promoterName && <th className="px-6 py-4">Promoter Name</th>}
+                  {visibleColumns.cutQRCode && <th className="px-6 py-4">Cut QRCode</th>}
+                  {visibleColumns.cutStatus && <th className="px-6 py-4">Cut Status</th>}
+                  {visibleColumns.cutReview && <th className="px-6 py-4">Cut Review</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700 text-xs font-medium">
                 {reportItems.length > 0 ? (
-                  reportItems.map((item) => (
+                  reportItems.slice(skip, skip + take).map((item) => (
                     <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4">{item.categoryName}</td>
-                      <td className="px-6 py-4">{item.brand}</td>
-                      <td className="px-6 py-4 font-bold text-slate-800">{item.model}</td>
-                      <td className="px-6 py-4">{item.dealer}</td>
-                      <td className="px-6 py-4 font-mono text-[11px] bg-slate-50/50 px-2.5 rounded border border-slate-200/40 select-all max-w-[200px] truncate" title={item.licenseKey}>{item.licenseKey}</td>
-                      <td className="px-6 py-4 text-slate-500">{item.licenseRefName}</td>
-                      <td className="px-6 py-4 font-semibold text-slate-800">{item.filmCategory}</td>
-                      <td className="px-6 py-4">{item.productName}</td>
-                      <td className="px-6 py-4 text-slate-500">{item.cutType}</td>
-                      <td className="px-6 py-4 font-mono">{item.plotter}</td>
-                      <td className="px-6 py-4 text-slate-400 whitespace-nowrap">{new Date(item.updatedDate).toLocaleString()}</td>
-                      <td className="px-6 py-4 text-slate-500">{item.parentDealer}</td>
-                      <td className="px-6 py-4 text-slate-900">{item.promoterName}</td>
-                      <td className="px-6 py-4 font-mono select-all text-indigo-600 bg-indigo-50/30 px-2 py-0.5 rounded border border-indigo-100/40">{item.cutQRCode}</td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${item.cutStatus === 'Success' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
-                          {item.cutStatus}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-slate-500 max-w-[250px] truncate" title={item.cutReview}>{item.cutReview}</td>
+                      {visibleColumns.categoryName && <td className="px-6 py-4">{item.categoryName}</td>}
+                      {visibleColumns.brand && <td className="px-6 py-4">{item.brand}</td>}
+                      {visibleColumns.model && <td className="px-6 py-4 font-bold text-slate-800">{item.model}</td>}
+                      {visibleColumns.dealer && <td className="px-6 py-4">{item.dealer}</td>}
+                      {visibleColumns.licenseKey && (
+                        <td className="px-6 py-4 font-mono text-[11px] bg-slate-50/50 px-2.5 rounded border border-slate-200/40 select-all max-w-[200px] truncate" title={item.licenseKey}>
+                          {item.licenseKey}
+                        </td>
+                      )}
+                      {visibleColumns.licenseRefName && <td className="px-6 py-4 text-slate-500">{item.licenseRefName}</td>}
+                      {visibleColumns.filmCategory && <td className="px-6 py-4 font-semibold text-slate-800">{item.filmCategory}</td>}
+                      {visibleColumns.productName && <td className="px-6 py-4">{item.productName}</td>}
+                      {visibleColumns.cutType && <td className="px-6 py-4 text-slate-500">{item.cutType}</td>}
+                      {visibleColumns.plotter && <td className="px-6 py-4 font-mono">{item.plotter}</td>}
+                      {visibleColumns.updatedDate && <td className="px-6 py-4 text-slate-400 whitespace-nowrap">{new Date(item.updatedDate).toLocaleString()}</td>}
+                      {visibleColumns.parentDealer && <td className="px-6 py-4 text-slate-500">{item.parentDealer}</td>}
+                      {visibleColumns.promoterName && <td className="px-6 py-4 text-slate-900">{item.promoterName}</td>}
+                      {visibleColumns.cutQRCode && (
+                        <td className="px-6 py-4 font-mono select-all text-indigo-600 bg-indigo-50/30 px-2 py-0.5 rounded border border-indigo-100/40">
+                          {item.cutQRCode}
+                        </td>
+                      )}
+                      {visibleColumns.cutStatus && (
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${item.cutStatus === 'Success' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
+                            {item.cutStatus}
+                          </span>
+                        </td>
+                      )}
+                      {visibleColumns.cutReview && <td className="px-6 py-4 text-slate-500 max-w-[250px] truncate" title={item.cutReview}>{item.cutReview}</td>}
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={16} className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan={Object.values(visibleColumns).filter(Boolean).length || 1} className="px-6 py-12 text-center text-slate-400">
                       No records matched the filter criteria.
                     </td>
                   </tr>
