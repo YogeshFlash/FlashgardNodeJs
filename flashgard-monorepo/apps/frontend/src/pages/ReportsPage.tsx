@@ -44,6 +44,17 @@ const ReportsPage = () => {
   const [take] = useState<number>(20);
   const [exporting, setExporting] = useState<boolean>(false);
 
+  // Analytics states
+  const [showAnalytics, setShowAnalytics] = useState<boolean>(true);
+  const [analyticsLoading, setAnalyticsLoading] = useState<boolean>(false);
+  const [analyticsData, setAnalyticsData] = useState<{
+    totalCuts: number;
+    successRate: number;
+    topBrands: { name: string; count: number }[];
+    topModels: { name: string; brand: string; count: number }[];
+    categoryShare: { name: string; count: number }[];
+  } | null>(null);
+
   // Fetch Overview Stats
   useEffect(() => {
     if (activeTab === 'overview') {
@@ -84,11 +95,92 @@ const ReportsPage = () => {
       });
   };
 
+  // Fetch data for analytics aggregation (fetches up to 5000 matching items to aggregate locally)
+  const fetchAnalytics = () => {
+    if (!showAnalytics) return;
+    setAnalyticsLoading(true);
+    licensesApi.getReportsCutReport({
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      search: search || undefined,
+      skip: 0,
+      take: 5000
+    })
+      .then((res: any) => {
+        const items = res.items || [];
+        const totalCuts = items.length;
+
+        // Calculate success/failure rate
+        let successCount = 0;
+        items.forEach((item: any) => {
+          if (item.cutStatus === 'Success') successCount++;
+        });
+        const successRate = totalCuts > 0 ? Math.round((successCount / totalCuts) * 100) : 0;
+
+        // Top Brands
+        const brandMap: Record<string, number> = {};
+        const modelMap: Record<string, { brand: string; count: number }> = {};
+        const catMap: Record<string, number> = {};
+
+        items.forEach((item: any) => {
+          const b = item.brand || 'Unknown';
+          brandMap[b] = (brandMap[b] || 0) + 1;
+
+          const mKey = `${b}:::${item.model || 'Unknown'}`;
+          if (!modelMap[mKey]) {
+            modelMap[mKey] = { brand: b, count: 0 };
+          }
+          modelMap[mKey].count++;
+
+          const c = item.categoryName || 'Unknown';
+          catMap[c] = (catMap[c] || 0) + 1;
+        });
+
+        const topBrands = Object.entries(brandMap)
+          .map(([name, count]) => ({ name, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5);
+
+        const topModels = Object.entries(modelMap)
+          .map(([key, info]) => {
+            const [, modelName] = key.split(':::');
+            return { name: modelName, brand: info.brand, count: info.count };
+          })
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5);
+
+        const categoryShare = Object.entries(catMap)
+          .map(([name, count]) => ({ name, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5);
+
+        setAnalyticsData({
+          totalCuts,
+          successRate,
+          topBrands,
+          topModels,
+          categoryShare
+        });
+      })
+      .catch((err: any) => {
+        console.error('Failed to load analytics data:', err);
+      })
+      .finally(() => {
+        setAnalyticsLoading(false);
+      });
+  };
+
   useEffect(() => {
     if (activeTab === 'modelReport') {
       fetchReport();
     }
   }, [startDate, endDate, search, skip, take, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'modelReport') {
+      fetchAnalytics();
+    }
+  }, [startDate, endDate, search, showAnalytics, activeTab]);
 
   const handleExport = async () => {
     setExporting(true);
@@ -375,20 +467,199 @@ const ReportsPage = () => {
               </div>
             </div>
 
-            {/* Export CSV Button */}
-            <button
-              onClick={handleExport}
-              disabled={exporting}
-              className="flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-500/10 cursor-pointer self-start md:self-auto"
-            >
-              {exporting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <FileSpreadsheet className="w-4 h-4" />
-              )}
-              {exporting ? 'Exporting...' : 'Export CSV'}
-            </button>
+            {/* Toggle Graphs & Export CSV Button */}
+            <div className="flex items-center gap-2 self-start md:self-auto">
+              <button
+                onClick={() => setShowAnalytics(!showAnalytics)}
+                className={`flex items-center justify-center gap-1.5 px-4 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  showAnalytics
+                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <BarChart3 className="w-4 h-4" />
+                {showAnalytics ? 'Hide Analytics Dashboard' : 'Show Analytics Dashboard'}
+              </button>
+              
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-500/10 cursor-pointer"
+              >
+                {exporting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="w-4 h-4" />
+                )}
+                {exporting ? 'Exporting...' : 'Export CSV'}
+              </button>
+            </div>
           </div>
+
+          {/* Analytics Dashboard Panel */}
+          {showAnalytics && (
+            <div className="p-6 border-b border-slate-200 bg-slate-50/20 relative min-h-[160px]">
+              {analyticsLoading && (
+                <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10 backdrop-blur-[1px]">
+                  <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+                </div>
+              )}
+
+              {analyticsData ? (
+                <div className="space-y-6">
+                  {/* Summary Metric Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
+                      <div className="p-3 bg-indigo-50 rounded-lg text-indigo-600">
+                        <Cpu className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Filtered Cuts</p>
+                        <p className="text-xl font-black text-slate-800">{analyticsData.totalCuts.toLocaleString()}</p>
+                      </div>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
+                      <div className="p-3 bg-emerald-50 rounded-lg text-emerald-600">
+                        <TrendingUp className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Success Rate</p>
+                        <p className="text-xl font-black text-slate-800">{analyticsData.successRate}%</p>
+                      </div>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
+                      <div className="p-3 bg-blue-50 rounded-lg text-blue-600">
+                        <BarChart3 className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Top Brand</p>
+                        <p className="text-sm font-bold text-slate-800 truncate max-w-[150px]">
+                          {analyticsData.topBrands[0]?.name || 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
+                      <div className="p-3 bg-amber-50 rounded-lg text-amber-600">
+                        <Layers className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Top Model</p>
+                        <p className="text-sm font-bold text-slate-800 truncate max-w-[150px]">
+                          {analyticsData.topModels[0]?.name || 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Graphs Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Top Brands Chart */}
+                    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Top Brands</h4>
+                        <p className="text-[10px] text-slate-400">Distribution across top 5 brands</p>
+                      </div>
+                      <div className="space-y-3 pt-2">
+                        {analyticsData.topBrands.length > 0 ? (
+                          analyticsData.topBrands.map((brand, idx) => {
+                            const maxVal = analyticsData.topBrands[0]?.count || 1;
+                            const pct = Math.round((brand.count / maxVal) * 100);
+                            return (
+                              <div key={idx} className="space-y-1">
+                                <div className="flex justify-between text-xs font-semibold">
+                                  <span className="text-slate-600">{brand.name}</span>
+                                  <span className="text-slate-800">{brand.count.toLocaleString()}</span>
+                                </div>
+                                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-indigo-600 rounded-full transition-all duration-500" 
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-xs text-slate-400 text-center py-6">No brand statistics available</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Top Models Chart */}
+                    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Top Models</h4>
+                        <p className="text-[10px] text-slate-400">Most cut device models</p>
+                      </div>
+                      <div className="space-y-3 pt-2">
+                        {analyticsData.topModels.length > 0 ? (
+                          analyticsData.topModels.map((model, idx) => {
+                            const maxVal = analyticsData.topModels[0]?.count || 1;
+                            const pct = Math.round((model.count / maxVal) * 100);
+                            return (
+                              <div key={idx} className="space-y-1">
+                                <div className="flex justify-between text-xs font-semibold">
+                                  <span className="text-slate-600 truncate max-w-[180px]">{model.brand} {model.name}</span>
+                                  <span className="text-slate-800">{model.count.toLocaleString()}</span>
+                                </div>
+                                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-blue-600 rounded-full transition-all duration-500" 
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-xs text-slate-400 text-center py-6">No model statistics available</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Category Share Chart */}
+                    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Category Share</h4>
+                        <p className="text-[10px] text-slate-400">Proportion by film / protector type</p>
+                      </div>
+                      <div className="space-y-3 pt-2">
+                        {analyticsData.categoryShare.length > 0 ? (
+                          analyticsData.categoryShare.map((cat, idx) => {
+                            const maxVal = analyticsData.categoryShare[0]?.count || 1;
+                            const pct = Math.round((cat.count / maxVal) * 100);
+                            return (
+                              <div key={idx} className="space-y-1">
+                                <div className="flex justify-between text-xs font-semibold">
+                                  <span className="text-slate-600">{cat.name}</span>
+                                  <span className="text-slate-800">{cat.count.toLocaleString()}</span>
+                                </div>
+                                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-emerald-600 rounded-full transition-all duration-500" 
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-xs text-slate-400 text-center py-6">No category share details available</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center text-xs text-slate-400 py-12">
+                  No data matching criteria to generate analytics.
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Top Pagination Controls */}
           {reportTotal > 0 && (
