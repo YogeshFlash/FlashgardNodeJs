@@ -370,6 +370,30 @@ const ReportsPage = () => {
     }
   }, [startDate, endDate, search, statusFilter, plotterFilter, categoryFilter, showAnalytics, activeTab]);
 
+  // Column Visibility for Dealer Performance
+  const [visibleDealerCols, setVisibleDealerCols] = useState<Record<string, boolean>>({
+    dealerName: true,
+    totalCuts: true,
+    successRate: true,
+    failedCuts: true,
+    uniqueModels: true,
+    lastActivity: true
+  });
+
+  // Column Visibility for Plotter Analytics
+  const [visiblePlotterCols, setVisiblePlotterCols] = useState<Record<string, boolean>>({
+    plotterName: true,
+    totalCuts: true,
+    successRate: true,
+    failedCuts: true,
+    activeCategories: true,
+    storesConnected: true
+  });
+
+  // Pagination states for Dealer Performance & Plotter Analytics
+  const [dealerSkip, setDealerSkip] = useState<number>(0);
+  const [plotterSkip, setPlotterSkip] = useState<number>(0);
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -381,42 +405,78 @@ const ReportsPage = () => {
         take: 100000 // fetch all matching items up to 100k
       });
 
-      const headers = [
-        'Category Name', 'Brand', 'Model', 'Dealer / LFR', 'License Key', 
-        'License Ref Name', 'Film Category', 'Product Name', 
-        'Cut Type', 'Plotter', 'Updated Date', 'Parent Dealer', 'Promoter Name', 
-        'Cut QRCode', 'Cut status', 'Cut Review'
-      ];
+      let csvString = '';
+      let fileName = '';
 
-      const rows = res.items.map((item: any) => [
-        item.categoryName,
-        item.brand,
-        item.model,
-        item.dealer,
-        item.licenseKey,
-        item.licenseRefName,
-        item.filmCategory,
-        item.productName,
-        item.cutType,
-        item.plotter,
-        new Date(item.updatedDate).toLocaleString(),
-        item.parentDealer,
-        item.promoterName,
-        item.cutQRCode,
-        item.cutStatus,
-        item.cutReview
-      ]);
+      if (activeTab === 'modelReport') {
+        const headers = [
+          'Category Name', 'Brand', 'Model', 'Dealer / LFR', 'License Key', 
+          'License Ref Name', 'Film Category', 'Product Name', 
+          'Cut Type', 'Plotter', 'Updated Date', 'Parent Dealer', 'Promoter Name', 
+          'Cut QRCode', 'Cut status', 'Cut Review'
+        ];
 
-      const csvString = [
-        headers.join(','),
-        ...rows.map((e: any[]) => e.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(','))
-      ].join('\r\n');
+        const rows = res.items.map((item: any) => [
+          item.categoryName,
+          item.brand,
+          item.model,
+          item.dealer,
+          item.licenseKey,
+          item.licenseRefName,
+          item.filmCategory,
+          item.productName,
+          item.cutType,
+          item.plotter,
+          new Date(item.updatedDate).toLocaleString(),
+          item.parentDealer,
+          item.promoterName,
+          item.cutQRCode,
+          item.cutStatus,
+          item.cutReview
+        ]);
+
+        csvString = [
+          headers.join(','),
+          ...rows.map((e: any[]) => e.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(','))
+        ].join('\r\n');
+        fileName = `Model_Wise_Cut_Report_${new Date().toISOString().substring(0,10)}.csv`;
+      } else if (activeTab === 'dealerPerformance') {
+        const headers = ['Dealer / Store Name', 'Total Cuts', 'Success Rate (%)', 'Failed Cuts', 'Unique Devices Cut', 'Last Activity'];
+        const rows = dealerStats.map(d => [
+          d.name,
+          d.totalCuts,
+          d.successRate,
+          d.failedCuts,
+          d.uniqueModelsCut,
+          new Date(d.lastCutDate).toLocaleString()
+        ]);
+        csvString = [
+          headers.join(','),
+          ...rows.map((e: any[]) => e.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(','))
+        ].join('\r\n');
+        fileName = `Dealer_Performance_Report_${new Date().toISOString().substring(0,10)}.csv`;
+      } else if (activeTab === 'plotterAnalytics') {
+        const headers = ['Plotter Name / ID', 'Total Cuts Logged', 'Cut Success Rate (%)', 'Failed Cuts', 'Active Categories', 'Stores Connected'];
+        const rows = plotterStats.map(p => [
+          p.id,
+          p.totalCuts,
+          p.successRate,
+          p.failedCuts,
+          p.categoriesCount,
+          p.dealersCount
+        ]);
+        csvString = [
+          headers.join(','),
+          ...rows.map((e: any[]) => e.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(','))
+        ].join('\r\n');
+        fileName = `Plotter_Analytics_Report_${new Date().toISOString().substring(0,10)}.csv`;
+      }
 
       const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
-      link.setAttribute("download", `Model_Wise_Cut_Report_${new Date().toISOString().substring(0,10)}.csv`);
+      link.setAttribute("download", fileName);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1110,65 +1170,173 @@ const ReportsPage = () => {
         </div>
       ) : activeTab === 'dealerPerformance' ? (
         /* Dealer Performance Report View */
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col p-6 space-y-6 relative min-h-[300px]">
-          {extraReportsLoading && (
-            <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-10 backdrop-blur-[1px]">
-              <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+          {/* Customization & Filter Header */}
+          <div className="p-6 border-b border-slate-200/80 bg-slate-50/50 flex flex-col gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-4">
+                {/* Date Filters */}
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-slate-400" />
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => { setStartDate(e.target.value); setDealerSkip(0); }}
+                    className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <span className="text-slate-400 text-xs">to</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => { setEndDate(e.target.value); setDealerSkip(0); }}
+                    className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* Text Search */}
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => { setSearch(e.target.value); setDealerSkip(0); }}
+                    className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Search dealer..."
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setShowColumnSettings(!showColumnSettings)}
+                  className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    showColumnSettings ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Customize Columns
+                </button>
+                <button
+                  onClick={handleExport}
+                  disabled={exporting}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  {exporting ? 'Exporting...' : 'Export CSV'}
+                </button>
+              </div>
+            </div>
+
+            {/* Column Customization checkboxes */}
+            {showColumnSettings && (
+              <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-inner space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase">Select Columns to Display</h4>
+                  <button 
+                    onClick={() => setVisibleDealerCols(Object.keys(visibleDealerCols).reduce((acc, k) => ({ ...acc, [k]: true }), {}))}
+                    className="text-[10px] text-indigo-600 hover:underline font-bold"
+                  >
+                    Reset Defaults
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                  {Object.keys(visibleDealerCols).map((k) => {
+                    const label = k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                    return (
+                      <label key={k} className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer font-medium">
+                        <input
+                          type="checkbox"
+                          checked={visibleDealerCols[k]}
+                          onChange={(e) => setVisibleDealerCols({ ...visibleDealerCols, [k]: e.target.checked })}
+                          className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
+                        />
+                        <span>{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Top Pagination Controls */}
+          {dealerStats.length > 0 && (
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-500 bg-slate-50/30">
+              <span>
+                Showing <strong className="text-slate-700">{dealerSkip + 1}</strong> to{' '}
+                <strong className="text-slate-700">{Math.min(dealerSkip + take, dealerStats.length)}</strong> of{' '}
+                <strong className="text-slate-700">{dealerStats.length}</strong> dealers
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setDealerSkip(Math.max(0, dealerSkip - take))}
+                  disabled={dealerSkip === 0}
+                  className="p-1.5 border border-slate-200 rounded-lg bg-white disabled:opacity-50"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-slate-700">
+                  Page {Math.floor(dealerSkip / take) + 1} of {Math.ceil(dealerStats.length / take) || 1}
+                </span>
+                <button
+                  onClick={() => { if (dealerSkip + take < dealerStats.length) setDealerSkip(dealerSkip + take); }}
+                  disabled={dealerSkip + take >= dealerStats.length}
+                  className="p-1.5 border border-slate-200 rounded-lg bg-white disabled:opacity-50"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           )}
 
-          <div>
-            <h3 className="text-lg font-bold text-slate-800">Dealer Performance Dashboard</h3>
-            <p className="text-slate-400 text-xs font-semibold">Analyzes cutting volume, success metrics, and diversity across active dealer stores.</p>
-          </div>
+          {/* Table Container */}
+          <div className="overflow-x-auto relative min-h-[300px]">
+            {extraReportsLoading && (
+              <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-10">
+                <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+              </div>
+            )}
 
-          <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-                  <th className="px-6 py-4">Dealer / Store Name</th>
-                  <th className="px-6 py-4">Total Cuts</th>
-                  <th className="px-6 py-4">Success Rate</th>
-                  <th className="px-6 py-4">Failed Cuts</th>
-                  <th className="px-6 py-4">Unique Devices Cut</th>
-                  <th className="px-6 py-4">Last Activity</th>
+                  {visibleDealerCols.dealerName && <th className="px-6 py-4">Dealer / Store Name</th>}
+                  {visibleDealerCols.totalCuts && <th className="px-6 py-4">Total Cuts</th>}
+                  {visibleDealerCols.successRate && <th className="px-6 py-4">Success Rate</th>}
+                  {visibleDealerCols.failedCuts && <th className="px-6 py-4">Failed Cuts</th>}
+                  {visibleDealerCols.uniqueModels && <th className="px-6 py-4">Unique Devices Cut</th>}
+                  {visibleDealerCols.lastActivity && <th className="px-6 py-4">Last Activity</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700 text-xs font-medium">
                 {dealerStats.length > 0 ? (
-                  dealerStats.map((dealer, idx) => (
+                  dealerStats.slice(dealerSkip, dealerSkip + take).map((dealer, idx) => (
                     <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4 font-bold text-slate-800">{dealer.name}</td>
-                      <td className="px-6 py-4 font-semibold text-slate-700">{dealer.totalCuts.toLocaleString()}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            dealer.successRate >= 95 
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                              : dealer.successRate >= 85 
-                              ? 'bg-blue-50 text-blue-700 border-blue-100' 
-                              : 'bg-rose-50 text-rose-700 border-rose-100'
-                          }`}>
-                            {dealer.successRate}%
-                          </span>
-                          <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden hidden sm:block">
-                            <div 
-                              className={`h-full rounded-full ${
-                                dealer.successRate >= 95 ? 'bg-emerald-600' : dealer.successRate >= 85 ? 'bg-blue-600' : 'bg-rose-600'
-                              }`} 
-                              style={{ width: `${dealer.successRate}%` }}
-                            />
+                      {visibleDealerCols.dealerName && <td className="px-6 py-4 font-bold text-slate-800">{dealer.name}</td>}
+                      {visibleDealerCols.totalCuts && <td className="px-6 py-4 font-semibold text-slate-700">{dealer.totalCuts.toLocaleString()}</td>}
+                      {visibleDealerCols.successRate && (
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              dealer.successRate >= 95 
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                                : dealer.successRate >= 85 
+                                ? 'bg-blue-50 text-blue-700 border-blue-100' 
+                                : 'bg-rose-50 text-rose-700 border-rose-100'
+                            }`}>
+                              {dealer.successRate}%
+                            </span>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-slate-500">{dealer.failedCuts.toLocaleString()}</td>
-                      <td className="px-6 py-4 font-semibold text-indigo-600">{dealer.uniqueModelsCut} models</td>
-                      <td className="px-6 py-4 text-slate-400">{new Date(dealer.lastCutDate).toLocaleString()}</td>
+                        </td>
+                      )}
+                      {visibleDealerCols.failedCuts && <td className="px-6 py-4 text-slate-500">{dealer.failedCuts.toLocaleString()}</td>}
+                      {visibleDealerCols.uniqueModels && <td className="px-6 py-4 font-semibold text-indigo-600">{dealer.uniqueModelsCut} models</td>}
+                      {visibleDealerCols.lastActivity && <td className="px-6 py-4 text-slate-400">{new Date(dealer.lastCutDate).toLocaleString()}</td>}
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan={Object.values(visibleDealerCols).filter(Boolean).length || 1} className="px-6 py-12 text-center text-slate-400">
                       No dealer performance data found matching filters.
                     </td>
                   </tr>
@@ -1176,68 +1344,206 @@ const ReportsPage = () => {
               </tbody>
             </table>
           </div>
+
+          {/* Bottom Pagination Controls */}
+          {dealerStats.length > 0 && (
+            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-500 bg-slate-50/30">
+              <span>
+                Showing <strong className="text-slate-700">{dealerSkip + 1}</strong> to{' '}
+                <strong className="text-slate-700">{Math.min(dealerSkip + take, dealerStats.length)}</strong> of{' '}
+                <strong className="text-slate-700">{dealerStats.length}</strong> dealers
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setDealerSkip(Math.max(0, dealerSkip - take))}
+                  disabled={dealerSkip === 0}
+                  className="p-1.5 border border-slate-200 rounded-lg bg-white disabled:opacity-50"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-slate-700">
+                  Page {Math.floor(dealerSkip / take) + 1} of {Math.ceil(dealerStats.length / take) || 1}
+                </span>
+                <button
+                  onClick={() => { if (dealerSkip + take < dealerStats.length) setDealerSkip(dealerSkip + take); }}
+                  disabled={dealerSkip + take >= dealerStats.length}
+                  className="p-1.5 border border-slate-200 rounded-lg bg-white disabled:opacity-50"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         /* Plotter / Cutting Machine Analytics View */
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col p-6 space-y-6 relative min-h-[300px]">
-          {extraReportsLoading && (
-            <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-10 backdrop-blur-[1px]">
-              <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+          {/* Customization & Filter Header */}
+          <div className="p-6 border-b border-slate-200/80 bg-slate-50/50 flex flex-col gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-4">
+                {/* Date Filters */}
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-slate-400" />
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => { setStartDate(e.target.value); setPlotterSkip(0); }}
+                    className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <span className="text-slate-400 text-xs">to</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => { setEndDate(e.target.value); setPlotterSkip(0); }}
+                    className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* Text Search */}
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => { setSearch(e.target.value); setPlotterSkip(0); }}
+                    className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Search plotter..."
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setShowColumnSettings(!showColumnSettings)}
+                  className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    showColumnSettings ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Customize Columns
+                </button>
+                <button
+                  onClick={handleExport}
+                  disabled={exporting}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  {exporting ? 'Exporting...' : 'Export CSV'}
+                </button>
+              </div>
+            </div>
+
+            {/* Column Customization checkboxes */}
+            {showColumnSettings && (
+              <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-inner space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase">Select Columns to Display</h4>
+                  <button 
+                    onClick={() => setVisiblePlotterCols(Object.keys(visiblePlotterCols).reduce((acc, k) => ({ ...acc, [k]: true }), {}))}
+                    className="text-[10px] text-indigo-600 hover:underline font-bold"
+                  >
+                    Reset Defaults
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                  {Object.keys(visiblePlotterCols).map((k) => {
+                    const label = k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                    return (
+                      <label key={k} className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer font-medium">
+                        <input
+                          type="checkbox"
+                          checked={visiblePlotterCols[k]}
+                          onChange={(e) => setVisiblePlotterCols({ ...visiblePlotterCols, [k]: e.target.checked })}
+                          className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
+                        />
+                        <span>{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Top Pagination Controls */}
+          {plotterStats.length > 0 && (
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-500 bg-slate-50/30">
+              <span>
+                Showing <strong className="text-slate-700">{plotterSkip + 1}</strong> to{' '}
+                <strong className="text-slate-700">{Math.min(plotterSkip + take, plotterStats.length)}</strong> of{' '}
+                <strong className="text-slate-700">{plotterStats.length}</strong> plotters
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPlotterSkip(Math.max(0, plotterSkip - take))}
+                  disabled={plotterSkip === 0}
+                  className="p-1.5 border border-slate-200 rounded-lg bg-white disabled:opacity-50"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-slate-700">
+                  Page {Math.floor(plotterSkip / take) + 1} of {Math.ceil(plotterStats.length / take) || 1}
+                </span>
+                <button
+                  onClick={() => { if (plotterSkip + take < plotterStats.length) setPlotterSkip(plotterSkip + take); }}
+                  disabled={plotterSkip + take >= plotterStats.length}
+                  className="p-1.5 border border-slate-200 rounded-lg bg-white disabled:opacity-50"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           )}
 
-          <div>
-            <h3 className="text-lg font-bold text-slate-800">Plotter / Cutting Machine Analytics</h3>
-            <p className="text-slate-400 text-xs font-semibold">Evaluates cutter utilization, reliability, and device category output across all machinery.</p>
-          </div>
+          {/* Table Container */}
+          <div className="overflow-x-auto relative min-h-[300px]">
+            {extraReportsLoading && (
+              <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-10">
+                <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+              </div>
+            )}
 
-          <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-                  <th className="px-6 py-4">Plotter Name / ID</th>
-                  <th className="px-6 py-4">Total Cuts Logged</th>
-                  <th className="px-6 py-4">Cut Success rate</th>
-                  <th className="px-6 py-4">Failed Cuts</th>
-                  <th className="px-6 py-4">Active Categories</th>
-                  <th className="px-6 py-4">Stores Connected</th>
+                  {visiblePlotterCols.plotterName && <th className="px-6 py-4">Plotter Name / ID</th>}
+                  {visiblePlotterCols.totalCuts && <th className="px-6 py-4">Total Cuts Logged</th>}
+                  {visiblePlotterCols.successRate && <th className="px-6 py-4">Cut Success rate</th>}
+                  {visiblePlotterCols.failedCuts && <th className="px-6 py-4">Failed Cuts</th>}
+                  {visiblePlotterCols.activeCategories && <th className="px-6 py-4">Active Categories</th>}
+                  {visiblePlotterCols.storesConnected && <th className="px-6 py-4">Stores Connected</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700 text-xs font-medium">
                 {plotterStats.length > 0 ? (
-                  plotterStats.map((plotter, idx) => (
+                  plotterStats.slice(plotterSkip, plotterSkip + take).map((plotter, idx) => (
                     <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4 font-mono font-bold text-slate-800">{plotter.id}</td>
-                      <td className="px-6 py-4 font-semibold text-slate-700">{plotter.totalCuts.toLocaleString()}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            plotter.successRate >= 95 
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                              : plotter.successRate >= 85 
-                              ? 'bg-blue-50 text-blue-700 border-blue-100' 
-                              : 'bg-rose-50 text-rose-700 border-rose-100'
-                          }`}>
-                            {plotter.successRate}%
-                          </span>
-                          <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden hidden sm:block">
-                            <div 
-                              className={`h-full rounded-full ${
-                                plotter.successRate >= 95 ? 'bg-emerald-600' : plotter.successRate >= 85 ? 'bg-blue-600' : 'bg-rose-600'
-                              }`} 
-                              style={{ width: `${plotter.successRate}%` }}
-                            />
+                      {visiblePlotterCols.plotterName && <td className="px-6 py-4 font-mono font-bold text-slate-800">{plotter.id}</td>}
+                      {visiblePlotterCols.totalCuts && <td className="px-6 py-4 font-semibold text-slate-700">{plotter.totalCuts.toLocaleString()}</td>}
+                      {visiblePlotterCols.successRate && (
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              plotter.successRate >= 95 
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                                : plotter.successRate >= 85 
+                                ? 'bg-blue-50 text-blue-700 border-blue-100' 
+                                : 'bg-rose-50 text-rose-700 border-rose-100'
+                            }`}>
+                              {plotter.successRate}%
+                            </span>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-slate-500">{plotter.failedCuts.toLocaleString()}</td>
-                      <td className="px-6 py-4 font-semibold text-blue-600">{plotter.categoriesCount} categories</td>
-                      <td className="px-6 py-4 font-semibold text-slate-700">{plotter.dealersCount} store(s)</td>
+                        </td>
+                      )}
+                      {visiblePlotterCols.failedCuts && <td className="px-6 py-4 text-slate-500">{plotter.failedCuts.toLocaleString()}</td>}
+                      {visiblePlotterCols.activeCategories && <td className="px-6 py-4 font-semibold text-blue-600">{plotter.categoriesCount} categories</td>}
+                      {visiblePlotterCols.storesConnected && <td className="px-6 py-4 font-semibold text-slate-700">{plotter.dealersCount} store(s)</td>}
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan={Object.values(visiblePlotterCols).filter(Boolean).length || 1} className="px-6 py-12 text-center text-slate-400">
                       No plotter analytics details available.
                     </td>
                   </tr>
@@ -1245,6 +1551,36 @@ const ReportsPage = () => {
               </tbody>
             </table>
           </div>
+
+          {/* Bottom Pagination Controls */}
+          {plotterStats.length > 0 && (
+            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-500 bg-slate-50/30">
+              <span>
+                Showing <strong className="text-slate-700">{plotterSkip + 1}</strong> to{' '}
+                <strong className="text-slate-700">{Math.min(plotterSkip + take, plotterStats.length)}</strong> of{' '}
+                <strong className="text-slate-700">{plotterStats.length}</strong> plotters
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPlotterSkip(Math.max(0, plotterSkip - take))}
+                  disabled={plotterSkip === 0}
+                  className="p-1.5 border border-slate-200 rounded-lg bg-white disabled:opacity-50"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-slate-700">
+                  Page {Math.floor(plotterSkip / take) + 1} of {Math.ceil(plotterStats.length / take) || 1}
+                </span>
+                <button
+                  onClick={() => { if (plotterSkip + take < plotterStats.length) setPlotterSkip(plotterSkip + take); }}
+                  disabled={plotterSkip + take >= plotterStats.length}
+                  className="p-1.5 border border-slate-200 rounded-lg bg-white disabled:opacity-50"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
