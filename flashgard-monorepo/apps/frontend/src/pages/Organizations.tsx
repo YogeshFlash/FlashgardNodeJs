@@ -112,7 +112,7 @@ const EmptyState = ({ icon: Icon, message, onAdd, addLabel }: any) => (
 );
 
 // ─── Org Form Modal ───────────────────────────────────
-const OrgModal = ({ org, allOrgs, onClose, onSave }: any) => {
+const OrgModal = ({ org, allOrgs, defaultParentId, onClose, onSave }: any) => {
   const { user } = useAuth();
   const [form, setForm] = useState(() => {
     if (org) {
@@ -121,7 +121,7 @@ const OrgModal = ({ org, allOrgs, onClose, onSave }: any) => {
         type: org.type || org.organizationType?.name?.toLowerCase() || 'distributor',
       };
     }
-    return { name: '', type: 'distributor', isActive: true, parentId: '' };
+    return { name: '', type: 'distributor', isActive: true, parentId: defaultParentId || '' };
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -134,8 +134,9 @@ const OrgModal = ({ org, allOrgs, onClose, onSave }: any) => {
   }, [allOrgs, org?.id]);
 
   const filteredParents = React.useMemo(() => {
-    if (!searchOrg) return validParents.slice(0, 100);
-    return validParents.filter((o: any) => o.name.toLowerCase().includes(searchOrg.toLowerCase())).slice(0, 100);
+    const rows = buildOrgRows(validParents);
+    if (!searchOrg) return rows.slice(0, 150);
+    return rows.filter((r: any) => r.org.name.toLowerCase().includes(searchOrg.toLowerCase())).slice(0, 150);
   }, [validParents, searchOrg]);
 
   const selectedParent = validParents.find((o: any) => o.id === form.parentId);
@@ -210,15 +211,27 @@ const OrgModal = ({ org, allOrgs, onClose, onSave }: any) => {
                           None (Top-level)
                         </div>
                       )}
-                      {filteredParents.map((o: any) => (
-                        <div
-                          key={o.id}
-                          onClick={() => { setForm({ ...form, parentId: o.id }); setIsParentOpen(false); setSearchOrg(''); }}
-                          className={`px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-slate-50 ${form.parentId === o.id ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'}`}
-                        >
-                          {o.name}
-                        </div>
-                      ))}
+                      {filteredParents.map((row: any) => {
+                        const o = row.org;
+                        const depth = row.depth;
+                        return (
+                          <div
+                            key={o.id}
+                            onClick={() => { setForm({ ...form, parentId: o.id }); setIsParentOpen(false); setSearchOrg(''); }}
+                            className={`px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-slate-50 ${form.parentId === o.id ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'}`}
+                          >
+                            {!searchOrg ? (
+                              <span className="whitespace-pre">
+                                {'\u00A0'.repeat(depth * 3)}
+                                {depth > 0 ? '↳ ' : ''}
+                                {o.name}
+                              </span>
+                            ) : (
+                              <span>{o.name}</span>
+                            )}
+                          </div>
+                        );
+                      })}
                       {filteredParents.length === 0 && <div className="p-3 text-sm text-slate-400 text-center">No results found</div>}
                     </div>
                   </div>
@@ -1160,6 +1173,7 @@ const Organizations = () => {
         <OrgModal
           org={orgModal === 'new' ? null : orgModal}
           allOrgs={orgs}
+          defaultParentId={selected?.id || ''}
           onClose={() => setOrgModal(null)}
           onSave={() => { setOrgModal(null); fetchOrgs(true); }}
         />
