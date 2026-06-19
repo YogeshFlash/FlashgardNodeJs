@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UserPermissionsModal } from '../components/UserPermissionsModal';
 import { ResetPasswordModal } from '../components/ResetPasswordModal';
+import { useTranslation } from '../contexts/LanguageContext';
 
 function buildOrgRows(orgs: any[], rootOrgId?: number) {
   const byParent = new Map<string, any[]>();
@@ -89,6 +90,7 @@ const Toggle = ({ checked, onChange, label, desc }: any) => (
 );
 
 const GeneralTab = () => {
+  const { language, setLanguage, t } = useTranslation();
   const [emailNotif, setEmailNotif] = React.useState(true);
   const [loginAlert, setLoginAlert] = React.useState(true);
   const [twoFA, setTwoFA] = React.useState(false);
@@ -101,13 +103,13 @@ const GeneralTab = () => {
             <Bell className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Notifications</h3>
-            <p className="text-[10px] text-slate-400 font-semibold">Configure how you receive system alerts</p>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">{t('notifications')}</h3>
+            <p className="text-[10px] text-slate-400 font-semibold">{t('notifDesc')}</p>
           </div>
         </div>
         <div className="space-y-2">
-          <Toggle checked={emailNotif} onChange={setEmailNotif} label="Email Notifications" desc="Receive summaries and alerts via email" />
-          <Toggle checked={loginAlert} onChange={setLoginAlert} label="Login Alerts" desc="Get notified when a new login is detected" />
+          <Toggle checked={emailNotif} onChange={setEmailNotif} label={t('emailNotif')} desc={t('emailNotifDesc')} />
+          <Toggle checked={loginAlert} onChange={setLoginAlert} label={t('loginAlerts')} desc={t('loginAlertsDesc')} />
         </div>
       </div>
 
@@ -117,16 +119,16 @@ const GeneralTab = () => {
             <Shield className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Security Settings</h3>
-            <p className="text-[10px] text-slate-400 font-semibold">Secure your profile credentials</p>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">{t('securitySettings')}</h3>
+            <p className="text-[10px] text-slate-400 font-semibold">{t('securityDesc')}</p>
           </div>
         </div>
         <div className="space-y-2">
-          <Toggle checked={twoFA} onChange={setTwoFA} label="Two-Factor Authentication" desc="Require a second factor at login" />
+          <Toggle checked={twoFA} onChange={setTwoFA} label={t('twoFA')} desc={t('twoFADesc')} />
           <div className="py-3.5 border-b border-slate-100 flex justify-between items-center px-2 rounded-xl">
             <div>
-              <p className="text-sm font-semibold text-slate-700">Session Timeout</p>
-              <p className="text-xs text-slate-400 mt-0.5 font-medium">Automatically sign out after inactivity</p>
+              <p className="text-sm font-semibold text-slate-700">{t('sessionTimeout')}</p>
+              <p className="text-xs text-slate-400 mt-0.5 font-medium">{t('sessionTimeoutDesc')}</p>
             </div>
             <select className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500">
               <option>8 hours</option>
@@ -143,17 +145,25 @@ const GeneralTab = () => {
             <Globe className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Localization</h3>
-            <p className="text-[10px] text-slate-400 font-semibold">Select language & timezone preference</p>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">{t('localization')}</h3>
+            <p className="text-[10px] text-slate-400 font-semibold">{t('localDesc')}</p>
           </div>
         </div>
         <div className="space-y-3">
           <div className="py-2 border-b border-slate-100 flex justify-between items-center px-2 rounded-xl">
-            <p className="text-sm font-semibold text-slate-700">Default Language</p>
-            <select className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"><option>English</option><option>Tamil</option><option>Hindi</option></select>
+            <p className="text-sm font-semibold text-slate-700">{t('defaultLanguage')}</p>
+            <select
+              value={language}
+              onChange={e => setLanguage(e.target.value as any)}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="en">English</option>
+              <option value="ta">Tamil (தமிழ்)</option>
+              <option value="hi">Hindi (हिन्दी)</option>
+            </select>
           </div>
           <div className="py-2 flex justify-between items-center px-2 rounded-xl">
-            <p className="text-sm font-semibold text-slate-700">Timezone</p>
+            <p className="text-sm font-semibold text-slate-700">{t('timezone')}</p>
             <select className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"><option>Asia/Kolkata (IST)</option><option>UTC</option></select>
           </div>
         </div>
@@ -165,14 +175,14 @@ const GeneralTab = () => {
             <Database className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">System Details</h3>
-            <p className="text-[10px] text-slate-400 font-semibold">General platform versions and metadata</p>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">{t('systemDetails')}</h3>
+            <p className="text-[10px] text-slate-400 font-semibold">{t('systemDetailsDesc')}</p>
           </div>
         </div>
         <div className="space-y-2 text-sm">
           {[
-            { label: 'Application', value: 'Flashgard CRM' },
-            { label: 'Version', value: '2.0.0' },
+            { label: t('application'), value: 'Flashgard CRM' },
+            { label: t('version'), value: '2.0.0' },
           ].map(({ label, value }) => (
             <div key={label} className="flex justify-between py-2.5 border-b border-slate-50 last:border-0 px-2 rounded-xl hover:bg-slate-50/30">
               <span className="text-slate-500 font-medium">{label}</span>
@@ -3265,34 +3275,35 @@ const PlottersTabSettings = () => {
 const SettingsPage = () => {
   const { user } = useAuth();
   const { hasPermission } = usePermissions();
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('general');
 
   const tabs = [
-    { id: 'general', label: 'General Settings', icon: Globe },
-    { id: 'users', label: 'Users Directory', icon: Users }
+    { id: 'general', label: t('generalSettings'), icon: Globe },
+    { id: 'users', label: t('usersDirectory'), icon: Users }
   ];
   if (user?.isSuperAdmin || hasPermission('roles:read')) {
     tabs.push(
-      { id: 'roles', label: 'Access Roles', icon: ShieldCheck }
+      { id: 'roles', label: t('accessRoles'), icon: ShieldCheck }
     );
   }
   if (user?.isSuperAdmin || (user as any)?.role?.isSystemRole) {
     tabs.push(
-      { id: 'permissions', label: 'Role Permissions', icon: Key }
+      { id: 'permissions', label: t('rolePermissions'), icon: Key }
     );
   }
   if (user?.isSuperAdmin || hasPermission('settings:read')) {
     tabs.push(
-      { id: 'plotters', label: 'Plotters Directory', icon: Cpu }
+      { id: 'plotters', label: t('plottersDirectory'), icon: Cpu }
     );
   }
   if (user?.isSuperAdmin) {
     tabs.push(
-      { id: 'orgTypes', label: 'Organization Types', icon: Building },
-      { id: 'materials', label: 'Materials Settings', icon: ScrollText }
+      { id: 'orgTypes', label: t('orgTypes'), icon: Building },
+      { id: 'materials', label: t('materialsSettings'), icon: ScrollText }
     );
   }
-  tabs.push({ id: 'Audit Logs', label: 'System Audit Logs', icon: List });
+  tabs.push({ id: 'Audit Logs', label: t('systemAuditLogs'), icon: List });
 
   return (
     <div className="space-y-6">
@@ -3303,8 +3314,8 @@ const SettingsPage = () => {
             <ShieldCheck className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-slate-800 tracking-tight">System Settings</h1>
-            <p className="text-slate-500 text-sm mt-0.5">Configure system parameters, role controls, organizations, and user directories.</p>
+            <h1 className="text-2xl font-black text-slate-800 tracking-tight">{t('systemSettings')}</h1>
+            <p className="text-slate-500 text-sm mt-0.5">{t('settingsDesc')}</p>
           </div>
         </div>
       </div>
@@ -3313,7 +3324,7 @@ const SettingsPage = () => {
       <div className="bg-slate-50/50 border border-slate-200/80 rounded-3xl overflow-hidden flex flex-col lg:flex-row min-h-[650px] shadow-sm">
         {/* Navigation Sidebar */}
         <div className="w-full lg:w-64 border-b lg:border-b-0 lg:border-r border-slate-200/80 bg-white p-4 flex flex-col gap-1.5 shrink-0">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider px-3 mb-2">Control Categories</p>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider px-3 mb-2">{t('controlCategories')}</p>
           {tabs.map(tab => {
             const isActive = activeTab === tab.id;
             return (
