@@ -551,6 +551,43 @@ export const migrationApi = {
   },
 };
 
+// ─── Plotters ─────────────────────────────────────────
+export const plottersApi = {
+  getAll: (search?: string, page?: number, limit?: number) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (page !== undefined) params.append('page', page.toString());
+    if (limit !== undefined) params.append('limit', limit.toString());
+    return request<any>(`/plotters${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getOne: (id: string) => request<any>(`/plotters/${id}`),
+  create: (data: any) =>
+    request<any>('/plotters', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) =>
+    request<any>(`/plotters/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    request<void>(`/plotters/${id}`, { method: 'DELETE' }),
+};
+
+export const plotterDevicesApi = {
+  getAll: (search?: string, plotterMasterId?: string, organizationId?: string, page?: number, limit?: number) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (plotterMasterId) params.append('plotterMasterId', plotterMasterId);
+    if (organizationId) params.append('organizationId', organizationId);
+    if (page !== undefined) params.append('page', page.toString());
+    if (limit !== undefined) params.append('limit', limit.toString());
+    return request<any>(`/plotter-devices${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getOne: (id: string) => request<any>(`/plotter-devices/${id}`),
+  create: (data: any) =>
+    request<any>('/plotter-devices', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) =>
+    request<any>(`/plotter-devices/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    request<void>(`/plotter-devices/${id}`, { method: 'DELETE' }),
+};
+
 export const dashboardApi = {
   getStats: () => request<any>('/dashboard/stats'),
 };
@@ -615,30 +652,6 @@ export const materialsApi = {
   restore: (id: string) => request<any>(`/materials/${id}/restore`, { method: 'PATCH' }),
   purge: (id: string) => request<void>(`/materials/${id}/purge`, { method: 'DELETE' }),
 };
-
-// ─── Plotter Management ─────────────────────────────
-export const plottersApi = {
-  getAll: (params?: { search?: string; status?: string; supplierId?: string; currentOwnerId?: string; currentLicenseId?: string }) => {
-    const p = new URLSearchParams();
-    if (params) {
-      Object.entries(params).forEach(([k, v]) => v != null && p.append(k, String(v)));
-    }
-    return request<any[]>(`/plotters${p.toString() ? `?${p.toString()}` : ''}`);
-  },
-  getMasters: () => request<any[]>('/plotters/masters'),
-  getOne: (id: string) => request<any>(`/plotters/${id}`),
-  create: (data: any) => request<any[]>('/plotters', { method: 'POST', body: JSON.stringify(data) }),
-  updateQA: (id: string, status: string, notes?: string) =>
-    request<any>(`/plotters/${id}/qa`, { method: 'PATCH', body: JSON.stringify({ status, notes }) }),
-  distribute: (id: string, toOwnerId: string, notes?: string) =>
-    request<any>(`/plotters/${id}/distribute`, { method: 'PATCH', body: JSON.stringify({ toOwnerId, notes }) }),
-  assignLicense: (id: string, licenseId: string | null, notes?: string) =>
-    request<any>(`/plotters/${id}/assign`, { method: 'PATCH', body: JSON.stringify({ licenseId, notes }) }),
-  decommission: (id: string, notes?: string) =>
-    request<any>(`/plotters/${id}/decommission`, { method: 'PATCH', body: JSON.stringify({ notes }) }),
-  getLogs: (id: string) => request<any[]>(`/plotters/${id}/logs`),
-};
-
 
 
 

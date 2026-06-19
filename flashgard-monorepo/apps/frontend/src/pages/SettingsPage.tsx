@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import {
   Bell, ShieldCheck, Database, Globe,
   Plus, Edit2, Trash2, Loader2, Users, Search, Key, Check, List, X, Shield, RotateCcw, Building, ScrollText,
-  ChevronLeft, ChevronRight, ChevronDown
+  ChevronLeft, ChevronRight, ChevronDown, Cpu
 } from 'lucide-react';
-import { rolesApi, usersApi, permissionsApi, auditLogsApi, orgsApi, organizationTypesApi, productTypesApi, materialCategoriesApi, filmCategoriesApi, materialsApi } from '../lib/api';
+import { rolesApi, usersApi, permissionsApi, auditLogsApi, orgsApi, organizationTypesApi, productTypesApi, materialCategoriesApi, filmCategoriesApi, materialsApi, plottersApi, plotterDevicesApi } from '../lib/api';
 import { HasPermission, usePermissions } from '../components/HasPermission';
 import { useAuth } from '../contexts/AuthContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -2479,6 +2479,787 @@ const AuditLogsTab = () => {
   );
 };
 
+// ─── Plotter Master Tab ─────────────────────────────
+const PlotterModal = ({ plotter, onClose, onSave }: any) => {
+  const defaultLegacySettings = {
+    scaleX: '', scaleY: '', displayX: '', displayY: '',
+    scale90X: '', scale90Y: '', display90X: '', display90Y: '',
+    supportGpgl: false, isRegistrationMarkSupport: false, isMovable: false, isLpgl: false,
+    isActive: true, isDelete: false, plotterType: '', searchKeyword: '',
+    languageType: '', driverType: '', endPoint: '',
+    basePenUp: '', basePenDown: '', targetPenUp: '', targetPenDown: '',
+    baseXYSeparator: '', xySeparator: '', startString: '', endString: '',
+    isAndroid: false
+  };
+
+  const [form, setForm] = useState<any>({
+    plotterName: '',
+    manufacturer: '',
+    connectionType: 'USB',
+    description: '',
+    maxSpeed: '',
+    maxForce: '',
+    status: 'ACTIVE',
+    legacySettings: defaultLegacySettings
+  });
+
+  const [activeTab, setActiveTab] = useState('general');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (plotter) {
+      setForm({
+        plotterName: plotter.plotterName || '',
+        manufacturer: plotter.manufacturer || '',
+        connectionType: plotter.connectionType || '',
+        description: plotter.description || '',
+        maxSpeed: plotter.maxSpeed ?? '',
+        maxForce: plotter.maxForce ?? '',
+        status: plotter.status || 'ACTIVE',
+        legacySettings: {
+          ...defaultLegacySettings,
+          ...(plotter.legacySettings || {})
+        }
+      });
+    }
+  }, [plotter]);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      if (plotter?.id) {
+        await plottersApi.update(plotter.id, form);
+      } else {
+        await plottersApi.create(form);
+      }
+      onSave();
+    } catch (err: any) {
+      setError(err.message || 'Failed to save plotter settings');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLegacyChange = (key: string, val: any) => {
+    setForm((prev: any) => ({
+      ...prev,
+      legacySettings: {
+        ...prev.legacySettings,
+        [key]: val
+      }
+    }));
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+          <h2 className="text-lg font-black text-slate-800 tracking-tight">{plotter ? 'Edit Plotter Configuration' : 'New Plotter Configuration'}</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none font-bold">×</button>
+        </div>
+
+        <div className="flex border-b border-slate-100 bg-slate-50 px-4 py-2 gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveTab('general')}
+            className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${activeTab === 'general' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200/50'}`}
+          >
+            General Parameters
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('legacy')}
+            className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${activeTab === 'legacy' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200/50'}`}
+          >
+            Legacy & Execution Settings
+          </button>
+        </div>
+
+        <form onSubmit={save} className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+
+          {activeTab === 'general' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Plotter Name *</label>
+                <input className="input-field" value={form.plotterName} onChange={e => setForm({ ...form, plotterName: e.target.value })} placeholder="e.g. Graphtec FC9000-75" required />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Manufacturer</label>
+                <input className="input-field" value={form.manufacturer} onChange={e => setForm({ ...form, manufacturer: e.target.value })} placeholder="e.g. Graphtec, Roland" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Connection Type</label>
+                <select className="input-field" value={form.connectionType} onChange={e => setForm({ ...form, connectionType: e.target.value })}>
+                  <option value="USB">USB</option>
+                  <option value="Network">Network</option>
+                  <option value="Serial">Serial / COM</option>
+                  <option value="Bluetooth">Bluetooth</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Max Speed (mm/s)</label>
+                <input type="number" className="input-field" value={form.maxSpeed} onChange={e => setForm({ ...form, maxSpeed: e.target.value })} placeholder="e.g. 1000" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Max Force (g)</label>
+                <input type="number" className="input-field" value={form.maxForce} onChange={e => setForm({ ...form, maxForce: e.target.value })} placeholder="e.g. 450" />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Status</label>
+                <select className="input-field" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="INACTIVE">INACTIVE</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Description</label>
+                <textarea className="input-field resize-none" rows={3} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Provide context about this plotter unit..." />
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'legacy' && (
+            <div className="space-y-6">
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-3">Feature Support Flags</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={form.legacySettings.supportGpgl} onChange={e => handleLegacyChange('supportGpgl', e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                    <span className="text-xs font-semibold text-slate-700">GPGL Command Support</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={form.legacySettings.isLpgl} onChange={e => handleLegacyChange('isLpgl', e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                    <span className="text-xs font-semibold text-slate-700">LPGL Command Support</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={form.legacySettings.isRegistrationMarkSupport} onChange={e => handleLegacyChange('isRegistrationMarkSupport', e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                    <span className="text-xs font-semibold text-slate-700">Registration Marks</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={form.legacySettings.isMovable} onChange={e => handleLegacyChange('isMovable', e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                    <span className="text-xs font-semibold text-slate-700">Is Movable</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={form.legacySettings.isAndroid} onChange={e => handleLegacyChange('isAndroid', e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                    <span className="text-xs font-semibold text-slate-700">Is Android App Compatible</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={form.legacySettings.isActive} onChange={e => handleLegacyChange('isActive', e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                    <span className="text-xs font-semibold text-slate-700">Is Legacy Active</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="col-span-2 sm:col-span-4 border-b border-slate-100 pb-1">
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">Calibration & Scale (0 / 90 Degree Rotation)</h4>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Scale X</label>
+                  <input type="number" step="any" className="input-field" value={form.legacySettings.scaleX} onChange={e => handleLegacyChange('scaleX', e.target.value)} placeholder="1.0" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Scale Y</label>
+                  <input type="number" step="any" className="input-field" value={form.legacySettings.scaleY} onChange={e => handleLegacyChange('scaleY', e.target.value)} placeholder="1.0" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Display Width</label>
+                  <input type="number" step="any" className="input-field" value={form.legacySettings.displayX} onChange={e => handleLegacyChange('displayX', e.target.value)} placeholder="mm" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Display Height</label>
+                  <input type="number" step="any" className="input-field" value={form.legacySettings.displayY} onChange={e => handleLegacyChange('displayY', e.target.value)} placeholder="mm" />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Scale 90 X</label>
+                  <input type="number" step="any" className="input-field" value={form.legacySettings.scale90X} onChange={e => handleLegacyChange('scale90X', e.target.value)} placeholder="1.0" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Scale 90 Y</label>
+                  <input type="number" step="any" className="input-field" value={form.legacySettings.scale90Y} onChange={e => handleLegacyChange('scale90Y', e.target.value)} placeholder="1.0" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Display 90 W</label>
+                  <input type="number" step="any" className="input-field" value={form.legacySettings.display90X} onChange={e => handleLegacyChange('display90X', e.target.value)} placeholder="mm" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Display 90 H</label>
+                  <input type="number" step="any" className="input-field" value={form.legacySettings.display90Y} onChange={e => handleLegacyChange('display90Y', e.target.value)} placeholder="mm" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="col-span-2 sm:col-span-4 border-b border-slate-100 pb-1">
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">Pen Heights & Command Strings</h4>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Base Pen Up</label>
+                  <input type="number" className="input-field" value={form.legacySettings.basePenUp} onChange={e => handleLegacyChange('basePenUp', e.target.value)} placeholder="height" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Base Pen Down</label>
+                  <input type="number" className="input-field" value={form.legacySettings.basePenDown} onChange={e => handleLegacyChange('basePenDown', e.target.value)} placeholder="height" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Target Pen Up</label>
+                  <input type="number" className="input-field" value={form.legacySettings.targetPenUp} onChange={e => handleLegacyChange('targetPenUp', e.target.value)} placeholder="height" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Target Pen Down</label>
+                  <input type="number" className="input-field" value={form.legacySettings.targetPenDown} onChange={e => handleLegacyChange('targetPenDown', e.target.value)} placeholder="height" />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Base XY Sep</label>
+                  <input className="input-field" value={form.legacySettings.baseXYSeparator} onChange={e => handleLegacyChange('baseXYSeparator', e.target.value)} placeholder="e.g. ," />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">XY Sep</label>
+                  <input className="input-field" value={form.legacySettings.xySeparator} onChange={e => handleLegacyChange('xySeparator', e.target.value)} placeholder="e.g. ," />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Start Command</label>
+                  <input className="input-field" value={form.legacySettings.startString} onChange={e => handleLegacyChange('startString', e.target.value)} placeholder="e.g. IN;" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">End Command</label>
+                  <input className="input-field" value={form.legacySettings.endString} onChange={e => handleLegacyChange('endString', e.target.value)} placeholder="e.g. PU0,0;" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Plotter Type (Legacy)</label>
+                  <input className="input-field" value={form.legacySettings.plotterType} onChange={e => handleLegacyChange('plotterType', e.target.value)} placeholder="e.g. GRAPHTEC_GPGL" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Search Keywords</label>
+                  <input className="input-field" value={form.legacySettings.searchKeyword} onChange={e => handleLegacyChange('searchKeyword', e.target.value)} placeholder="Space separated list..." />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Language Type</label>
+                  <input className="input-field" value={form.legacySettings.languageType} onChange={e => handleLegacyChange('languageType', e.target.value)} placeholder="e.g. GP-GL, HP-GL" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Driver Type</label>
+                  <input className="input-field" value={form.legacySettings.driverType} onChange={e => handleLegacyChange('driverType', e.target.value)} placeholder="e.g. Graphtec" />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Endpoint Path / IP</label>
+                  <input className="input-field font-mono" value={form.legacySettings.endPoint} onChange={e => handleLegacyChange('endPoint', e.target.value)} placeholder="/dev/usb/lp0 or Network address" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 shrink-0">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+            <button type="submit" disabled={loading} className="btn-primary flex items-center gap-2 disabled:opacity-60">
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {plotter ? 'Save Configuration' : 'Create Plotter'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const PlotterDeviceModal = ({ device, plotterMasters, organizations, onClose, onSave }: any) => {
+  const [form, setForm] = useState<any>({
+    name: '',
+    serialNumber: '',
+    licenseKey: '',
+    macAddress: '',
+    plotterMasterId: '',
+    organizationId: '',
+    status: 'ACTIVE',
+    ipAddress: '',
+    comPort: '',
+    description: ''
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (device) {
+      setForm({
+        name: device.name || '',
+        serialNumber: device.serialNumber || '',
+        licenseKey: device.licenseKey || '',
+        macAddress: device.macAddress || '',
+        plotterMasterId: device.plotterMasterId || '',
+        organizationId: device.organizationId || '',
+        status: device.status || 'ACTIVE',
+        ipAddress: device.ipAddress || '',
+        comPort: device.comPort || '',
+        description: device.description || ''
+      });
+    } else if (plotterMasters && plotterMasters.length > 0) {
+      setForm((prev: any) => ({ ...prev, plotterMasterId: plotterMasters[0].id }));
+    }
+  }, [device, plotterMasters]);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      if (!form.plotterMasterId) throw new Error('Plotter Type is required');
+      if (device?.id) {
+        await plotterDevicesApi.update(device.id, form);
+      } else {
+        await plotterDevicesApi.create(form);
+      }
+      onSave();
+    } catch (err: any) {
+      setError(err.message || 'Failed to save physical plotter device');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-slate-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+          <h2 className="text-lg font-black text-slate-800 tracking-tight">{device ? 'Edit Physical Plotter' : 'New Physical Plotter'}</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none font-bold">×</button>
+        </div>
+
+        <form onSubmit={save} className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Plotter Name *</label>
+              <input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Workshop Unit A" required />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Plotter Type (Master) *</label>
+              <select className="input-field" value={form.plotterMasterId} onChange={e => setForm({ ...form, plotterMasterId: e.target.value })} required>
+                <option value="">-- Select Type --</option>
+                {plotterMasters.map((m: any) => (
+                  <option key={m.id} value={m.id}>{m.plotterName}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Assigned Organization</label>
+              <select className="input-field" value={form.organizationId} onChange={e => setForm({ ...form, organizationId: e.target.value })}>
+                <option value="">-- None / System Stock --</option>
+                {organizations.map((org: any) => (
+                  <option key={org.id} value={org.id}>{org.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Serial Number</label>
+              <input className="input-field" value={form.serialNumber} onChange={e => setForm({ ...form, serialNumber: e.target.value })} placeholder="e.g. SN-983172A" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">MAC Address</label>
+              <input className="input-field font-mono" value={form.macAddress} onChange={e => setForm({ ...form, macAddress: e.target.value })} placeholder="e.g. 00:1A:2B:3C:4D:5E" />
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">License Key</label>
+              <input className="input-field font-mono" value={form.licenseKey} onChange={e => setForm({ ...form, licenseKey: e.target.value })} placeholder="e.g. FG-PLT-XXXX-XXXX" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">IP Address / Host</label>
+              <input className="input-field font-mono" value={form.ipAddress} onChange={e => setForm({ ...form, ipAddress: e.target.value })} placeholder="e.g. 192.168.1.100" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">COM Port Name</label>
+              <input className="input-field" value={form.comPort} onChange={e => setForm({ ...form, comPort: e.target.value })} placeholder="e.g. COM3" />
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Status</label>
+              <select className="input-field" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="INACTIVE">INACTIVE</option>
+                <option value="MAINTENANCE">MAINTENANCE</option>
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Description / Notes</label>
+              <textarea className="input-field resize-none" rows={3} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Add extra setup notes..." />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 shrink-0">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+            <button type="submit" disabled={loading} className="btn-primary flex items-center gap-2 disabled:opacity-60">
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {device ? 'Save Changes' : 'Add Plotter'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const PlottersTabSettings = () => {
+  const [subTab, setSubTab] = useState('plotter-types'); // 'plotter-types' | 'physical-plotters'
+  const [plotters, setPlotters] = useState<any[]>([]);
+  const [devices, setDevices] = useState<any[]>([]);
+  const [plotterMasters, setPlotterMasters] = useState<any[]>([]); // for dropdown
+  const [organizations, setOrganizations] = useState<any[]>([]); // for dropdown
+
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
+  const [modal, setModal] = useState<any>(null);
+  
+  const [confirm, setConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => Promise<void>;
+    isLoading: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: async () => {},
+    isLoading: false,
+  });
+
+  const closeConfirm = () => setConfirm(prev => ({ ...prev, isOpen: false }));
+
+  // Load dropdown resources once
+  const loadDropdowns = async () => {
+    try {
+      const [allMasters, allOrgs] = await Promise.all([
+        plottersApi.getAll(),
+        orgsApi.getAll()
+      ]);
+      setPlotterMasters(allMasters || []);
+      setOrganizations(allOrgs || []);
+    } catch (err) {
+      console.error('Failed to load dropdown resources', err);
+    }
+  };
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      if (subTab === 'plotter-types') {
+        const result = await plottersApi.getAll(search, currentPage, itemsPerPage);
+        setPlotters(result.items || []);
+        setTotal(result.total || 0);
+      } else {
+        const result = await plotterDevicesApi.getAll(search, undefined, undefined, currentPage, itemsPerPage);
+        setDevices(result.items || []);
+        setTotal(result.total || 0);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDropdowns();
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [subTab, search, currentPage]);
+
+  const handleDelete = (item: any) => {
+    if (subTab === 'plotter-types') {
+      setConfirm({
+        isOpen: true,
+        title: 'Delete Plotter Type',
+        message: `Are you sure you want to delete the plotter type "${item.plotterName}"? This will permanently remove it, its legacy settings, and any physical plotters associated with it.`,
+        isLoading: false,
+        onConfirm: async () => {
+          setConfirm(prev => ({ ...prev, isLoading: true }));
+          try {
+            await plottersApi.delete(item.id);
+            loadData();
+            closeConfirm();
+          } catch (err) {
+            console.error(err);
+            setConfirm(prev => ({ ...prev, isLoading: false }));
+          }
+        }
+      });
+    } else {
+      setConfirm({
+        isOpen: true,
+        title: 'Delete Physical Plotter',
+        message: `Are you sure you want to delete the physical plotter machine "${item.name}"?`,
+        isLoading: false,
+        onConfirm: async () => {
+          setConfirm(prev => ({ ...prev, isLoading: true }));
+          try {
+            await plotterDevicesApi.delete(item.id);
+            loadData();
+            closeConfirm();
+          } catch (err) {
+            console.error(err);
+            setConfirm(prev => ({ ...prev, isLoading: false }));
+          }
+        }
+      });
+    }
+  };
+
+  const totalPages = Math.ceil(total / itemsPerPage);
+
+  const subTabsList = [
+    { id: 'plotter-types', label: 'Plotter Types' },
+    { id: 'physical-plotters', label: 'Physical Plotters' }
+  ];
+
+  return (
+    <div className="p-6 space-y-4">
+      {/* Sub Tabs Bar */}
+      <div className="flex border-b border-slate-200 bg-white p-1 rounded-lg shadow-sm max-w-sm">
+        {subTabsList.map(t => (
+          <button
+            key={t.id}
+            onClick={() => { setSubTab(t.id); setSearch(''); setCurrentPage(1); }}
+            className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+              subTab === t.id
+                ? 'bg-indigo-600 text-white shadow-sm font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {modal && (
+        subTab === 'plotter-types' ? (
+          <PlotterModal
+            plotter={modal === 'new' ? null : modal}
+            onClose={() => setModal(null)}
+            onSave={() => { setModal(null); loadData(); }}
+          />
+        ) : (
+          <PlotterDeviceModal
+            device={modal === 'new' ? null : modal}
+            plotterMasters={plotterMasters}
+            organizations={organizations}
+            onClose={() => setModal(null)}
+            onSave={() => { setModal(null); loadData(); }}
+          />
+        )
+      )}
+
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-slate-700">
+            {subTab === 'plotter-types' ? 'Plotter Type Directory' : 'Physical Plotter Inventory'}
+          </h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {subTab === 'plotter-types' 
+              ? 'View and manage plotter manufacturer templates and low-level driver parameters.'
+              : 'Track active physical plotter hardware assets, connection ports, serials, and branch assignments.'}
+          </p>
+        </div>
+        <HasPermission permission="settings:write">
+          <button onClick={() => setModal('new')} className="btn-primary text-sm flex items-center gap-1.5 py-1.5">
+            <Plus className="w-3.5 h-3.5" /> New {subTab === 'plotter-types' ? 'Plotter Type' : 'Plotter Device'}
+          </button>
+        </HasPermission>
+      </div>
+
+      <div className="relative max-w-xs">
+        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        <input
+          className="input-field pl-9 py-1.5 text-sm"
+          placeholder={subTab === 'plotter-types' ? 'Search types...' : 'Search hardware serial/MAC/name...'}
+          value={search}
+          onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+        />
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-[var(--color-accent)] animate-spin" /></div>
+      ) : (
+        <div className="card bg-white overflow-hidden shadow-sm border border-slate-100 rounded-xl">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full text-sm">
+              {subTab === 'plotter-types' ? (
+                <>
+                  <thead className="bg-slate-50 border-b border-slate-100">
+                    <tr>
+                      {['Plotter Name', 'Manufacturer', 'Connection', 'Max Speed/Force', 'Legacy Type', 'Status', 'Actions'].map(h => (
+                        <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {plotters.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="text-center py-8 text-slate-400 font-medium">No plotter templates found</td>
+                      </tr>
+                    ) : plotters.map(item => (
+                      <tr key={item.id} className="hover:bg-slate-50/70 group transition-colors">
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-indigo-50 text-indigo-600">
+                              <Cpu className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-800">{item.plotterName || '—'}</p>
+                              {item.description && <p className="text-[10px] text-slate-400 max-w-[200px] truncate">{item.description}</p>}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 text-slate-600 font-medium">{item.manufacturer || '—'}</td>
+                        <td className="px-5 py-4">
+                          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-semibold">{item.connectionType || '—'}</span>
+                        </td>
+                        <td className="px-5 py-4 text-slate-600 font-mono text-xs">
+                          {item.maxSpeed ? `${item.maxSpeed} mm/s` : '—'} / {item.maxForce ? `${item.maxForce} g` : '—'}
+                        </td>
+                        <td className="px-5 py-4 text-slate-500 text-xs font-semibold">
+                          {item.legacySettings?.plotterType || '—'}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${item.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                            {item.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <HasPermission permission="settings:write">
+                              <button onClick={() => setModal(item)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Edit Plotter"><Edit2 className="w-4 h-4" /></button>
+                              <button onClick={() => handleDelete(item)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete Plotter"><Trash2 className="w-4 h-4" /></button>
+                            </HasPermission>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </>
+              ) : (
+                <>
+                  <thead className="bg-slate-50 border-b border-slate-100">
+                    <tr>
+                      {['Name / Serial / MAC', 'Type (Template)', 'Assigned Organization', 'Connection Parameters', 'License Key', 'Status', 'Actions'].map(h => (
+                        <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {devices.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="text-center py-8 text-slate-400 font-medium">No physical plotters registered</td>
+                      </tr>
+                    ) : devices.map(item => (
+                      <tr key={item.id} className="hover:bg-slate-50/70 group transition-colors">
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${item.status === 'ACTIVE' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>
+                              <Cpu className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-800">{item.name}</p>
+                              <div className="flex flex-col gap-0.5 text-[10px] text-slate-400">
+                                {item.serialNumber && <span>S/N: <span className="font-mono">{item.serialNumber}</span></span>}
+                                {item.macAddress && <span>MAC: <span className="font-mono">{item.macAddress}</span></span>}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className="font-semibold text-slate-700">{item.plotterMaster?.plotterName || '—'}</span>
+                        </td>
+                        <td className="px-5 py-4">
+                          {item.organization ? (
+                            <span className="px-2 py-1 rounded-lg bg-indigo-50 border border-indigo-100/60 text-indigo-700 text-xs font-bold">{item.organization.name}</span>
+                          ) : (
+                            <span className="text-slate-400 italic text-xs font-medium">System Stock</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 text-xs">
+                          <div className="flex flex-col gap-0.5 font-mono text-slate-600">
+                            {item.ipAddress && <span>IP: {item.ipAddress}</span>}
+                            {item.comPort && <span>Port: {item.comPort}</span>}
+                            {!item.ipAddress && !item.comPort && <span className="text-slate-400 italic font-sans">—</span>}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 font-mono text-xs text-slate-700">{item.licenseKey || '—'}</td>
+                        <td className="px-5 py-4">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold 
+                            ${item.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' :
+                              item.status === 'MAINTENANCE' ? 'bg-amber-100 text-amber-700' :
+                              'bg-slate-100 text-slate-500'}`}>
+                            {item.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <HasPermission permission="settings:write">
+                              <button onClick={() => setModal(item)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Edit Plotter Device"><Edit2 className="w-4 h-4" /></button>
+                              <button onClick={() => handleDelete(item)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete Plotter Device"><Trash2 className="w-4 h-4" /></button>
+                            </HasPermission>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </>
+              )}
+            </table>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="px-6 py-4 flex items-center justify-between border-t border-slate-100 bg-white">
+              <p className="text-[10px] font-bold text-slate-400 uppercase">
+                Page {currentPage} of {totalPages} ({total} total items)
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all text-slate-600 cursor-pointer"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all text-slate-600 cursor-pointer"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <ConfirmDialog
+        isOpen={confirm.isOpen}
+        title={confirm.title}
+        message={confirm.message}
+        isLoading={confirm.isLoading}
+        onConfirm={confirm.onConfirm}
+        onClose={closeConfirm}
+        confirmLabel="Delete"
+        variant="danger"
+      />
+    </div>
+  );
+};
+
 // ─── Main Settings Page ──────────────────────────────
 
 const SettingsPage = () => {
@@ -2498,6 +3279,11 @@ const SettingsPage = () => {
   if (user?.isSuperAdmin || (user as any)?.role?.isSystemRole) {
     tabs.push(
       { id: 'permissions', label: 'Role Permissions', icon: Key }
+    );
+  }
+  if (user?.isSuperAdmin || hasPermission('settings:read')) {
+    tabs.push(
+      { id: 'plotters', label: 'Plotters Directory', icon: Cpu }
     );
   }
   if (user?.isSuperAdmin) {
@@ -2553,6 +3339,11 @@ const SettingsPage = () => {
           {activeTab === 'users' && <UsersTab />}
           {activeTab === 'roles' && <RolesTabSettings />}
           {activeTab === 'permissions' && <RolePermissionsTab />}
+          {activeTab === 'plotters' && (
+            <HasPermission permission="settings:read" fallback={<div className="p-12 text-center text-slate-500 font-medium">You don't have permission to view plotters.</div>}>
+              <PlottersTabSettings />
+            </HasPermission>
+          )}
           {activeTab === 'orgTypes' && <OrganizationTypesTab />}
           {activeTab === 'materials' && <MaterialsTab />}
           {activeTab === 'Audit Logs' && (

@@ -1,44 +1,46 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
-import { PlottersService } from './plotters.service';
+import { PlotterDevicesService } from './plotter-devices.service';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 
-@Controller('plotters')
-export class PlottersController {
-  constructor(private readonly plottersService: PlottersService) {}
+@Controller('plotter-devices')
+export class PlotterDevicesController {
+  constructor(private readonly plotterDevicesService: PlotterDevicesService) {}
 
   @Post()
   @RequirePermissions('settings:write')
   create(@Body() data: any) {
-    return this.plottersService.create(data);
+    return this.plotterDevicesService.create(data);
   }
 
   @Get()
   @RequirePermissions('settings:read')
   findAll(
     @Query('search') search?: string,
+    @Query('plotterMasterId') plotterMasterId?: string,
+    @Query('organizationId') organizationId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     const pageVal = page ? parseInt(page, 10) : undefined;
     const limitVal = limit ? parseInt(limit, 10) : undefined;
-    return this.plottersService.findAll(search, pageVal, limitVal);
+    return this.plotterDevicesService.findAll(search, plotterMasterId, organizationId, pageVal, limitVal);
   }
 
   @Get(':id')
   @RequirePermissions('settings:read')
   findOne(@Param('id') id: string) {
-    return this.plottersService.findOne(id);
+    return this.plotterDevicesService.findOne(id);
   }
 
   @Patch(':id')
   @RequirePermissions('settings:write')
   update(@Param('id') id: string, @Body() data: any) {
-    return this.plottersService.update(id, data);
+    return this.plotterDevicesService.update(id, data);
   }
 
   @Delete(':id')
   @RequirePermissions('settings:write')
   remove(@Param('id') id: string) {
-    return this.plottersService.remove(id);
+    return this.plotterDevicesService.remove(id);
   }
 }

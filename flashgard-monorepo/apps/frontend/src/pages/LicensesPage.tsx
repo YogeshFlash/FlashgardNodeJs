@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, Plus, Send, X, AlertCircle, RotateCcw, Search, ChevronLeft, ChevronRight, Gift,
-  Ticket, List, History, Printer
+  Ticket, List, History
 } from 'lucide-react';
-import { licensesApi, cutCreditsApi, orgsApi, modelCategoriesApi, plottersApi } from '../lib/api';
+import { licensesApi, cutCreditsApi, orgsApi, modelCategoriesApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 
 const Badge = ({ children, variant = 'gray' }: any) => {
@@ -762,7 +762,6 @@ const LicensesPage = () => {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [selectedLicense, setSelectedLicense] = useState<any | null>(null);
   const [myOrg, setMyOrg] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchText, setSearchText] = useState('');
@@ -1082,8 +1081,8 @@ const LicensesPage = () => {
                         </td>
                       </tr>
                       {group.items.map((item: any) => (
-                        <tr key={item.id} onClick={() => setSelectedLicense(item)} className={`hover:bg-slate-50 transition-colors cursor-pointer ${selectedIds.includes(item.id) ? 'bg-indigo-50/50' : ''}`}>
-                          <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
+                        <tr key={item.id} className={`hover:bg-slate-50 transition-colors ${selectedIds.includes(item.id) ? 'bg-indigo-50/50' : ''}`}>
+                          <td className="px-6 py-4 text-center">
                             {item.status === 'AVAILABLE' && (user?.isSuperAdmin || item.ownerId === user?.organizationId) && (
                               <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelect(item.id)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer" />
                             )}
@@ -1531,164 +1530,6 @@ const LicensesPage = () => {
       {modal === 'cut-credits' && <IssueCreditsModal orgs={orgs} licenses={orgLicenses} onClose={() => setModal(null)} onSave={() => { setModal(null); fetchData(); }} />}
       {modal === 'transfer-credits' && <TransferCreditsModal orgs={orgs} onClose={() => setModal(null)} onSave={() => { setModal(null); fetchData(); }} />}
       {modal === 'dispatch' && <DispatchModal type={tab === 'history' ? 'licenses' : tab} selectedIds={selectedIds} items={tab === 'credits' ? cutCredits : orgLicenses} orgs={orgs} onClose={() => setModal(null)} onSave={() => { setModal(null); fetchData(); }} />}
-
-      {selectedLicense && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={() => setSelectedLicense(null)} />
-          <div className="relative w-full max-w-lg bg-white h-full shadow-2xl flex flex-col z-10 animate-slide-in-right overflow-y-auto">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">License Details</h3>
-                <p className="text-xs font-mono font-bold text-indigo-600 mt-1">{selectedLicense.key}</p>
-              </div>
-              <button onClick={() => setSelectedLicense(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-6 flex-1">
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs">
-                <div>
-                  <span className="text-slate-400 block font-semibold uppercase">Service Level</span>
-                  <span className="text-slate-800 font-bold text-sm">{selectedLicense.batch?.licenseType || selectedLicense.licenseType}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block font-semibold uppercase">Status</span>
-                  <span className="mt-0.5 inline-block">{getStatusBadge(selectedLicense.status)}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block font-semibold uppercase">Activated At</span>
-                  <span className="text-slate-800 font-medium">{selectedLicense.activatedAt ? new Date(selectedLicense.activatedAt).toLocaleString() : 'Not Activated'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block font-semibold uppercase">Expiry Date</span>
-                  <span className="text-slate-800 font-medium">{selectedLicense.expiryDate ? new Date(selectedLicense.expiryDate).toLocaleDateString() : 'Never'}</span>
-                </div>
-                <div className="col-span-2 border-t border-slate-200/50 pt-2">
-                  <span className="text-slate-400 block font-semibold uppercase">Organization Owner</span>
-                  <span className="text-slate-800 font-bold text-sm">{selectedLicense.owner?.name}</span>
-                </div>
-                {selectedLicense.macAddress && (
-                  <div className="col-span-2 border-t border-slate-200/50 pt-2">
-                    <span className="text-slate-400 block font-semibold uppercase">MAC Address</span>
-                    <span className="text-slate-850 font-mono">{selectedLicense.macAddress}</span>
-                  </div>
-                )}
-                {selectedLicense.geoCity && (
-                  <div className="col-span-2 border-t border-slate-200/50 pt-2">
-                    <span className="text-slate-400 block font-semibold uppercase">Geo Location</span>
-                    <span className="text-slate-850 font-medium">{selectedLicense.geoCity}, {selectedLicense.geoCountry}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="border-t border-slate-100 pt-6">
-                <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <Printer className="w-4 h-4 text-indigo-600" />
-                  Assigned Plotter
-                </h4>
-                {selectedLicense.plotters && selectedLicense.plotters.length > 0 ? (
-                  <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-xs text-slate-400 font-semibold block">Model</span>
-                        <span className="text-slate-850 font-bold">{selectedLicense.plotters[0].modelName}</span>
-                      </div>
-                      <div>
-                        <span className="text-xs text-slate-400 font-semibold block">Serial Number</span>
-                        <span className="text-slate-850 font-mono font-bold">{selectedLicense.plotters[0].serialNumber}</span>
-                      </div>
-                    </div>
-                    <div className="flex justify-end pt-2 border-t border-emerald-100">
-                      <button
-                        onClick={async () => {
-                          if (window.confirm('Are you sure you want to unassign this plotter?')) {
-                            try {
-                              setLoading(true);
-                              await plottersApi.assignLicense(selectedLicense.plotters[0].id, null, 'Unassigned from license details panel');
-                              
-                              // Refresh selected license context
-                              const updated = await licensesApi.getInventory(undefined, 0, 100, selectedLicense.key);
-                              const dataList = Array.isArray(updated) ? updated : (updated.data || []);
-                              const updatedLicense = dataList.find((l: any) => l.id === selectedLicense.id);
-                              if (updatedLicense) {
-                                setSelectedLicense(updatedLicense);
-                              } else {
-                                setSelectedLicense(null);
-                              }
-                              await fetchData();
-                            } catch (err: any) {
-                              alert(err.message || 'Failed to unassign plotter.');
-                            } finally {
-                              setLoading(false);
-                            }
-                          }
-                        }}
-                        className="px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 text-xs font-semibold rounded-lg transition-colors"
-                      >
-                        Unassign Plotter
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-3 text-center">
-                    <p className="text-xs text-slate-500">No hardware plotter currently assigned to this license terminal.</p>
-                    <div className="pt-2">
-                      <button
-                        onClick={async () => {
-                          try {
-                            setLoading(true);
-                            const available = await plottersApi.getAll({
-                              currentOwnerId: selectedLicense.ownerId,
-                            });
-                            const assignable = available.filter(p => p.status === 'DISTRIBUTED' || p.status === 'TESTED_OK');
-                            if (assignable.length === 0) {
-                              alert('No available plotters found for this organization. Please distribute a tested plotter first.');
-                              return;
-                            }
-                            
-                            const selectedPlotterId = window.prompt(
-                              `Available Plotters for ${selectedLicense.owner?.name || 'this Organization'}:\n` +
-                              assignable.map((p, i) => `${i + 1}. Model: ${p.modelName} (S/N: ${p.serialNumber})`).join('\n') +
-                              `\n\nEnter the number of the plotter you wish to assign:`
-                            );
-
-                            if (selectedPlotterId) {
-                              const idx = parseInt(selectedPlotterId) - 1;
-                              if (idx >= 0 && idx < assignable.length) {
-                                const notes = window.prompt('Enter assignment notes (optional):') || 'Assigned via License Details Panel';
-                                await plottersApi.assignLicense(assignable[idx].id, selectedLicense.id, notes);
-                                
-                                // Refresh selected license
-                                const updated = await licensesApi.getInventory(undefined, 0, 100, selectedLicense.key);
-                                const dataList = Array.isArray(updated) ? updated : (updated.data || []);
-                                const updatedLicense = dataList.find((l: any) => l.id === selectedLicense.id);
-                                if (updatedLicense) {
-                                  setSelectedLicense(updatedLicense);
-                                }
-                                await fetchData();
-                              } else {
-                                alert('Invalid selection.');
-                              }
-                            }
-                          } catch (err: any) {
-                            alert(err.message || 'Failed to assign plotter.');
-                          } finally {
-                            setLoading(false);
-                          }
-                        }}
-                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 mx-auto shadow"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Assign Plotter Hardware
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
