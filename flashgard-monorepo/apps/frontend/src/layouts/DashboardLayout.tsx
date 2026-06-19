@@ -7,17 +7,27 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../components/HasPermission';
+import { useTranslation } from '../contexts/LanguageContext';
 import logo from '../assets/logo.png';
 
-const navItems = [
-  { name: 'Dashboard', path: '/', icon: LayoutDashboard, exact: true, permission: 'nav:dashboard' },
-  { name: 'Organizations', path: '/organizations', icon: Building2, permission: 'nav:organizations' },
-  { name: 'Reports', path: '/reports', icon: BarChart2, permission: 'nav:reports' },
-  { name: 'Models', path: '/models', icon: Boxes, permission: 'nav:models' },
-  { name: 'Inventory', path: '/inventory', icon: Warehouse, permission: 'nav:inventory' },
-  { name: 'Licenses', path: '/licenses', icon: Key, permission: 'nav:licenses' },
-  { name: 'Data Migration', path: '/migration', icon: Database, permission: 'nav:migration' },
-  { name: 'Settings', path: '/settings', icon: Settings, permission: 'nav:settings' },
+interface NavItem {
+  name: string;
+  translationKey: 'dashboard' | 'organizations' | 'reports' | 'models' | 'inventory' | 'licenses' | 'migration' | 'settings';
+  path: string;
+  icon: any;
+  exact?: boolean;
+  permission: string;
+}
+
+const navItems: NavItem[] = [
+  { name: 'Dashboard', translationKey: 'dashboard', path: '/', icon: LayoutDashboard, exact: true, permission: 'nav:dashboard' },
+  { name: 'Organizations', translationKey: 'organizations', path: '/organizations', icon: Building2, permission: 'nav:organizations' },
+  { name: 'Reports', translationKey: 'reports', path: '/reports', icon: BarChart2, permission: 'nav:reports' },
+  { name: 'Models', translationKey: 'models', path: '/models', icon: Boxes, permission: 'nav:models' },
+  { name: 'Inventory', translationKey: 'inventory', path: '/inventory', icon: Warehouse, permission: 'nav:inventory' },
+  { name: 'Licenses', translationKey: 'licenses', path: '/licenses', icon: Key, permission: 'nav:licenses' },
+  { name: 'Data Migration', translationKey: 'migration', path: '/migration', icon: Database, permission: 'nav:migration' },
+  { name: 'Settings', translationKey: 'settings', path: '/settings', icon: Settings, permission: 'nav:settings' },
 ];
 
 const Sidebar = ({ 
@@ -33,6 +43,7 @@ const Sidebar = ({
 }) => {
   const { user } = useAuth();
   const { hasPermission } = usePermissions();
+  const { t } = useTranslation();
   
   const visibleNavItems = navItems.filter(item => hasPermission(item.permission));
 
@@ -63,7 +74,7 @@ const Sidebar = ({
             to={item.path}
             end={item.exact}
             onClick={onClose}
-            title={collapsed ? item.name : ''}
+            title={collapsed ? t(item.translationKey) : ''}
             className={({ isActive }) =>
               `flex items-center rounded-lg transition-all font-medium text-sm gap-3
               ${collapsed ? 'justify-center p-2.5' : 'px-3 py-2.5'}
@@ -73,7 +84,7 @@ const Sidebar = ({
             }
           >
             <item.icon className="w-5 h-5 flex-shrink-0" />
-            {!collapsed && item.name}
+            {!collapsed && t(item.translationKey)}
           </NavLink>
         ))}
       </nav>
@@ -83,7 +94,7 @@ const Sidebar = ({
           <>
             {user?.isSuperAdmin ? (
               <div className="mb-3 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                <p className="text-amber-400 text-xs font-semibold">⚡ Platform Admin</p>
+                <p className="text-amber-400 text-xs font-semibold">⚡ {t('platformAdmin')}</p>
               </div>
             ) : user?.organization && (
               <div className="mb-3 px-3 py-1.5 bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 rounded-lg">
@@ -114,6 +125,7 @@ const Topbar = ({
 }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchVal, setSearchVal] = useState('');
 
@@ -139,7 +151,7 @@ const Topbar = ({
             type="text"
             value={searchVal}
             onChange={e => setSearchVal(e.target.value)}
-            placeholder="Search organizations, users..."
+            placeholder={t('searchPlaceholder')}
             className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:bg-white transition-all"
           />
         </div>
@@ -161,7 +173,7 @@ const Topbar = ({
             </div>
             <div className="text-left hidden sm:block">
               <p className="text-sm font-medium text-slate-700 leading-tight">
-                {user?.isSuperAdmin ? 'Platform Admin' : user?.organization?.name || 'Admin'}
+                {user?.isSuperAdmin ? t('platformAdmin') : user?.organization?.name || t('administrator')}
               </p>
               <p className="text-xs text-slate-500 leading-tight">{user?.email}</p>
             </div>
@@ -173,27 +185,27 @@ const Topbar = ({
               <div className="px-4 py-2.5 border-b border-slate-100 mb-1">
                 <p className="text-sm font-semibold text-slate-800">{user?.email}</p>
                 <p className="text-xs text-slate-500">
-                  {user?.isSuperAdmin ? 'Platform Administrator' : 'Administrator'}
+                  {user?.isSuperAdmin ? t('platformAdmin') : t('administrator')}
                 </p>
               </div>
               <button
                 onClick={() => { navigate('/profile'); setProfileOpen(false); }}
                 className="flex items-center gap-2 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
               >
-                <UserCircle className="w-4 h-4" /> My Profile
+                <UserCircle className="w-4 h-4" /> {t('myProfile')}
               </button>
               <button
                 onClick={() => { navigate('/settings'); setProfileOpen(false); }}
                 className="flex items-center gap-2 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
               >
-                <Settings className="w-4 h-4" /> Settings
+                <Settings className="w-4 h-4" /> {t('settings')}
               </button>
               <div className="border-t border-slate-100 mt-1 pt-1">
                 <button
                   onClick={handleLogout}
                   className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
                 >
-                  <LogOut className="w-4 h-4" /> Sign Out
+                  <LogOut className="w-4 h-4" /> {t('signOut')}
                 </button>
               </div>
             </div>
