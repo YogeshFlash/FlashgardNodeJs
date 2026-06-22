@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'cut_selection_screen.dart';
 import '../services/api_service.dart';
 
@@ -29,11 +30,158 @@ class _ModelsScreenState extends State<ModelsScreen> {
   List<dynamic> _items = [];
   List<dynamic> _filteredItems = [];
   bool _isLoading = true;
+  late stt.SpeechToText _speech;
 
   @override
   void initState() {
     super.initState();
+    _speech = stt.SpeechToText();
     _fetchData();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    try {
+      _speech.stop();
+    } catch (_) {}
+    super.dispose();
+  }
+
+  Future<void> _startVoiceSearch() async {
+    try {
+      bool available = await _speech.initialize(
+        onStatus: (status) {
+          print('Speech status: $status');
+        },
+        onError: (errorNotification) => print('Speech error: $errorNotification'),
+      );
+      
+      if (available) {
+        String recognizedWords = '';
+        if (!mounted) return;
+        showModalBottomSheet(
+          context: context,
+          isDismissible: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          builder: (context) {
+            return StatefulBuilder(
+              builder: (context, setModalState) {
+                if (!_speech.isListening) {
+                  _speech.listen(
+                    onResult: (result) {
+                      setModalState(() {
+                        recognizedWords = result.recognizedWords;
+                      });
+                      if (result.finalResult) {
+                        _searchController.text = result.recognizedWords;
+                        _onSearch(result.recognizedWords);
+                        Future.delayed(const Duration(milliseconds: 600), () {
+                          if (Navigator.canPop(context)) {
+                            Navigator.pop(context);
+                          }
+                        });
+                      }
+                    },
+                  );
+                }
+
+                return Container(
+                  padding: const EdgeInsets.all(24),
+                  height: 250,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        _speech.isListening ? 'Listening...' : 'Tap Mic to Speak',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                      ),
+                      const SizedBox(height: 24),
+                      GestureDetector(
+                        onTap: () {
+                          if (_speech.isListening) {
+                            _speech.stop();
+                            setModalState(() {});
+                          } else {
+                            recognizedWords = '';
+                            _speech.listen(
+                              onResult: (result) {
+                                setModalState(() {
+                                  recognizedWords = result.recognizedWords;
+                                });
+                                if (result.finalResult) {
+                                  _searchController.text = result.recognizedWords;
+                                  _onSearch(result.recognizedWords);
+                                  Future.delayed(const Duration(milliseconds: 600), () {
+                                    if (Navigator.canPop(context)) {
+                                      Navigator.pop(context);
+                                    }
+                                  });
+                                }
+                              },
+                            );
+                            setModalState(() {});
+                          }
+                        },
+                        child: CircleAvatar(
+                          radius: 36,
+                          backgroundColor: _speech.isListening 
+                              ? Theme.of(context).colorScheme.primary.withOpacity(0.1) 
+                              : Colors.grey[100],
+                          child: Icon(
+                            _speech.isListening ? Icons.mic : Icons.mic_none,
+                            size: 36,
+                            color: _speech.isListening 
+                                ? Theme.of(context).colorScheme.primary 
+                                : Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        recognizedWords.isEmpty 
+                            ? 'Speak now' 
+                            : recognizedWords,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: recognizedWords.isEmpty ? Colors.grey[400] : Colors.black87,
+                          fontStyle: recognizedWords.isEmpty ? FontStyle.italic : FontStyle.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        ).then((_) {
+          if (_speech.isListening) {
+            _speech.stop();
+          }
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Speech recognition is not available on this device')),
+        );
+      }
+    } catch (e) {
+      print('Speech initialization error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to initialize speech recognition: $e')),
+      );
+    }
   }
 
   Future<void> _fetchData() async {
@@ -133,6 +281,23 @@ class _ModelsScreenState extends State<ModelsScreen> {
               decoration: InputDecoration(
                 hintText: 'Search in ${widget.title}...',
                 prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_searchController.text.isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.clear, size: 18, color: Colors.grey),
+                        onPressed: () {
+                          _searchController.clear();
+                          _onSearch('');
+                        },
+                      ),
+                    IconButton(
+                      icon: const Icon(Icons.mic, size: 20, color: Colors.grey),
+                      onPressed: _startVoiceSearch,
+                    ),
+                  ],
+                ),
                 filled: true,
                 fillColor: Colors.grey[100],
                 border: OutlineInputBorder(
