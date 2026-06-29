@@ -1152,6 +1152,28 @@ export class MigrationService {
     // Helper to get matching System role UUID based on legacy role names mapping
     const getNewRoleIdForLegacyUser = (legacyUserId: string): string => {
       const legacyRoleIds = userToRolesMap.get(legacyUserId) || [];
+      
+      let isMainDealer = false;
+      let isDealer = false;
+      let isEndUser = false;
+      
+      for (const lrId of legacyRoleIds) {
+        const role = allCurrentRoles.find((r: any) => r.legacyId === lrId);
+        const name = (role?.name || '').toLowerCase();
+        if (name.includes('maindealer') || name.includes('headquarters')) isMainDealer = true;
+        if (name.includes('dealer') && !name.includes('maindealer')) isDealer = true;
+        if (name.includes('enduser') || name.includes('retailer')) isEndUser = true;
+      }
+      
+      if (isMainDealer || isDealer) {
+        const role = allCurrentRoles.find((r: any) => r.name === 'Dealer Admin');
+        if (role) return role.id;
+      }
+      if (isEndUser) {
+        const role = allCurrentRoles.find((r: any) => r.name === 'Retailer Admin');
+        if (role) return role.id;
+      }
+
       for (const lrId of legacyRoleIds) {
         const dbRoleId = roleMap.get(lrId);
         if (dbRoleId) return dbRoleId;
@@ -1164,7 +1186,9 @@ export class MigrationService {
     // 1. Fetch organization types and root organization context
     const orgTypes = await this.prisma.organizationType.findMany();
     const parentType = orgTypes.find(o => o.name === 'parent') || orgTypes[0];
-    const dealerType = orgTypes.find(o => o.name === 'dealer') || orgTypes.find(o => o.name === 'retailer') || orgTypes[0];
+    const headquartersType = orgTypes.find(o => o.name === 'headquarters') || orgTypes[0];
+    const dealerType = orgTypes.find(o => o.name === 'dealer') || orgTypes[0];
+    const retailerType = orgTypes.find(o => o.name === 'retailer') || orgTypes[0];
     const distributorType = orgTypes.find(o => o.name === 'distributor') || orgTypes[0];
 
     // Find rootOrg by 'parent' type first (Flashgard HQ), not by name
@@ -1243,11 +1267,30 @@ export class MigrationService {
           }
 
           let orgType = dealerType?.id;
+          const isMainDealer = legacyRoleIds.some(lrId => {
+            const role = allCurrentRoles.find((r: any) => r.legacyId === lrId);
+            const name = (role?.name || '').toLowerCase();
+            return name.includes('maindealer') || name.includes('headquarters');
+          });
+          const isEndUser = legacyRoleIds.some(lrId => {
+            const role = allCurrentRoles.find((r: any) => r.legacyId === lrId);
+            const name = (role?.name || '').toLowerCase();
+            return name.includes('enduser') || name.includes('retailer');
+          });
           const isDistributor = legacyRoleIds.some(lrId => {
             const role = allCurrentRoles.find((r: any) => r.legacyId === lrId);
             return (role?.name || '').toLowerCase().includes('distributor');
           });
-          if (isDistributor) orgType = distributorType?.id;
+
+          if (isMainDealer) {
+            orgType = headquartersType?.id;
+          } else if (isEndUser) {
+            orgType = retailerType?.id;
+          } else if (isDistributor) {
+            orgType = distributorType?.id;
+          } else {
+            orgType = dealerType?.id;
+          }
 
           if (!org && orgType) {
             org = await this.prisma.organization.create({
