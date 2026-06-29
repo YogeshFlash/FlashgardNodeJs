@@ -134,7 +134,7 @@ const OrgModal = ({ org, allOrgs, defaultParentId, onClose, onSave }: any) => {
     if (effectiveParent) {
       initial.add(effectiveParent);
       let pId = effectiveParent;
-      const orgMap = new Map((allOrgs || []).map((o: any) => [o.id, o]));
+      const orgMap = new Map<string, any>((allOrgs || []).map((o: any) => [o.id, o]));
       while (pId) {
         initial.add(pId);
         const parent = orgMap.get(pId);
@@ -153,7 +153,7 @@ const OrgModal = ({ org, allOrgs, defaultParentId, onClose, onSave }: any) => {
     if (searchOrg) {
       return rows.filter((r: any) => r.org.name.toLowerCase().includes(searchOrg.toLowerCase())).slice(0, 150);
     }
-    const orgMap = new Map(validParents.map((o: any) => [o.id, o]));
+    const orgMap = new Map<string, any>(validParents.map((o: any) => [o.id, o]));
     return rows.filter((row: any) => {
       let p = orgMap.get(row.org.parentId);
       while (p) {

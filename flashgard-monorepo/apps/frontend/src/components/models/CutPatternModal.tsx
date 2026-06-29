@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Loader2, ChevronDown } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 import { cutPatternsApi } from '../../lib/api';
 
 interface CutPatternModalProps {

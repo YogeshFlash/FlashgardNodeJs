@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // Use 10.0.2.2 for Android Emulator, localhost for Windows/Web, or your machine IP for physical devices
-  static const String baseUrl = 'http://192.168.1.3:3000/api'; 
+  static const String baseUrl = 'http://192.168.1.5:3000/api'; 
 
   static Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -107,5 +107,47 @@ class ApiService {
       print('Error fetching cut file details: $e');
     }
     return null;
+  }
+
+  static Future<List<dynamic>> searchModelCategories(String query) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/model-categories?search=${Uri.encodeComponent(query)}&onlyWithModels=true'),
+        headers: await _getHeaders(),
+      );
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      print('Error searching categories: $e');
+    }
+    return [];
+  }
+
+  static Future<List<dynamic>> searchBrands(String query) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/brands?search=${Uri.encodeComponent(query)}&onlyWithModels=true'),
+        headers: await _getHeaders(),
+      );
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      print('Error searching brands: $e');
+    }
+    return [];
+  }
+
+  static Future<List<dynamic>> searchModels(String query) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/models?search=${Uri.encodeComponent(query)}&take=20'),
+        headers: await _getHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        return decoded is Map ? (decoded['items'] ?? []) : decoded;
+      }
+    } catch (e) {
+      print('Error searching models: $e');
+    }
+    return [];
   }
 }

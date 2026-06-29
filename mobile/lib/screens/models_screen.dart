@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'cut_selection_screen.dart';
+import 'diy_designer_screen.dart';
 import '../services/api_service.dart';
 
 class ModelsScreen extends StatefulWidget {
@@ -32,6 +34,13 @@ class _ModelsScreenState extends State<ModelsScreen> {
   bool _isLoading = true;
   late stt.SpeechToText _speech;
 
+  Timer? _debounce;
+  bool _isSearching = false;
+  bool _isSearchLoading = false;
+  List<dynamic> _searchedCategories = [];
+  List<dynamic> _searchedBrands = [];
+  List<dynamic> _searchedModels = [];
+
   @override
   void initState() {
     super.initState();
@@ -42,6 +51,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _debounce?.cancel();
     try {
       _speech.stop();
     } catch (_) {}
@@ -230,10 +240,46 @@ class _ModelsScreenState extends State<ModelsScreen> {
   }
 
   void _onSearch(String query) {
-    setState(() {
-      _filteredItems = _items
-          .where((item) => item['name'].toString().toLowerCase().contains(query.toLowerCase()))
-          .toList();
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+
+    if (query.isEmpty) {
+      setState(() {
+        _isSearching = false;
+        _filteredItems = _items;
+      });
+      return;
+    }
+
+    _debounce = Timer(const Duration(milliseconds: 300), () async {
+      if (!mounted) return;
+      setState(() {
+        _isSearching = true;
+        _isSearchLoading = true;
+      });
+
+      try {
+        final results = await Future.wait([
+          ApiService.searchModelCategories(query),
+          ApiService.searchBrands(query),
+          ApiService.searchModels(query),
+        ]);
+
+        if (mounted) {
+          setState(() {
+            _searchedCategories = results[0];
+            _searchedBrands = results[1];
+            _searchedModels = results[2];
+            _isSearchLoading = false;
+          });
+        }
+      } catch (e) {
+        print('Error searching: $e');
+        if (mounted) {
+          setState(() {
+            _isSearchLoading = false;
+          });
+        }
+      }
     });
   }
 
@@ -309,34 +355,96 @@ class _ModelsScreenState extends State<ModelsScreen> {
             ),
           ),
 
-          Expanded(
-            child: _isLoading 
-              ? const Center(child: CircularProgressIndicator())
-              : _filteredItems.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.search_off_outlined, size: 48, color: Colors.grey[300]),
-                        const SizedBox(height: 16),
-                        Text('No results found', style: TextStyle(color: Colors.grey[500])),
+          if (widget.isRoot && !_isSearching)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const DiyDesignerScreen()),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Theme.of(context).colorScheme.primary,
+                        Theme.of(context).colorScheme.secondary,
                       ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                  )
-                : GridView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 0.8,
-                    ),
-                    itemCount: _filteredItems.length,
-                    itemBuilder: (context, index) {
-                      final item = _filteredItems[index];
-                      return _buildGridItem(item);
-                    },
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: Colors.white.withOpacity(0.2),
+                        child: const Icon(Icons.architecture, color: Colors.white),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              'DIY Custom Cut Designer',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Design cut templates with custom dimensions & camera cutouts.',
+                              style: TextStyle(color: Colors.white70, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+          Expanded(
+            child: _isSearching
+                ? _buildSearchResults()
+                : (_isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _filteredItems.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.search_off_outlined, size: 48, color: Colors.grey[300]),
+                                const SizedBox(height: 16),
+                                Text('No results found', style: TextStyle(color: Colors.grey[500])),
+                              ],
+                            ),
+                          )
+                        : GridView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 12,
+                              mainAxisSpacing: 12,
+                              childAspectRatio: 0.8,
+                            ),
+                            itemCount: _filteredItems.length,
+                            itemBuilder: (context, index) {
+                              final item = _filteredItems[index];
+                              return _buildGridItem(item);
+                            },
+                          )),
           ),
         ],
       ),
@@ -442,5 +550,153 @@ class _ModelsScreenState extends State<ModelsScreen> {
     if (n.contains('tv')) return Icons.tv;
     if (n.contains('audio') || n.contains('headphone')) return Icons.headphones;
     return Icons.devices_other;
+  }
+
+  Widget _buildSearchResults() {
+    if (_isSearchLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_searchedCategories.isEmpty && _searchedBrands.isEmpty && _searchedModels.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off_outlined, size: 48, color: Colors.grey[300]),
+            const SizedBox(height: 16),
+            Text('No results found', style: TextStyle(color: Colors.grey[500])),
+          ],
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      children: [
+        if (_searchedCategories.isNotEmpty) ...[
+          _buildSearchSectionHeader('Categories'),
+          ..._searchedCategories.map((cat) => _buildSearchRowItem(cat, 'category')),
+          const SizedBox(height: 16),
+        ],
+        if (_searchedBrands.isNotEmpty) ...[
+          _buildSearchSectionHeader('Brands'),
+          ..._searchedBrands.map((brand) => _buildSearchRowItem(brand, 'brand')),
+          const SizedBox(height: 16),
+        ],
+        if (_searchedModels.isNotEmpty) ...[
+          _buildSearchSectionHeader('Models'),
+          ..._searchedModels.map((model) => _buildSearchRowItem(model, 'model')),
+          const SizedBox(height: 16),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSearchSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, top: 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: Theme.of(context).colorScheme.primary,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchRowItem(dynamic item, String type) {
+    final hasImage = item['imageUrl'] != null && item['imageUrl'].toString().isNotEmpty;
+    final imageUrl = hasImage
+        ? (item['imageUrl'].toString().startsWith('http')
+            ? item['imageUrl'].toString()
+            : '${ApiService.baseUrl.replaceFirst('/api', '')}${item['imageUrl']}')
+        : null;
+
+    IconData fallbackIcon = Icons.devices_other;
+    if (type == 'category') {
+      fallbackIcon = _getIconForItem(item['name'], item['iconUrl']);
+    } else if (type == 'brand') {
+      fallbackIcon = Icons.branding_watermark;
+    } else {
+      fallbackIcon = Icons.smartphone;
+    }
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey[200]!),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: Colors.grey[50],
+            borderRadius: BorderRadius.circular(8),
+            image: imageUrl != null
+                ? DecorationImage(
+                    image: NetworkImage(imageUrl),
+                    fit: BoxFit.contain,
+                  )
+                : null,
+          ),
+          child: imageUrl == null
+              ? Icon(fallbackIcon, color: Theme.of(context).colorScheme.primary.withOpacity(0.8), size: 24)
+              : null,
+        ),
+        title: Text(
+          item['name'],
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        ),
+        subtitle: Text(
+          type == 'model'
+              ? '${item['brand']?['name'] ?? 'Model'} in ${item['category']?['name'] ?? ''}'
+              : type[0].toUpperCase() + type.substring(1),
+          style: TextStyle(color: Colors.grey[500], fontSize: 12),
+        ),
+        trailing: const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+        onTap: () {
+          final List<String> nextBreadcrumbs = [...widget.breadcrumbs, item['name']];
+          if (type == 'category') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ModelsScreen(
+                  title: item['name'],
+                  categoryId: item['id'].toString(),
+                  isRoot: false,
+                  breadcrumbs: nextBreadcrumbs,
+                ),
+              ),
+            );
+          } else if (type == 'brand') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ModelsScreen(
+                  title: item['name'],
+                  brandId: item['id'].toString(),
+                  isRoot: false,
+                  breadcrumbs: nextBreadcrumbs,
+                ),
+              ),
+            );
+          } else {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => CutSelectionScreen(item: item),
+              ),
+            );
+          }
+        },
+      ),
+    );
   }
 }

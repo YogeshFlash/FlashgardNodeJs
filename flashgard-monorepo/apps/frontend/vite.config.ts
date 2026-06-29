@@ -10,6 +10,14 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      }
+    }
+  },
   resolve: {
     alias: {
       '@config': path.resolve(__dirname, '../../../backend/src/app-config.ts')

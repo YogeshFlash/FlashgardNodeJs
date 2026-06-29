@@ -26,7 +26,8 @@ import {
   modelCategoriesApi, 
   cutPatternsApi,
   modelCutFilesApi,
-  migrationApi
+  migrationApi,
+  API_BASE
 } from '../lib/api';
 import ModelModal from '../components/models/ModelModal';
 import BrandModal from '../components/models/BrandModal';
@@ -36,8 +37,6 @@ import UploadCutFileModal from '../components/models/UploadCutFileModal';
 import PreviewModal from '../components/models/PreviewModal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { HasPermission } from '../components/HasPermission';
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000/api';
 
 type TabType = 'catalog' | 'categories' | 'brands' | 'patterns' | 'designs';
 

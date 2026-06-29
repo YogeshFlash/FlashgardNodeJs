@@ -655,18 +655,36 @@ export class MigrationService {
   }
 
   // 3. Migrate Designs (Models and Cut Files)
-  async migrateDesigns(inputStream: Readable | any[], totalBytes?: number) {
-    const models = await this.prisma.model.findMany({ where: { legacyId: { not: null } } });
-    const modelCache = new Map<number, string>();
-    models.forEach(m => modelCache.set(m.legacyId!, m.id));
+  async migrateDesigns(inputStream: Readable | any[], totalBytes?: number, cache?: {
+    existingFileMap?: Map<string, string>;
+    modelCache?: Map<number, string>;
+    cutPatternCache?: Map<string, string>;
+    cutPatternLegacyCache?: Map<number, string>;
+    skipLog?: boolean;
+  }) {
+    const modelCache = cache?.modelCache || new Map<number, string>();
+    if (!cache?.modelCache) {
+      const models = await this.prisma.model.findMany({ where: { legacyId: { not: null } } });
+      models.forEach(m => modelCache.set(m.legacyId!, m.id));
+    }
 
-    const cutPatterns = await (this.prisma as any).cutPattern.findMany();
-    const cutPatternCache = new Map<string, string>();
-    const cutPatternLegacyCache = new Map<number, string>();
-    cutPatterns.forEach((cp: any) => {
-        cutPatternCache.set(cp.name.toLowerCase(), cp.id);
-        if (cp.legacyId) cutPatternLegacyCache.set(cp.legacyId, cp.id);
-    });
+    const cutPatternCache = cache?.cutPatternCache || new Map<string, string>();
+    const cutPatternLegacyCache = cache?.cutPatternLegacyCache || new Map<number, string>();
+    if (!cache?.cutPatternCache) {
+      const cutPatterns = await (this.prisma as any).cutPattern.findMany();
+      cutPatterns.forEach((cp: any) => {
+          cutPatternCache.set(cp.name.toLowerCase(), cp.id);
+          if (cp.legacyId) cutPatternLegacyCache.set(cp.legacyId, cp.id);
+      });
+    }
+
+    const existingFileMap = cache?.existingFileMap || new Map<string, string>();
+    if (!cache?.existingFileMap) {
+      const existingFiles = await this.prisma.modelCutFile.findMany({
+        select: { id: true, modelId: true, cutPatternId: true }
+      });
+      existingFiles.forEach(f => existingFileMap.set(`${f.modelId}_${f.cutPatternId}`, f.id));
+    }
 
     let importedFiles = 0;
     let existingFiles = 0;
@@ -714,6 +732,9 @@ export class MigrationService {
         iterator = csvStream;
     }
 
+    const toCreate: any[] = [];
+    const toUpdate: any[] = [];
+
     for await (const row of iterator) {
         try {
             processedRows++;
@@ -724,7 +745,7 @@ export class MigrationService {
                 continue;
             }
 
-            if (processedRows % 500 === 0) {
+            if (processedRows % 1000 === 0) {
                 this.logger.log(`Processing Designs: ${processedRows} rows reached...`);
             }
 
@@ -811,21 +832,13 @@ export class MigrationService {
 
             const legacyId = parseInt((row[0] || '').toString().trim());
             const legacyParentId = legacyCatalogID; // The model ID is the parent for the cut file
-            const existingFile = await this.prisma.modelCutFile.findFirst({
-                where: { modelId, cutPatternId: cutPatternId! }
-            });
+            
+            const existingId = existingFileMap.get(`${modelId}_${cutPatternId}`);
 
-            if (!existingFile) {
-                await this.prisma.modelCutFile.create({
-                    data: { modelId, cutPatternId: cutPatternId!, encryptedPltData: encryptedPlt, legacyId, legacyParentId, legacyModelSkinId }
-                });
-                importedFiles++;
+            if (!existingId) {
+                toCreate.push({ modelId, cutPatternId: cutPatternId!, encryptedPltData: encryptedPlt, legacyId, legacyParentId, legacyModelSkinId });
             } else {
-                await this.prisma.modelCutFile.update({
-                    where: { id: existingFile.id },
-                    data: { legacyId, legacyParentId, legacyModelSkinId }
-                });
-                existingFiles++;
+                toUpdate.push({ id: existingId, legacyId, legacyParentId, legacyModelSkinId });
             }
         } catch (err) {
             this.logger.error(`Error processing design row: ${err.message}`);
@@ -838,6 +851,28 @@ export class MigrationService {
         }
     }
 
+    if (toCreate.length > 0) {
+      await this.prisma.modelCutFile.createMany({
+        data: toCreate,
+        skipDuplicates: true
+      });
+      importedFiles = toCreate.length;
+    }
+
+    if (toUpdate.length > 0) {
+      const updateBatchSize = 100;
+      for (let i = 0; i < toUpdate.length; i += updateBatchSize) {
+        const chunk = toUpdate.slice(i, i + updateBatchSize);
+        await Promise.all(chunk.map(item => 
+          this.prisma.modelCutFile.update({
+            where: { id: item.id },
+            data: { legacyId: item.legacyId, legacyParentId: item.legacyParentId, legacyModelSkinId: item.legacyModelSkinId }
+          })
+        ));
+      }
+      existingFiles = toUpdate.length;
+    }
+
     const result = { 
         importedFiles, 
         existingFiles, 
@@ -847,16 +882,18 @@ export class MigrationService {
         failures: failures.slice(0, 1000)
     };
 
-    await this.logMigration({
-      module: 'designs',
-      fileName: 'Streamed File', 
-      status: (skippedRows + decryptionFailed) === 0 ? 'SUCCESS' : (importedFiles + existingFiles > 0 ? 'PARTIAL' : 'FAILED'),
-      processed: processedRows,
-      created: importedFiles,
-      updated: existingFiles,
-      failed: skippedRows + decryptionFailed,
-      details: result
-    });
+    if (!cache?.skipLog) {
+      await this.logMigration({
+        module: 'designs',
+        fileName: 'Streamed File', 
+        status: (skippedRows + decryptionFailed) === 0 ? 'SUCCESS' : (importedFiles + existingFiles > 0 ? 'PARTIAL' : 'FAILED'),
+        processed: processedRows,
+        created: importedFiles,
+        updated: existingFiles,
+        failed: skippedRows + decryptionFailed,
+        details: result
+      });
+    }
 
     return result;
   }
@@ -2955,8 +2992,97 @@ export class MigrationService {
         const rows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
         return await this.migrateRoles(rows, "MSSQL: " + tableMap.file1);
       } else if (moduleType === 'designs') {
-        const rows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
-        return await this.migrateDesigns(rows, rows.length);
+        const models = await this.prisma.model.findMany({ where: { legacyId: { not: null } } });
+        const modelCache = new Map<number, string>();
+        models.forEach(m => modelCache.set(m.legacyId!, m.id));
+
+        const cutPatterns = await (this.prisma as any).cutPattern.findMany();
+        const cutPatternCache = new Map<string, string>();
+        const cutPatternLegacyCache = new Map<number, string>();
+        cutPatterns.forEach((cp: any) => {
+            cutPatternCache.set(cp.name.toLowerCase(), cp.id);
+            if (cp.legacyId) cutPatternLegacyCache.set(cp.legacyId, cp.id);
+        });
+
+        const existingFiles = await this.prisma.modelCutFile.findMany({
+            select: { id: true, modelId: true, cutPatternId: true }
+        });
+        const existingFileMap = new Map<string, string>();
+        existingFiles.forEach(f => existingFileMap.set(`${f.modelId}_${f.cutPatternId}`, f.id));
+
+        const mapsCache = {
+            modelCache,
+            cutPatternCache,
+            cutPatternLegacyCache,
+            existingFileMap,
+            skipLog: true
+        };
+
+        const colCheck = await pool.request().query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + tableMap.file1 + "' AND COLUMN_NAME IN ('ModelMasterID', 'ModelID', 'ID')");
+        const orderCol = colCheck.recordset.length > 0 ? colCheck.recordset[0].COLUMN_NAME : 'ModelID';
+
+        let offset = 0;
+        const limit = 1000;
+        let hasMore = true;
+        let totalImported = 0;
+        let totalExisting = 0;
+        let totalSkipped = 0;
+        let totalDecryptionFailed = 0;
+        let processedRows = 0;
+        const allFailures: any[] = [];
+
+        while (hasMore) {
+          this.logger.log(`Fetching chunk for designs: OFFSET ${offset} LIMIT ${limit}`);
+          let rows: any = (await pool.request().query(`SELECT * FROM [${tableMap.file1}] ORDER BY [${orderCol}] OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`)).recordset;
+
+          if (rows.length === 0) {
+            hasMore = false;
+            break;
+          }
+
+          const result = await this.migrateDesigns(rows, rows.length, mapsCache);
+          totalImported += result.importedFiles;
+          totalExisting += result.existingFiles;
+          totalSkipped += result.skippedRows;
+          totalDecryptionFailed += result.decryptionFailed;
+          processedRows += rows.length;
+
+          if (allFailures.length < 1000) {
+            allFailures.push(...result.failures.slice(0, 1000 - allFailures.length));
+          }
+
+          rows = [];
+          offset += limit;
+
+          await new Promise(resolve => setTimeout(resolve, 300));
+          if ((global as any).gc) {
+            try {
+              (global as any).gc();
+            } catch (e) {}
+          }
+        }
+
+        const summaryResult = {
+          importedFiles: totalImported,
+          existingFiles: totalExisting,
+          skippedRows: totalSkipped,
+          decryptionFailed: totalDecryptionFailed,
+          totalModelRows: processedRows,
+          failures: allFailures.slice(0, 1000)
+        };
+
+        await this.logMigration({
+          module: 'designs',
+          fileName: "MSSQL Connection",
+          status: (totalSkipped + totalDecryptionFailed) === 0 ? 'SUCCESS' : (totalImported + totalExisting > 0 ? 'PARTIAL' : 'FAILED'),
+          processed: processedRows,
+          created: totalImported,
+          updated: totalExisting,
+          failed: totalSkipped + totalDecryptionFailed,
+          details: summaryResult
+        });
+
+        return summaryResult;
       } else if (moduleType === 'mobile-users') {
         const rows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
         return await this.migrateMobileUsers(rows, "MSSQL: " + tableMap.file1);

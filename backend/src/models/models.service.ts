@@ -45,7 +45,12 @@ export class ModelsService {
           brand: true,
           category: true,
           cutFiles: {
-            include: {
+            select: {
+              id: true,
+              modelId: true,
+              cutPatternId: true,
+              createdAt: true,
+              designFilePath: true,
               cutPattern: true,
             }
           }
