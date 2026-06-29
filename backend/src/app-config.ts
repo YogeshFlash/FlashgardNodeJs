@@ -27,6 +27,6 @@ export const CONFIG = {
   // Frontend Configuration
   FRONTEND: {
     // API Base URL for frontend requests
-    API_BASE_URL: "/api",
+    API_BASE_URL: "http://localhost:3000/api",
   }
 };
