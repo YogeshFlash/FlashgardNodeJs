@@ -2893,6 +2893,135 @@ export class MigrationService {
       });
       const rootOrgIds = rootOrgs.map(org => org.id);
 
+      if (rootOrgIds.length > 0) {
+        // Nullify QR codes
+        await this.prisma.qRCode.updateMany({
+          where: {
+            OR: [
+              { assignedOrgId: { notIn: rootOrgIds } },
+              { assignedDealerId: { notIn: rootOrgIds } }
+            ]
+          },
+          data: {
+            assignedOrgId: null,
+            assignedDealerId: null
+          }
+        });
+
+        // Delete dealer master QRs
+        await this.prisma.dealerMasterQR.deleteMany({
+          where: { dealerId: { notIn: rootOrgIds } }
+        });
+
+        // Delete cut credits
+        await (this.prisma as any).cutCredit?.deleteMany({
+          where: {
+            OR: [
+              { ownerId: { notIn: rootOrgIds } },
+              { tenantId: { notIn: rootOrgIds } }
+            ]
+          }
+        });
+
+        // Delete credit transactions
+        await (this.prisma as any).creditTransaction?.deleteMany({
+          where: { tenantId: { notIn: rootOrgIds } }
+        });
+
+        // Delete entity wallets
+        await (this.prisma as any).entityWallet?.deleteMany({
+          where: {
+            OR: [
+              { orgId: { notIn: rootOrgIds } },
+              { tenantId: { notIn: rootOrgIds } }
+            ]
+          }
+        });
+
+        // Delete security alerts
+        await (this.prisma as any).securityAlert?.deleteMany({
+          where: { tenantId: { notIn: rootOrgIds } }
+        });
+
+        // Delete licensing transfers
+        await (this.prisma as any).licensingTransfer?.deleteMany({
+          where: {
+            OR: [
+              { fromOrgId: { notIn: rootOrgIds } },
+              { toOrgId: { notIn: rootOrgIds } },
+              { tenantId: { notIn: rootOrgIds } }
+            ]
+          }
+        });
+
+        // Delete work orders & work order outputs
+        const workOrdersToDelete = await this.prisma.workOrder.findMany({
+          where: { orgId: { notIn: rootOrgIds } },
+          select: { id: true }
+        });
+        const workOrderIds = workOrdersToDelete.map(w => w.id);
+        if (workOrderIds.length > 0) {
+          await this.prisma.workOrderOutput.deleteMany({
+            where: { workOrderId: { in: workOrderIds } }
+          });
+          await this.prisma.workOrder.deleteMany({
+            where: { id: { in: workOrderIds } }
+          });
+        }
+
+        // Delete dispatch orders
+        const dispatchesToDelete = await this.prisma.dispatchOrder.findMany({
+          where: {
+            OR: [
+              { fromOrgId: { notIn: rootOrgIds } },
+              { toOrgId: { notIn: rootOrgIds } }
+            ]
+          },
+          select: { id: true }
+        });
+        const dispatchIds = dispatchesToDelete.map(d => d.id);
+        if (dispatchIds.length > 0) {
+          await this.prisma.dispatchOrderItem.deleteMany({
+            where: { dispatchOrderId: { in: dispatchIds } }
+          });
+          await this.prisma.dispatchOrder.deleteMany({
+            where: { id: { in: dispatchIds } }
+          });
+        }
+
+        // Delete return requests & credit notes
+        const returnsToDelete = await this.prisma.returnRequest.findMany({
+          where: { requestingDealerId: { notIn: rootOrgIds } },
+          select: { id: true }
+        });
+        const returnIds = returnsToDelete.map(r => r.id);
+        if (returnIds.length > 0) {
+          await this.prisma.creditNote.deleteMany({
+            where: { returnRequestId: { in: returnIds } }
+          });
+          await this.prisma.returnRequestItem.deleteMany({
+            where: { returnRequestId: { in: returnIds } }
+          });
+          await this.prisma.returnRequest.deleteMany({
+            where: { id: { in: returnIds } }
+          });
+        }
+
+        // Nullify machine cut logs references
+        await this.prisma.machineCutLog.updateMany({
+          where: {
+            OR: [
+              { userId: adminIds.length > 0 ? { notIn: adminIds } : undefined },
+              { organizationId: { notIn: rootOrgIds } }
+            ].filter(Boolean) as any
+          },
+          data: {
+            userId: null,
+            organizationId: null
+          }
+        });
+      }
+
       await this.prisma.address.deleteMany({
         where: rootOrgIds.length > 0 ? { organizationId: { notIn: rootOrgIds } } : undefined
       });
