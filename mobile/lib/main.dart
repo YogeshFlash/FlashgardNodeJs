@@ -94,7 +94,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = _selectedIndex == index;
-    final activeColor = const Color(0xFFFF2D55);
+    final activeColor = const Color(0xFFE6B82C);
 
     return GestureDetector(
       onTap: () {

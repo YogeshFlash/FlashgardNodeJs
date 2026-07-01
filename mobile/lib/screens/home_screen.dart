@@ -137,11 +137,11 @@ class _HomeScreenState extends State<HomeScreen> {
           child: _isLoading 
             ? const Center(
                 child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF2D55)),
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFE6B82C)),
                 ),
               )
             : RefreshIndicator(
-                color: const Color(0xFFFF2D55),
+                color: const Color(0xFFE6B82C),
                 backgroundColor: Colors.white,
                 onRefresh: _loadHomeContent,
                 child: SingleChildScrollView(
@@ -174,7 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         fontSize: 28,
                                         fontWeight: FontWeight.w900,
                                         foreground: Paint()..shader = const LinearGradient(
-                                          colors: [Color(0xFFFF2D55), Color(0xFFFF9500)],
+                                          colors: [Color(0xFFE6B82C), Color(0xFFFF9500)],
                                         ).createShader(const Rect.fromLTWH(0.0, 0.0, 200.0, 70.0)),
                                       ),
                                     ),
@@ -241,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(4),
                                 color: _activePage == index
-                                    ? const Color(0xFFFF2D55)
+                                    ? const Color(0xFFE6B82C)
                                     : const Color(0xFF0F172A).withOpacity(0.12),
                               ),
                             ),
@@ -494,7 +494,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildInfoCard(BuildContext context, String title, String excerpt, String tagLabel, int index) {
     // Determine dynamic accent color based on index to look rich and playful
     final accentColors = [
-      const Color(0xFFFF2D55), // Hot Pink
+      const Color(0xFFE6B82C), // Gold
       const Color(0xFF5856D6), // Purple
       const Color(0xFFFF9500), // Orange
       const Color(0xFF4CD964), // Green

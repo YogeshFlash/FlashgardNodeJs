@@ -367,7 +367,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: Color(0xFFFF2D55), width: 1.5),
+                  borderSide: const BorderSide(color: Color(0xFFE6B82C), width: 1.5),
                 ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
@@ -377,72 +377,6 @@ class _ModelsScreenState extends State<ModelsScreen> {
               ),
             ),
           ),
-
-          if (widget.isRoot && !_isSearching)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const DiyDesignerScreen()),
-                  );
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFFFF2D55),
-                        Color(0xFFFF9500),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFFF2D55).withOpacity(0.35),
-                        blurRadius: 15,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                    border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.architecture, color: Colors.white, size: 28),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'DIY Custom Cut Designer',
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Design cut templates with custom dimensions & camera cutouts.',
-                              style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12, fontWeight: FontWeight.w500),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white),
-                    ],
-                  ),
-                ),
-              ),
-            ),
 
           Expanded(
             child: _isSearching
@@ -557,7 +491,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
               child: (item['imageUrl'] == null || item['imageUrl'].toString().isEmpty)
                   ? Icon(
                       _getIconForItem(item['name'], item['iconUrl']),
-                      color: const Color(0xFFFF2D55),
+                      color: const Color(0xFFE6B82C),
                       size: 32,
                     )
                   : null,
