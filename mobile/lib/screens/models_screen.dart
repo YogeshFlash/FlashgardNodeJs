@@ -479,11 +479,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
                 ],
                 image: (item['imageUrl'] != null && item['imageUrl'].toString().isNotEmpty)
                     ? DecorationImage(
-                        image: NetworkImage(
-                          item['imageUrl'].toString().startsWith('http')
-                              ? item['imageUrl']
-                              : '${ApiService.baseUrl.replaceFirst('/api', '')}${item['imageUrl']}',
-                        ),
+                        image: NetworkImage(_getImageUrl(item['imageUrl'].toString())),
                         fit: BoxFit.contain,
                       )
                     : null,
@@ -508,6 +504,18 @@ class _ModelsScreenState extends State<ModelsScreen> {
         ],
       ),
     );
+  }
+
+  String _getImageUrl(String? path) {
+    if (path == null || path.isEmpty) return '';
+    if (path.startsWith('http')) return path;
+    
+    if (!path.contains('/')) {
+      return 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog/$path';
+    }
+    
+    final cleanPath = path.startsWith('/') ? path.substring(1) : path;
+    return '${ApiService.baseUrl.replaceFirst('/api', '')}/$cleanPath';
   }
 
   IconData _getIconForItem(String name, [String? iconUrl]) {
