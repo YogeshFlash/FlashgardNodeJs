@@ -31,7 +31,7 @@ class FlashgardApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFFCE1D19), // Logo Red
           primary: const Color(0xFFCE1D19), // Logo Red
-          secondary: const Color(0xFFE6B82C), // Logo Gold
+          secondary: const Color(0xFFCE1D19), // Logo Gold
           surface: Colors.white,
         ),
         useMaterial3: true,
@@ -94,7 +94,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = _selectedIndex == index;
-    final activeColor = const Color(0xFFE6B82C);
+    final activeColor = const Color(0xFFCE1D19);
 
     return GestureDetector(
       onTap: () {

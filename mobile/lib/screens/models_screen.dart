@@ -367,7 +367,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: Color(0xFFE6B82C), width: 1.5),
+                  borderSide: const BorderSide(color: Color(0xFFCE1D19), width: 1.5),
                 ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
@@ -487,7 +487,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
               child: (item['imageUrl'] == null || item['imageUrl'].toString().isEmpty)
                   ? Icon(
                       _getIconForItem(item['name'], item['iconUrl']),
-                      color: const Color(0xFFE6B82C),
+                      color: const Color(0xFFCE1D19),
                       size: 32,
                     )
                   : null,

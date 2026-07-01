@@ -171,10 +171,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE6B82C).withOpacity(0.1),
+                    color: const Color(0xFFCE1D19).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.print_outlined, color: Color(0xFFE6B82C)),
+                  child: const Icon(Icons.print_outlined, color: Color(0xFFCE1D19)),
                 ),
                 title: Row(
                   children: [
@@ -192,7 +192,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 trailing: _connectedAddress != null 
                   ? TextButton(
                       onPressed: _disconnect, 
-                      child: const Text('Disconnect', style: TextStyle(color: Color(0xFFE6B82C), fontWeight: FontWeight.w900)),
+                      child: const Text('Disconnect', style: TextStyle(color: Color(0xFFCE1D19), fontWeight: FontWeight.w900)),
                     )
                   : null,
               ),
@@ -203,12 +203,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE6B82C),
+                    backgroundColor: const Color(0xFFCE1D19),
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     elevation: 0,
-                    shadowColor: const Color(0xFFE6B82C).withOpacity(0.3),
+                    shadowColor: const Color(0xFFCE1D19).withOpacity(0.3),
                   ),
                   onPressed: _isSearching ? null : _startSearch,
                   icon: _isSearching 
@@ -355,7 +355,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Text(
         title.toUpperCase(),
         style: const TextStyle(
-          color: Color(0xFFE6B82C),
+          color: Color(0xFFCE1D19),
           fontSize: 11,
           fontWeight: FontWeight.w900,
           letterSpacing: 1.5,

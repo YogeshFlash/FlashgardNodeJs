@@ -59,13 +59,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    final goldColor = const Color(0xFFE6B82C);
+    final brandColor = const Color(0xFFCE1D19);
     
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A), // Premium deep slate background for high-contrast gold graphics
+      backgroundColor: const Color(0xFF0F172A), // Premium deep slate background for high-contrast graphics
       body: Stack(
         children: [
-          // Background Graphic - Subtle glowing golden gradients in corners
+          // Background Graphic - Subtle glowing gradients in corners
           Positioned(
             top: -100,
             right: -100,
@@ -74,7 +74,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               height: 300,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: goldColor.withOpacity(0.08),
+                color: brandColor.withOpacity(0.08),
               ),
             ),
           ),
@@ -86,7 +86,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               height: 400,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: goldColor.withOpacity(0.05),
+                color: brandColor.withOpacity(0.05),
               ),
             ),
           ),
@@ -109,16 +109,16 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Graphic Logo Container with Gold Glow
+                    // Graphic Logo Container with Glow
                     Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E293B),
                         shape: BoxShape.circle,
-                        border: Border.all(color: goldColor.withOpacity(0.4), width: 2),
+                        border: Border.all(color: brandColor.withOpacity(0.4), width: 2),
                         boxShadow: [
                           BoxShadow(
-                            color: goldColor.withOpacity(0.2),
+                            color: brandColor.withOpacity(0.2),
                             blurRadius: 30,
                             spreadRadius: 5,
                             offset: const Offset(0, 8),
@@ -136,10 +136,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                     ),
                     const SizedBox(height: 40),
                     
-                    // Golden Gradient Text
+                    // Maroon Gradient Text
                     ShaderMask(
                       shaderCallback: (bounds) => LinearGradient(
-                        colors: [goldColor, const Color(0xFFF5AF19), goldColor],
+                        colors: [brandColor, const Color(0xFFFF5E5B), brandColor],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ).createShader(bounds),
