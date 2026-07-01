@@ -25,10 +25,14 @@ const MobileHomeManager: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await mobileHomeApi.getContent();
-      setPromotions(data.promotions || []);
-      setActions(data.actions || []);
-      setInfocards(data.infocards || []);
+      const [promotionsData, actionsData, infocardsData] = await Promise.all([
+        mobileHomeApi.getPromotions(),
+        mobileHomeApi.getActions(),
+        mobileHomeApi.getInfoCards()
+      ]);
+      setPromotions(promotionsData || []);
+      setActions(actionsData || []);
+      setInfocards(infocardsData || []);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch mobile home content');
     } finally {
@@ -53,11 +57,11 @@ const MobileHomeManager: React.FC = () => {
   const handleOpenAdd = () => {
     setEditingId(null);
     if (activeTab === 'promotions') {
-      setForm({ title: '', subtitle: '', backgroundColor: '#CE1D19', iconName: 'phone_iphone', sortOrder: promotions.length });
+      setForm({ title: '', subtitle: '', backgroundColor: '#CE1D19', iconName: 'phone_iphone', sortOrder: promotions.length, isActive: true });
     } else if (activeTab === 'actions') {
-      setForm({ label: '', iconName: 'qr_code_scanner', action: 'scan', sortOrder: actions.length });
+      setForm({ label: '', iconName: 'qr_code_scanner', action: 'scan', sortOrder: actions.length, isActive: true });
     } else {
-      setForm({ title: '', excerpt: '', timeText: '5 min read', sortOrder: infocards.length });
+      setForm({ title: '', excerpt: '', timeText: '5 min read', sortOrder: infocards.length, isActive: true });
     }
     setShowModal(true);
   };
@@ -217,16 +221,25 @@ const MobileHomeManager: React.FC = () => {
             <div 
               key={item.id} 
               style={{ backgroundColor: item.backgroundColor }}
-              className="relative p-6 rounded-2xl text-white shadow-md flex flex-col justify-between h-48 overflow-hidden"
+              className={`relative p-6 rounded-2xl text-white shadow-md flex flex-col justify-between h-48 overflow-hidden ${
+                item.isActive === false ? 'opacity-60 saturate-50' : ''
+              }`}
             >
               <div className="absolute right-[-20px] bottom-[-20px] opacity-10 text-white select-none pointer-events-none">
                 <Sparkles size={160} />
               </div>
 
               <div>
-                <span className="text-xs uppercase font-extrabold tracking-wider bg-white/20 px-2.5 py-1 rounded-full">
-                  Promo {idx + 1}
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs uppercase font-extrabold tracking-wider bg-white/20 px-2.5 py-1 rounded-full">
+                    Promo {idx + 1}
+                  </span>
+                  {item.isActive === false && (
+                    <span className="text-[10px] uppercase font-bold tracking-wider bg-rose-600 px-2 py-0.5 rounded-md">
+                      Inactive
+                    </span>
+                  )}
+                </div>
                 <h3 className="text-xl font-bold mt-3 leading-tight">{item.title}</h3>
                 <p className="text-xs text-white/90 mt-1 line-clamp-2">{item.subtitle}</p>
               </div>
@@ -259,14 +272,23 @@ const MobileHomeManager: React.FC = () => {
           {activeTab === 'actions' && actions.map((item, idx) => (
             <div 
               key={item.id}
-              className="bg-white border border-slate-200 p-5 rounded-2xl flex items-center justify-between shadow-sm hover:shadow-md transition-shadow"
+              className={`bg-white border border-slate-200 p-5 rounded-2xl flex items-center justify-between shadow-sm hover:shadow-md transition-shadow ${
+                item.isActive === false ? 'opacity-60 saturate-50' : ''
+              }`}
             >
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-center text-slate-700 font-bold">
                   {idx + 1}
                 </div>
                 <div>
-                  <h4 className="font-bold text-slate-800">{item.label}</h4>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-slate-800">{item.label}</h4>
+                    {item.isActive === false && (
+                      <span className="text-[9px] uppercase font-bold tracking-wider text-rose-600 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded">
+                        Inactive
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-500 mt-0.5">Icon: {item.iconName} | Action: {item.action}</p>
                 </div>
               </div>
@@ -293,10 +315,19 @@ const MobileHomeManager: React.FC = () => {
           {activeTab === 'infocards' && infocards.map((item) => (
             <div 
               key={item.id}
-              className="bg-white border border-slate-200 p-5 rounded-2xl flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow"
+              className={`bg-white border border-slate-200 p-5 rounded-2xl flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow ${
+                item.isActive === false ? 'opacity-60 saturate-50' : ''
+              }`}
             >
               <div>
-                <h4 className="font-bold text-slate-800 text-base line-clamp-1">{item.title}</h4>
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="font-bold text-slate-800 text-base line-clamp-1">{item.title}</h4>
+                  {item.isActive === false && (
+                    <span className="text-[9px] uppercase font-bold tracking-wider text-rose-600 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded flex-shrink-0">
+                      Inactive
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-500 mt-2 line-clamp-3 leading-relaxed">{item.excerpt}</p>
               </div>
 
@@ -471,6 +502,19 @@ const MobileHomeManager: React.FC = () => {
                   </div>
                 </>
               )}
+
+              <div className="flex items-center gap-3 py-2">
+                <input 
+                  type="checkbox" 
+                  id="isActive"
+                  checked={form.isActive ?? true}
+                  onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                  className="w-4 h-4 text-[var(--color-primary)] border-slate-300 rounded focus:ring-[var(--color-primary)]"
+                />
+                <label htmlFor="isActive" className="text-sm font-semibold text-slate-700 select-none cursor-pointer">
+                  Active (Show on Mobile App)
+                </label>
+              </div>
 
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1.5">Display Sort Order</label>

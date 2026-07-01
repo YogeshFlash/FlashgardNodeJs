@@ -8,12 +8,15 @@ export class MobileHomeService {
   // Consumed by the mobile app (fetches all sections)
   async getMobileContent() {
     const promotions = await this.prisma.mobilePromotion.findMany({
+      where: { isActive: true },
       orderBy: { sortOrder: 'asc' },
     });
     const actions = await this.prisma.mobileQuickAction.findMany({
+      where: { isActive: true },
       orderBy: { sortOrder: 'asc' },
     });
     const infocards = await this.prisma.mobileInfoCard.findMany({
+      where: { isActive: true },
       orderBy: { sortOrder: 'asc' },
     });
 
