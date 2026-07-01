@@ -477,20 +477,21 @@ class _ModelsScreenState extends State<ModelsScreen> {
                     offset: const Offset(0, 4),
                   )
                 ],
-                image: (item['imageUrl'] != null && item['imageUrl'].toString().isNotEmpty)
-                    ? DecorationImage(
-                        image: NetworkImage(_getImageUrl(item['imageUrl'].toString())),
-                        fit: BoxFit.contain,
-                      )
-                    : null,
               ),
-              child: (item['imageUrl'] == null || item['imageUrl'].toString().isEmpty)
-                  ? Icon(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Image.network(
+                  _getImageUrl(item),
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Icon(
                       _getIconForItem(item['name'], item['iconUrl']),
                       color: const Color(0xFFCE1D19),
                       size: 32,
-                    )
-                  : null,
+                    );
+                  },
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -506,16 +507,24 @@ class _ModelsScreenState extends State<ModelsScreen> {
     );
   }
 
-  String _getImageUrl(String? path) {
-    if (path == null || path.isEmpty) return '';
-    if (path.startsWith('http')) return path;
-    
-    if (!path.contains('/')) {
-      return 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog/$path';
+  String _getImageUrl(dynamic item) {
+    final path = item['imageUrl']?.toString() ?? '';
+    if (path.isNotEmpty) {
+      if (path.startsWith('http')) return path;
+      if (!path.contains('/')) {
+        return 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog/$path';
+      }
+      final cleanPath = path.startsWith('/') ? path.substring(1) : path;
+      return '${ApiService.baseUrl.replaceFirst('/api', '')}/$cleanPath';
     }
     
-    final cleanPath = path.startsWith('/') ? path.substring(1) : path;
-    return '${ApiService.baseUrl.replaceFirst('/api', '')}/$cleanPath';
+    // Construct default category image based on name from S3
+    final name = item['name']?.toString() ?? '';
+    if (name.isEmpty) return 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog/Phone.jpg';
+    
+    // Format name (Capitalize first letter, lower case the rest)
+    final formattedName = name[0].toUpperCase() + name.substring(1).toLowerCase();
+    return 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog/$formattedName.jpg';
   }
 
   IconData _getIconForItem(String name, [String? iconUrl]) {
