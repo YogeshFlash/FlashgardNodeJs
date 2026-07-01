@@ -118,19 +118,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    // Bold, young theme colors
     final bgGradient = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
-        const Color(0xFF0A0F1D), // Dark space navy
-        const Color(0xFF070A12), // Deep black-blue
+        const Color(0xFFF8FAFC), // Very soft slate 50
+        const Color(0xFFF1F5F9), // Slate 100
       ],
     );
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: Container(
         decoration: BoxDecoration(gradient: bgGradient),
         child: SafeArea(
@@ -142,14 +140,14 @@ class _HomeScreenState extends State<HomeScreen> {
               )
             : RefreshIndicator(
                 color: const Color(0xFFFF2D55),
-                backgroundColor: const Color(0xFF1E293B),
+                backgroundColor: Colors.white,
                 onRefresh: _loadHomeContent,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Beautiful Custom Header
+                      // Beautiful Custom Header (Light Theme)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
                         child: Row(
@@ -163,7 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     const Text(
                                       'Yo! ',
                                       style: TextStyle(
-                                        color: Colors.white,
+                                        color: Color(0xFF0F172A),
                                         fontSize: 28,
                                         fontWeight: FontWeight.w900,
                                       ),
@@ -184,7 +182,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Text(
                                   'Ready to cut some awesome skins?',
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.5),
+                                    color: const Color(0xFF475569),
                                     fontSize: 14,
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -194,10 +192,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             Container(
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                border: Border.all(color: const Color(0xFFFF2D55).withOpacity(0.5), width: 2),
+                                border: Border.all(color: const Color(0xFF0F172A).withOpacity(0.08), width: 1.5),
+                                color: Colors.white,
                               ),
                               child: IconButton(
-                                icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+                                icon: const Icon(Icons.refresh_rounded, color: Color(0xFF0F172A)),
                                 onPressed: _loadHomeContent,
                               ),
                             ),
@@ -241,7 +240,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 borderRadius: BorderRadius.circular(4),
                                 color: _activePage == index
                                     ? const Color(0xFFFF2D55)
-                                    : Colors.white.withOpacity(0.2),
+                                    : const Color(0xFF0F172A).withOpacity(0.12),
                               ),
                             ),
                           ),
@@ -257,7 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             style: TextStyle(
                               fontSize: 20, 
                               fontWeight: FontWeight.w900,
-                              color: Colors.white,
+                              color: Color(0xFF0F172A),
                               letterSpacing: 0.5,
                             ),
                           ),
@@ -294,7 +293,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             style: TextStyle(
                               fontSize: 20, 
                               fontWeight: FontWeight.w900,
-                              color: Colors.white,
+                              color: Color(0xFF0F172A),
                               letterSpacing: 0.5,
                             ),
                           ),
@@ -336,19 +335,18 @@ class _HomeScreenState extends State<HomeScreen> {
           end: Alignment.bottomRight,
           colors: [
             color,
-            color.withOpacity(0.8),
-            color.withAlpha(200),
+            color.withOpacity(0.85),
           ],
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.4), 
+            color: color.withOpacity(0.35), 
             blurRadius: 15, 
             offset: const Offset(0, 8),
           ),
         ],
-        border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.5),
+        border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
@@ -360,7 +358,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Icon(
                 icon, 
                 size: 180, 
-                color: Colors.white.withOpacity(0.12),
+                color: Colors.white.withOpacity(0.15),
               ),
             ),
             Padding(
@@ -382,7 +380,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.85), 
+                      color: Colors.white.withOpacity(0.9), 
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                     ),
@@ -395,7 +393,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       borderRadius: BorderRadius.circular(30),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withOpacity(0.08),
                           blurRadius: 6,
                           offset: const Offset(0, 3),
                         )
@@ -422,12 +420,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildActionItem(IconData icon, String label, List<Color> gradientColors) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B).withOpacity(0.4),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.06), width: 1.5),
+        border: Border.all(color: const Color(0xFF0F172A).withOpacity(0.05), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
+            color: Colors.black.withOpacity(0.03),
             blurRadius: 10,
             offset: const Offset(0, 4),
           )
@@ -455,7 +453,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: gradientColors[0].withOpacity(0.3),
+                        color: gradientColors[0].withOpacity(0.35),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
                       )
@@ -468,7 +466,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: const TextStyle(
                     fontSize: 16, 
                     fontWeight: FontWeight.w800,
-                    color: Colors.white,
+                    color: Color(0xFF0F172A),
                     letterSpacing: 0.1,
                   ),
                 ),
@@ -494,9 +492,16 @@ class _HomeScreenState extends State<HomeScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B).withOpacity(0.3),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.06), width: 1.5),
+        border: Border.all(color: const Color(0xFF0F172A).withOpacity(0.05), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -505,9 +510,9 @@ class _HomeScreenState extends State<HomeScreen> {
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              color: colorAccent.withOpacity(0.12),
+              color: colorAccent.withOpacity(0.08),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: colorAccent.withOpacity(0.2), width: 1.5),
+              border: Border.all(color: colorAccent.withOpacity(0.15), width: 1.5),
             ),
             child: Icon(Icons.bolt_rounded, color: colorAccent, size: 28),
           ),
@@ -532,7 +537,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: const TextStyle(
                     fontWeight: FontWeight.w900, 
                     fontSize: 16,
-                    color: Colors.white,
+                    color: Color(0xFF0F172A),
                     height: 1.2,
                   ),
                 ),
@@ -540,7 +545,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(
                   excerpt, 
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.6), 
+                    color: const Color(0xFF475569), 
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                     height: 1.4,
