@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import 'diy_designer_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -54,7 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ];
         _actions = [
           {'label': 'Scan QR', 'iconName': 'qr_code_scanner', 'action': 'scan'},
-          {'label': 'History', 'iconName': 'history', 'action': 'history'},
+          {'label': 'DIY Custom', 'iconName': 'brush', 'action': 'diy'},
           {'label': 'Stock', 'iconName': 'inventory_2_outlined', 'action': 'stock'},
           {'label': 'Help Support', 'iconName': 'support_agent', 'action': 'help'},
         ];
@@ -86,6 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'smartphone': return Icons.smartphone;
       case 'qr_code_scanner': return Icons.qr_code_scanner;
       case 'history': return Icons.history;
+      case 'brush': return Icons.brush;
       case 'inventory_2_outlined': return Icons.inventory_2_outlined;
       case 'support_agent': return Icons.support_agent;
       case 'info_outline': return Icons.info_outline;
@@ -274,6 +276,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                   _getIconData(act['iconName'] ?? 'info_outline'),
                                   act['label'] ?? '',
                                   _getActionGradients(index),
+                                  () {
+                                    if (act['action'] == 'diy' || act['action'] == 'history' || act['label'] == 'DIY Custom') {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(builder: (context) => const DiyDesignerScreen()),
+                                      );
+                                    }
+                                  },
                                 );
                               },
                             ),
@@ -414,7 +424,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildActionItem(IconData icon, String label, List<Color> gradientColors) {
+  Widget _buildActionItem(IconData icon, String label, List<Color> gradientColors, VoidCallback onTap) {
     return Expanded(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -434,7 +444,7 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
-            onTap: () {},
+            onTap: onTap,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
               child: Column(

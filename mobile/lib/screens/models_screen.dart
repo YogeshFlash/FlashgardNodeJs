@@ -285,20 +285,35 @@ class _ModelsScreenState extends State<ModelsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bgGradient = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        const Color(0xFFF8FAFC),
+        const Color(0xFFF1F5F9),
+      ],
+    );
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Select Model', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          widget.title, 
+          style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF0F172A), letterSpacing: 0.5),
+        ),
         elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        backgroundColor: Colors.transparent,
+        foregroundColor: const Color(0xFF0F172A),
+        iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
         leading: !widget.isRoot ? IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, size: 18),
           onPressed: () => Navigator.pop(context),
         ) : null,
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: Container(
+        decoration: BoxDecoration(gradient: bgGradient),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Breadcrumbs
           Container(
@@ -345,12 +360,20 @@ class _ModelsScreenState extends State<ModelsScreen> {
                   ],
                 ),
                 filled: true,
-                fillColor: Colors.grey[100],
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+                fillColor: Colors.white,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: const Color(0xFF0F172A).withOpacity(0.05), width: 1.5),
                 ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFFF2D55), width: 1.5),
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: const Color(0xFF0F172A).withOpacity(0.05), width: 1.5),
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
               ),
             ),
           ),
@@ -366,44 +389,50 @@ class _ModelsScreenState extends State<ModelsScreen> {
                   );
                 },
                 child: Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
+                    gradient: const LinearGradient(
                       colors: [
-                        Theme.of(context).colorScheme.primary,
-                        Theme.of(context).colorScheme.secondary,
+                        Color(0xFFFF2D55),
+                        Color(0xFFFF9500),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
-                        color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
+                        color: const Color(0xFFFF2D55).withOpacity(0.35),
+                        blurRadius: 15,
+                        offset: const Offset(0, 8),
                       ),
                     ],
+                    border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
                   ),
                   child: Row(
                     children: [
-                      CircleAvatar(
-                        backgroundColor: Colors.white.withOpacity(0.2),
-                        child: const Icon(Icons.architecture, color: Colors.white),
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.architecture, color: Colors.white, size: 28),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
+                          children: [
+                            const Text(
                               'DIY Custom Cut Designer',
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18),
                             ),
-                            SizedBox(height: 4),
+                            const SizedBox(height: 6),
                             Text(
                               'Design cut templates with custom dimensions & camera cutouts.',
-                              style: TextStyle(color: Colors.white70, fontSize: 11),
+                              style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12, fontWeight: FontWeight.w500),
                             ),
                           ],
                         ),
@@ -448,7 +477,8 @@ class _ModelsScreenState extends State<ModelsScreen> {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildGridItem(dynamic item) {
@@ -503,9 +533,16 @@ class _ModelsScreenState extends State<ModelsScreen> {
             child: Container(
               width: double.infinity,
               decoration: BoxDecoration(
-                color: Colors.grey[50],
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey[200]!),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFF0F172A).withOpacity(0.05), width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.02),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  )
+                ],
                 image: (item['imageUrl'] != null && item['imageUrl'].toString().isNotEmpty)
                     ? DecorationImage(
                         image: NetworkImage(
@@ -520,7 +557,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
               child: (item['imageUrl'] == null || item['imageUrl'].toString().isEmpty)
                   ? Icon(
                       _getIconForItem(item['name'], item['iconUrl']),
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.8),
+                      color: const Color(0xFFFF2D55),
                       size: 32,
                     )
                   : null,
@@ -530,7 +567,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
           Text(
             item['name'],
             textAlign: TextAlign.center,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 11),
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11, color: Color(0xFF0F172A)),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
