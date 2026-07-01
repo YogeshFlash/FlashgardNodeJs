@@ -42,37 +42,37 @@ class _HomeScreenState extends State<HomeScreen> {
           {
             'title': 'Exclusive iPhone 17 Launch',
             'subtitle': 'Get 20% off on all iPhone 17 Pro designs!',
-            'backgroundColor': '#CE1D19',
+            'backgroundColor': '#FF2D55', // Vibrant Hot Pink
             'iconName': 'phone_iphone',
           },
           {
             'title': 'New Galaxy S25 Skins',
             'subtitle': 'Explore the latest styles for Samsung S25.',
-            'backgroundColor': '#E6B82C',
+            'backgroundColor': '#FF9500', // Vibrant Neon Orange
             'iconName': 'smartphone',
           }
         ];
         _actions = [
-          {'label': 'Scan', 'iconName': 'qr_code_scanner', 'action': 'scan'},
+          {'label': 'Scan QR', 'iconName': 'qr_code_scanner', 'action': 'scan'},
           {'label': 'History', 'iconName': 'history', 'action': 'history'},
           {'label': 'Stock', 'iconName': 'inventory_2_outlined', 'action': 'stock'},
-          {'label': 'Help', 'iconName': 'support_agent', 'action': 'help'},
+          {'label': 'Help Support', 'iconName': 'support_agent', 'action': 'help'},
         ];
         _infocards = [
           {
             'title': 'How to apply Flashgard Skins',
             'excerpt': 'Learn the best techniques for a perfect application every time.',
-            'timeText': '5 min read',
+            'timeText': '💡 TIPS • 5 min read',
           },
           {
             'title': 'New Machine Firmware v2.1',
             'excerpt': 'Stability improvements and 15% faster cutting speeds.',
-            'timeText': 'Yesterday',
+            'timeText': '⚙️ UPDATE • Yesterday',
           },
           {
-            'title': 'System Maintenance',
+            'title': 'System Maintenance Info',
             'excerpt': 'The CRM will be undergoing maintenance on Sunday at 2 AM GMT.',
-            'timeText': '2 days ago',
+            'timeText': '⚠️ NOTICE • 2 days ago',
           }
         ];
         _isLoading = false;
@@ -105,322 +105,263 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).colorScheme.primary;
-    final secondaryColor = Theme.of(context).colorScheme.secondary;
-
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
-        : RefreshIndicator(
-            onRefresh: _loadHomeContent,
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topRight,
-                    end: Alignment.bottomLeft,
-                    colors: [
-                      Color(0xFFFFF7F7), // Soft Logo Red undertone
-                      Color(0xFFFFFFF0), // Soft Logo Gold undertone
-                      Color(0xFFF9FAFB),
-                    ],
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Premium Custom Header
-                    _buildHeader(context, primaryColor, secondaryColor),
-
-                    // Promotions Carousel Section
-                    if (_promotions.isNotEmpty) ...[
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(20, 8, 20, 4),
-                        child: Text(
-                          'Featured Announcements',
-                          style: TextStyle(
-                            fontSize: 16, 
-                            fontWeight: FontWeight.w800, 
-                            letterSpacing: -0.5,
-                            color: Color(0xFF1E293B),
-                          ),
-                        ),
-                      ),
-                      SizedBox(
-                        height: 200,
-                        child: PageView.builder(
-                          itemCount: _promotions.length,
-                          onPageChanged: (int page) {
-                            setState(() {
-                              _activePage = page;
-                            });
-                          },
-                          itemBuilder: (context, index) {
-                            final promo = _promotions[index];
-                            return _buildPromotionCard(
-                              promo['title'] ?? '',
-                              promo['subtitle'] ?? '',
-                              _parseColor(promo['backgroundColor'] ?? '#CE1D19'),
-                              _getIconData(promo['iconName'] ?? 'phone_iphone'),
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List<Widget>.generate(
-                          _promotions.length,
-                          (index) => AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            width: _activePage == index ? 24 : 8,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(3),
-                              color: _activePage == index
-                                  ? primaryColor
-                                  : Colors.grey[300],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                    
-                    // Quick Actions Section
-                    if (_actions.isNotEmpty) ...[
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(20, 24, 20, 16),
-                        child: Text(
-                          'Quick Services',
-                          style: TextStyle(
-                            fontSize: 16, 
-                            fontWeight: FontWeight.w800, 
-                            letterSpacing: -0.5,
-                            color: Color(0xFF1E293B),
-                          ),
-                        ),
-                      ),
-                      
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 4,
-                          mainAxisSpacing: 16,
-                          crossAxisSpacing: 12,
-                          childAspectRatio: 0.82,
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _actions.length,
-                        itemBuilder: (context, index) {
-                          final act = _actions[index];
-                          return _buildActionItem(
-                            context,
-                            _getIconData(act['iconName'] ?? 'info_outline'),
-                            act['label'] ?? '',
-                            primaryColor,
-                            secondaryColor,
-                          );
-                        },
-                      ),
-                    ],
-
-                    // Info & Updates Section
-                    if (_infocards.isNotEmpty) ...[
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(20, 28, 20, 12),
-                        child: Text(
-                          'Knowledge Center & Updates',
-                          style: TextStyle(
-                            fontSize: 16, 
-                            fontWeight: FontWeight.w800, 
-                            letterSpacing: -0.5,
-                            color: Color(0xFF1E293B),
-                          ),
-                        ),
-                      ),
-
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _infocards.length,
-                        itemBuilder: (context, index) {
-                          final card = _infocards[index];
-                          return _buildInfoCard(
-                            context,
-                            card['title'] ?? '',
-                            card['excerpt'] ?? '',
-                            card['timeText'] ?? card['timeLabel'] ?? '5 min read',
-                            primaryColor,
-                          );
-                        },
-                      ),
-                    ],
-                    
-                    const SizedBox(height: 48),
-                  ],
-                ),
-              ),
-            ),
-          ),
-    );
+  // Neon Gradient list helper for action cards
+  List<Color> _getActionGradients(int index) {
+    final gradients = [
+      [const Color(0xFF00F2FE), const Color(0xFF4FACFE)], // Cyan to Blue
+      [const Color(0xFFFF0844), const Color(0xFFFFB199)], // Red/Pink to Peach
+      [const Color(0xFFF12711), const Color(0xFFF5AF19)], // Orange to Yellow
+      [const Color(0xFFB1F91A), const Color(0xFF23D5AB)], // Neon Green
+    ];
+    return gradients[index % gradients.length];
   }
 
-  Widget _buildHeader(BuildContext context, Color primary, Color secondary) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 52, 20, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Welcome back,',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 2),
-                  const Text(
-                    'Flashgard Operator',
-                    style: TextStyle(color: Color(0xFF0F172A), fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.8),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2)),
-                      ],
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.refresh, color: Color(0xFF475569)),
-                      onPressed: _loadHomeContent,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2)),
-                      ],
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.notifications_none, color: Color(0xFF475569)),
-                      onPressed: () {},
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // Glow Status card
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  const Color(0xFF1E293B), // Premium Slate/Zinc
-                  const Color(0xFF0F172A),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF0F172A).withOpacity(0.15),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // Bold, young theme colors
+    final bgGradient = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        const Color(0xFF0A0F1D), // Dark space navy
+        const Color(0xFF070A12), // Deep black-blue
+      ],
+    );
+
+    return Scaffold(
+      body: Container(
+        decoration: BoxDecoration(gradient: bgGradient),
+        child: SafeArea(
+          child: _isLoading 
+            ? const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF2D55)),
                 ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.bolt, color: secondary, size: 28),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
+              )
+            : RefreshIndicator(
+                color: const Color(0xFFFF2D55),
+                backgroundColor: const Color(0xFF1E293B),
+                onRefresh: _loadHomeContent,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Device status: Connected',
-                        style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                      // Beautiful Custom Header
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.between,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Text(
+                                      'Yo! ',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Flashgarder ⚡',
+                                      style: TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w900,
+                                        foreground: Paint()..shader = const LinearGradient(
+                                          colors: [Color(0xFFFF2D55), Color(0xFFFF9500)],
+                                        ).createShader(const Rect.fromLTWH(0.0, 0.0, 200.0, 70.0)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Ready to cut some awesome skins?',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.5),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: const Color(0xFFFF2D55).withOpacity(0.5), width: 2),
+                              ),
+                              child: IconButton(
+                                icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+                                onPressed: _loadHomeContent,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Firmware version: v2.1 (Latest)',
-                        style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                      ),
+
+                      // Promotions Carousel
+                      if (_promotions.isNotEmpty) ...[
+                        SizedBox(
+                          height: 210,
+                          child: PageView.builder(
+                            itemCount: _promotions.length,
+                            onPageChanged: (int page) {
+                              setState(() {
+                                _activePage = page;
+                              });
+                            },
+                            itemBuilder: (context, index) {
+                              final promo = _promotions[index];
+                              return _buildPromotionCard(
+                                promo['title'] ?? '',
+                                promo['subtitle'] ?? '',
+                                _parseColor(promo['backgroundColor'] ?? '#FF2D55'),
+                                _getIconData(promo['iconName'] ?? 'phone_iphone'),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List<Widget>.generate(
+                            _promotions.length,
+                            (index) => AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              margin: const EdgeInsets.symmetric(horizontal: 4),
+                              width: _activePage == index ? 24 : 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(4),
+                                color: _activePage == index
+                                    ? const Color(0xFFFF2D55)
+                                    : Colors.white.withOpacity(0.2),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                      
+                      // Quick Actions Grid
+                      if (_actions.isNotEmpty) ...[
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(20, 32, 20, 16),
+                          child: Text(
+                            'Quick Actions',
+                            style: TextStyle(
+                              fontSize: 20, 
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                        
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            childAspectRatio: 1.4,
+                            mainAxisSpacing: 16,
+                            crossAxisSpacing: 16,
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          itemCount: _actions.length,
+                          itemBuilder: (context, index) {
+                            final act = _actions[index];
+                            return _buildActionItem(
+                              _getIconData(act['iconName'] ?? 'info_outline'),
+                              act['label'] ?? '',
+                              _getActionGradients(index),
+                            );
+                          },
+                        ),
+                      ],
+
+                      // Information & Updates
+                      if (_infocards.isNotEmpty) ...[
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(20, 36, 20, 16),
+                          child: Text(
+                            'What\'s New?',
+                            style: TextStyle(
+                              fontSize: 20, 
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _infocards.length,
+                          itemBuilder: (context, index) {
+                            final card = _infocards[index];
+                            return _buildInfoCard(
+                              context,
+                              card['title'] ?? '',
+                              card['excerpt'] ?? '',
+                              card['timeText'] ?? card['timeLabel'] ?? '💡 TIPS',
+                              index,
+                            );
+                          },
+                        ),
+                      ],
+                      
+                      const SizedBox(height: 32),
                     ],
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withOpacity(0.2), // Soft Emerald green
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4)),
-                  ),
-                  child: const Text(
-                    'ONLINE',
-                    style: TextStyle(color: Color(0xFF34D399), fontSize: 10, fontWeight: FontWeight.w900),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+              ),
+        ),
       ),
     );
   }
 
   Widget _buildPromotionCard(String title, String subtitle, Color color, IconData icon) {
     return Container(
-      margin: const EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            color,
-            color.withRed(color.red > 40 ? color.red - 40 : 0),
-          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
+          colors: [
+            color,
+            color.withOpacity(0.8),
+            color.withAlpha(200),
+          ],
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
-          BoxShadow(color: color.withOpacity(0.25), blurRadius: 12, offset: const Offset(0, 6)),
+          BoxShadow(
+            color: color.withOpacity(0.4), 
+            blurRadius: 15, 
+            offset: const Offset(0, 8),
+          ),
         ],
+        border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.5),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: Stack(
           children: [
             Positioned(
-              right: -24,
-              bottom: -24,
-              child: Icon(icon, size: 160, color: Colors.white.withOpacity(0.12)),
+              right: -30,
+              bottom: -30,
+              child: Icon(
+                icon, 
+                size: 180, 
+                color: Colors.white.withOpacity(0.12),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.all(24.0),
@@ -432,28 +373,42 @@ class _HomeScreenState extends State<HomeScreen> {
                     title,
                     style: const TextStyle(
                       color: Colors.white, 
-                      fontSize: 20, 
+                      fontSize: 22, 
                       fontWeight: FontWeight.w900,
-                      letterSpacing: -0.5,
+                      letterSpacing: 0.2,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Text(
                     subtitle,
-                    style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 13, height: 1.3),
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.85), 
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {},
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: color,
-                      elevation: 0,
-                      minimumSize: const Size(110, 36),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 6,
+                          offset: const Offset(0, 3),
+                        )
+                      ],
                     ),
-                    child: const Text('Explore Now', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                    child: Text(
+                      'Explore Now 🔥',
+                      style: TextStyle(
+                        color: color, 
+                        fontWeight: FontWeight.w900, 
+                        fontSize: 12,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -464,55 +419,57 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildActionItem(BuildContext context, IconData icon, String label, Color primary, Color secondary) {
+  Widget _buildActionItem(IconData icon, String label, List<Color> gradientColors) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF1F5F9)),
+        color: const Color(0xFF1E293B).withOpacity(0.4),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.06), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F172A).withOpacity(0.03),
+            color: Colors.black.withOpacity(0.15),
             blurRadius: 10,
             offset: const Offset(0, 4),
-          ),
+          )
         ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {
-            // Action trigger
-          },
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(24),
+          onTap: () {},
           child: Padding(
-            padding: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(16.0),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [
-                        primary.withOpacity(0.08),
-                        secondary.withOpacity(0.08),
-                      ],
+                      colors: gradientColors,
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: gradientColors[0].withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      )
+                    ],
                   ),
-                  child: Icon(icon, color: primary, size: 22),
+                  child: Icon(icon, color: Colors.white, size: 24),
                 ),
-                const SizedBox(height: 8),
                 Text(
                   label, 
-                  textAlign: TextAlign.center,
                   style: const TextStyle(
-                    fontSize: 12, 
-                    fontWeight: FontWeight.w700, 
-                    color: Color(0xFF334155),
+                    fontSize: 16, 
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: 0.1,
                   ),
                 ),
               ],
@@ -523,86 +480,73 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildInfoCard(BuildContext context, String title, String excerpt, String time, Color primary) {
+  Widget _buildInfoCard(BuildContext context, String title, String excerpt, String tagLabel, int index) {
+    // Determine dynamic accent color based on index to look rich and playful
+    final accentColors = [
+      const Color(0xFFFF2D55), // Hot Pink
+      const Color(0xFF5856D6), // Purple
+      const Color(0xFFFF9500), // Orange
+      const Color(0xFF4CD964), // Green
+    ];
+    final colorAccent = accentColors[index % accentColors.length];
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF1F5F9)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0F172A).withOpacity(0.02),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: const Color(0xFF1E293B).withOpacity(0.3),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.06), width: 1.5),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 48,
-            height: 48,
+            width: 54,
+            height: 54,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  primary.withOpacity(0.12),
-                  primary.withOpacity(0.04),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              color: colorAccent.withOpacity(0.12),
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: colorAccent.withOpacity(0.2), width: 1.5),
             ),
-            child: Icon(Icons.feed_outlined, color: primary, size: 20),
+            child: Icon(Icons.bolt_rounded, color: colorAccent, size: 28),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Tag line
+                Text(
+                  tagLabel.toUpperCase(), 
+                  style: TextStyle(
+                    color: colorAccent, 
+                    fontSize: 10, 
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 6),
                 Text(
                   title, 
                   style: const TextStyle(
-                    fontWeight: FontWeight.w800, 
-                    fontSize: 14, 
-                    color: Color(0xFF0F172A),
-                    letterSpacing: -0.2,
+                    fontWeight: FontWeight.w900, 
+                    fontSize: 16,
+                    color: Colors.white,
+                    height: 1.2,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
                   excerpt, 
-                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 12, height: 1.35), 
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.6), 
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ), 
                   maxLines: 2, 
                   overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text(
-                        'NEWS & UPDATES',
-                        style: TextStyle(color: Color(0xFF475569), fontSize: 8, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    Text(
-                      time, 
-                      style: const TextStyle(
-                        color: Color(0xFF94A3B8), 
-                        fontSize: 10, 
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
