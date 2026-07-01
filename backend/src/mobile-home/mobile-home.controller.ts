@@ -17,28 +17,28 @@ export class MobileHomeController {
 
   // --- Promotions CRUD ---
   @UseGuards(JwtAuthGuard)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('mobile-home:write')
   @Get('promotions')
   getPromotions() {
     return this.service.getPromotions();
   }
 
   @UseGuards(JwtAuthGuard)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('mobile-home:write')
   @Post('promotions')
   createPromotion(@Body() body: any) {
     return this.service.createPromotion(body);
   }
 
   @UseGuards(JwtAuthGuard)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('mobile-home:write')
   @Put('promotions/:id')
   updatePromotion(@Param('id') id: string, @Body() body: any) {
     return this.service.updatePromotion(id, body);
   }
 
   @UseGuards(JwtAuthGuard)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('mobile-home:write')
   @Delete('promotions/:id')
   deletePromotion(@Param('id') id: string) {
     return this.service.deletePromotion(id);
@@ -46,28 +46,28 @@ export class MobileHomeController {
 
   // --- Quick Actions CRUD ---
   @UseGuards(JwtAuthGuard)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('mobile-home:write')
   @Get('actions')
   getActions() {
     return this.service.getActions();
   }
 
   @UseGuards(JwtAuthGuard)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('mobile-home:write')
   @Post('actions')
   createAction(@Body() body: any) {
     return this.service.createAction(body);
   }
 
   @UseGuards(JwtAuthGuard)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('mobile-home:write')
   @Put('actions/:id')
   updateAction(@Param('id') id: string, @Body() body: any) {
     return this.service.updateAction(id, body);
   }
 
   @UseGuards(JwtAuthGuard)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('mobile-home:write')
   @Delete('actions/:id')
   deleteAction(@Param('id') id: string) {
     return this.service.deleteAction(id);
@@ -75,28 +75,28 @@ export class MobileHomeController {
 
   // --- Info Cards CRUD ---
   @UseGuards(JwtAuthGuard)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('mobile-home:write')
   @Get('infocards')
   getInfoCards() {
     return this.service.getInfoCards();
   }
 
   @UseGuards(JwtAuthGuard)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('mobile-home:write')
   @Post('infocards')
   createInfoCard(@Body() body: any) {
     return this.service.createInfoCard(body);
   }
 
   @UseGuards(JwtAuthGuard)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('mobile-home:write')
   @Put('infocards/:id')
   updateInfoCard(@Param('id') id: string, @Body() body: any) {
     return this.service.updateInfoCard(id, body);
   }
 
   @UseGuards(JwtAuthGuard)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('mobile-home:write')
   @Delete('infocards/:id')
   deleteInfoCard(@Param('id') id: string) {
     return this.service.deleteInfoCard(id);

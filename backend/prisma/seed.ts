@@ -75,6 +75,8 @@ async function main() {
     { action: 'nav:licenses', description: 'View Licenses tab' },
     { action: 'nav:migration', description: 'View Data Migration tab' },
     { action: 'nav:settings', description: 'View Settings tab' },
+    { action: 'nav:mobile-home', description: 'View Mobile Home tab' },
+    { action: 'mobile-home:write', description: 'Manage mobile home page elements' },
   ];
 
   const permissions: any = {};
@@ -106,7 +108,7 @@ async function main() {
         'orgs:read', 'users:read', 'users:write', 'catalog:read', 
         'inventory:read', 'inventory:write', 'dispatch:read', 'dispatch:write',
         'licenses:read', 'licenses:write', 'credits:read', 'credits:write', 'reports:read',
-        'nav:dashboard', 'nav:organizations', 'nav:reports', 'nav:models', 'nav:inventory', 'nav:licenses', 'nav:settings'
+        'nav:dashboard', 'nav:organizations', 'nav:reports', 'nav:models', 'nav:inventory', 'nav:licenses', 'nav:settings', 'nav:mobile-home', 'mobile-home:write'
       ].map(action => ({
         permissionId: permissions[action].id,
         dataScope: DataScope.team,
@@ -119,7 +121,7 @@ async function main() {
       rolePermissions: [
         'users:read', 'users:write', 'catalog:read', 'inventory:read',
         'licenses:read', 'licenses:write', 'credits:read', 'credits:write',
-        'nav:dashboard', 'nav:reports', 'nav:models', 'nav:inventory', 'nav:licenses', 'nav:settings'
+        'nav:dashboard', 'nav:reports', 'nav:models', 'nav:inventory', 'nav:licenses', 'nav:settings', 'nav:mobile-home', 'mobile-home:write'
       ].map(action => ({
         permissionId: permissions[action].id,
         dataScope: DataScope.team,
@@ -143,7 +145,7 @@ async function main() {
       isSystemRole: true,
       rolePermissions: [
         'users:read', 'users:write', 'catalog:read', 'licenses:read', 'licenses:write', 'credits:read', 'credits:write', 'orgs:read',
-        'nav:dashboard', 'nav:organizations', 'nav:reports', 'nav:models', 'nav:licenses', 'nav:settings'
+        'nav:dashboard', 'nav:organizations', 'nav:reports', 'nav:models', 'nav:licenses', 'nav:settings', 'nav:mobile-home', 'mobile-home:write'
       ].map(action => ({
         permissionId: permissions[action].id,
         dataScope: DataScope.team,

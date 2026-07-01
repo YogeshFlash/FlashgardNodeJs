@@ -27,7 +27,7 @@ const navItems: NavItem[] = [
   { name: 'Inventory', translationKey: 'inventory', path: '/inventory', icon: Warehouse, permission: 'nav:inventory' },
   { name: 'Licenses', translationKey: 'licenses', path: '/licenses', icon: Key, permission: 'nav:licenses' },
   { name: 'Data Migration', translationKey: 'migration', path: '/migration', icon: Database, permission: 'nav:migration' },
-  { name: 'Mobile Home', translationKey: 'mobile-home', path: '/mobile-home', icon: Smartphone, permission: 'nav:settings' },
+  { name: 'Mobile Home', translationKey: 'mobile-home', path: '/mobile-home', icon: Smartphone, permission: 'nav:mobile-home' },
   { name: 'Settings', translationKey: 'settings', path: '/settings', icon: Settings, permission: 'nav:settings' },
 ];
 
