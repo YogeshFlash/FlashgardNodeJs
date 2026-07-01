@@ -124,7 +124,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: isClassic ? Colors.orange.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
+        color: isClassic ? Colors.orange.withOpacity(0.12) : Colors.blue.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: isClassic ? Colors.orange.withOpacity(0.3) : Colors.blue.withOpacity(0.3)),
       ),
@@ -133,7 +133,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         style: TextStyle(
           fontSize: 10, 
           color: isClassic ? Colors.orange[800] : Colors.blue[800],
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w900,
         ),
       ),
     );
@@ -141,128 +141,224 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings', style: TextStyle(fontWeight: FontWeight.bold)),
-      ),
-      body: ListView(
-        children: [
-          _buildSectionHeader('Hardware'),
-          ListTile(
-            leading: const Icon(Icons.print_outlined, color: Color(0xFFCE1D19)),
-            title: Row(
-              children: [
-                const Text('Plotter Connection'),
-                const SizedBox(width: 8),
-                _buildConnectionBadge(),
-              ],
-            ),
-            subtitle: Text(_isConnected 
-              ? 'Connected to ${_connectedName ?? _connectedAddress ?? 'Unknown'}' 
-              : 'Not connected'),
-            trailing: _connectedAddress != null 
-              ? TextButton(onPressed: _disconnect, child: const Text('Disconnect'))
-              : null,
-          ),
-          
-          if (_connectedAddress == null) 
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: ElevatedButton.icon(
-                onPressed: _isSearching ? null : _startSearch,
-                icon: _isSearching 
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.bluetooth_searching),
-                label: Text(_isSearching ? 'Searching...' : 'Search for Plotter'),
-              ),
-            ),
+    final bgGradient = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        const Color(0xFFF8FAFC),
+        const Color(0xFFF1F5F9),
+      ],
+    );
 
-          if (_devices.isNotEmpty && _connectedAddress == null) ...[
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text('Available Devices', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            ),
-            ..._devices.map((device) {
-              bool isPortrait = device.name.toLowerCase().contains('portrait2');
-              return ListTile(
-                leading: Icon(
-                  device.isClassic ? Icons.bluetooth : Icons.bluetooth_connected,
-                  color: device.isClassic ? Colors.orange : Colors.blue,
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('Settings', style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF0F172A), letterSpacing: 0.5)),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: const Color(0xFF0F172A),
+      ),
+      body: Container(
+        decoration: BoxDecoration(gradient: bgGradient),
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 24),
+          children: [
+            _buildSectionHeader('Hardware'),
+            
+            // Plotter Connection Card
+            _buildCardWrapper(
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF2D55).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.print_outlined, color: Color(0xFFFF2D55)),
                 ),
                 title: Row(
                   children: [
-                    Expanded(child: Text(device.name)),
-                    if (!isPortrait)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: device.isClassic 
-                            ? Colors.orange.withOpacity(0.1) 
-                            : Colors.blue.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          device.isClassic ? 'Classic' : 'BLE',
-                          style: TextStyle(
-                            fontSize: 10, 
-                            color: device.isClassic ? Colors.orange[700] : Colors.blue[700],
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
+                    const Text('Plotter Connection', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                    const SizedBox(width: 8),
+                    _buildConnectionBadge(),
                   ],
                 ),
-                subtitle: isPortrait ? null : Text(device.address),
-                trailing: _isConnecting 
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.chevron_right),
-                onTap: _isConnecting ? null : () => _connectToDevice(device),
-              );
-            }),
-          ],
+                subtitle: Text(
+                  _isConnected 
+                    ? 'Connected to ${_connectedName ?? _connectedAddress ?? 'Unknown'}' 
+                    : 'Not connected',
+                  style: TextStyle(color: const Color(0xFF0F172A).withOpacity(0.6), fontWeight: FontWeight.w500),
+                ),
+                trailing: _connectedAddress != null 
+                  ? TextButton(
+                      onPressed: _disconnect, 
+                      child: const Text('Disconnect', style: TextStyle(color: Color(0xFFFF2D55), fontWeight: FontWeight.w900)),
+                    )
+                  : null,
+              ),
+            ),
+            
+            if (_connectedAddress == null) 
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF2D55),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    elevation: 0,
+                    shadowColor: const Color(0xFFFF2D55).withOpacity(0.3),
+                  ),
+                  onPressed: _isSearching ? null : _startSearch,
+                  icon: _isSearching 
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.bluetooth_searching),
+                  label: Text(
+                    _isSearching ? 'Searching...' : 'Search for Plotter',
+                    style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                  ),
+                ),
+              ),
 
-          const Divider(height: 32),
-          _buildSectionHeader('Account'),
-          const ListTile(
-            leading: Icon(Icons.person_outline),
-            title: Text('Profile Information'),
-            trailing: Icon(Icons.chevron_right),
-          ),
-          const ListTile(
-            leading: Icon(Icons.lock_outline),
-            title: Text('Change Password'),
-            trailing: Icon(Icons.chevron_right),
-          ),
-          
-          const Divider(height: 32),
-          _buildSectionHeader('App'),
-          const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('About Flashgard'),
-            subtitle: Text('Version 1.0.0'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
-            title: const Text('Logout', style: TextStyle(color: Colors.red)),
-            onTap: () {
-              Navigator.of(context).pushReplacementNamed('/login');
-            },
-          ),
+            if (_devices.isNotEmpty && _connectedAddress == null) ...[
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Text(
+                  'Available Devices', 
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF0F172A), letterSpacing: 0.5),
+                ),
+              ),
+              ..._devices.map((device) {
+                bool isPortrait = device.name.toLowerCase().contains('portrait2');
+                return _buildCardWrapper(
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: (device.isClassic ? Colors.orange : Colors.blue).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        device.isClassic ? Icons.bluetooth : Icons.bluetooth_connected,
+                        color: device.isClassic ? Colors.orange : Colors.blue,
+                      ),
+                    ),
+                    title: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            device.name, 
+                            style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                          ),
+                        ),
+                        if (!isPortrait)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: (device.isClassic ? Colors.orange : Colors.blue).withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              device.isClassic ? 'Classic' : 'BLE',
+                              style: TextStyle(
+                                fontSize: 10, 
+                                color: device.isClassic ? Colors.orange[800] : device.isClassic ? Colors.orange[800] : Colors.blue[800],
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    subtitle: isPortrait 
+                      ? null 
+                      : Text(device.address, style: TextStyle(color: const Color(0xFF0F172A).withOpacity(0.5))),
+                    trailing: _isConnecting 
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.chevron_right, color: Color(0xFF0F172A)),
+                    onTap: _isConnecting ? null : () => _connectToDevice(device),
+                  ),
+                );
+              }),
+            ],
+
+            const SizedBox(height: 16),
+            _buildSectionHeader('Account'),
+            
+            _buildCardWrapper(
+              const ListTile(
+                leading: Icon(Icons.person_outline, color: Color(0xFF0F172A)),
+                title: Text('Profile Information', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                trailing: Icon(Icons.chevron_right, color: Color(0xFF0F172A)),
+              ),
+            ),
+            
+            _buildCardWrapper(
+              const ListTile(
+                leading: Icon(Icons.lock_outline, color: Color(0xFF0F172A)),
+                title: Text('Change Password', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                trailing: Icon(Icons.chevron_right, color: Color(0xFF0F172A)),
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            _buildSectionHeader('App'),
+            
+            _buildCardWrapper(
+              ListTile(
+                leading: const Icon(Icons.info_outline, color: Color(0xFF0F172A)),
+                title: const Text('About Flashgard', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                subtitle: Text('Version 1.0.0', style: TextStyle(color: const Color(0xFF0F172A).withOpacity(0.5))),
+              ),
+            ),
+            
+            _buildCardWrapper(
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.red),
+                title: const Text('Logout', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w800)),
+                onTap: () {
+                  Navigator.of(context).pushReplacementNamed('/login');
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCardWrapper(Widget child) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF0F172A).withOpacity(0.05), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          )
         ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: child,
       ),
     );
   }
 
   Widget _buildSectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
       child: Text(
         title.toUpperCase(),
-        style: TextStyle(
-          color: Colors.grey[600],
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 1.2,
+        style: const TextStyle(
+          color: Color(0xFFFF2D55),
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 1.5,
         ),
       ),
     );
