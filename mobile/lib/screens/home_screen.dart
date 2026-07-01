@@ -13,6 +13,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> _promotions = [];
   List<dynamic> _actions = [];
   List<dynamic> _infocards = [];
+  int _activePage = 0;
 
   @override
   void initState() {
@@ -23,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadHomeContent() async {
     setState(() {
       _isLoading = true;
+      _activePage = 0;
     });
 
     final data = await ApiService.fetchMobileHomeContent();
@@ -127,11 +129,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Promotions Carousel
-                  if (_promotions.isNotEmpty)
+                  if (_promotions.isNotEmpty) ...[
                     SizedBox(
                       height: 200,
                       child: PageView.builder(
                         itemCount: _promotions.length,
+                        onPageChanged: (int page) {
+                          setState(() {
+                            _activePage = page;
+                          });
+                        },
                         itemBuilder: (context, index) {
                           final promo = _promotions[index];
                           return _buildPromotionCard(
@@ -143,6 +150,26 @@ class _HomeScreenState extends State<HomeScreen> {
                         },
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List<Widget>.generate(
+                        _promotions.length,
+                        (index) => AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          width: _activePage == index ? 20 : 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(4),
+                            color: _activePage == index
+                                ? const Color(0xFFCE1D19)
+                                : Colors.grey[300],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                   
                   if (_actions.isNotEmpty) ...[
                     const Padding(
