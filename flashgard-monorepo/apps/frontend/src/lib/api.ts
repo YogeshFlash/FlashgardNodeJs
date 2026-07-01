@@ -653,5 +653,28 @@ export const materialsApi = {
   purge: (id: string) => request<void>(`/materials/${id}/purge`, { method: 'DELETE' }),
 };
 
+export const mobileHomeApi = {
+  getContent: () => request<any>('/mobile-home/content'),
+  
+  // Promotions
+  getPromotions: () => request<any[]>('/mobile-home/promotions'),
+  createPromotion: (data: any) => request<any>('/mobile-home/promotions', { method: 'POST', body: JSON.stringify(data) }),
+  updatePromotion: (id: string, data: any) => request<any>(`/mobile-home/promotions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePromotion: (id: string) => request<void>(`/mobile-home/promotions/${id}`, { method: 'DELETE' }),
+
+  // Actions
+  getActions: () => request<any[]>('/mobile-home/actions'),
+  createAction: (data: any) => request<any>('/mobile-home/actions', { method: 'POST', body: JSON.stringify(data) }),
+  updateAction: (id: string, data: any) => request<any>(`/mobile-home/actions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAction: (id: string) => request<void>(`/mobile-home/actions/${id}`, { method: 'DELETE' }),
+
+  // Info Cards
+  getInfoCards: () => request<any[]>('/mobile-home/infocards'),
+  createInfoCard: (data: any) => request<any>('/mobile-home/infocards', { method: 'POST', body: JSON.stringify(data) }),
+  updateInfoCard: (id: string, data: any) => request<any>(`/mobile-home/infocards/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteInfoCard: (id: string) => request<void>(`/mobile-home/infocards/${id}`, { method: 'DELETE' }),
+};
+
+
 
 

@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
   Building2, LayoutDashboard,
   LogOut, Bell, Search, Settings, ChevronDown,
-  UserCircle, Menu, X, Boxes, Warehouse, Key, Database, BarChart2
+  UserCircle, Menu, X, Boxes, Warehouse, Key, Database, BarChart2, Smartphone
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../components/HasPermission';
@@ -12,7 +12,7 @@ import logo from '../assets/logo.png';
 
 interface NavItem {
   name: string;
-  translationKey: 'dashboard' | 'organizations' | 'reports' | 'models' | 'inventory' | 'licenses' | 'migration' | 'settings';
+  translationKey: any;
   path: string;
   icon: any;
   exact?: boolean;
@@ -27,6 +27,7 @@ const navItems: NavItem[] = [
   { name: 'Inventory', translationKey: 'inventory', path: '/inventory', icon: Warehouse, permission: 'nav:inventory' },
   { name: 'Licenses', translationKey: 'licenses', path: '/licenses', icon: Key, permission: 'nav:licenses' },
   { name: 'Data Migration', translationKey: 'migration', path: '/migration', icon: Database, permission: 'nav:migration' },
+  { name: 'Mobile Home', translationKey: 'mobile-home', path: '/mobile-home', icon: Smartphone, permission: 'nav:settings' },
   { name: 'Settings', translationKey: 'settings', path: '/settings', icon: Settings, permission: 'nav:settings' },
 ];
 

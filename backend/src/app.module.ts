@@ -35,6 +35,7 @@ import { MaterialCategoriesModule } from './material-categories/material-categor
 import { FilmCategoriesModule } from './film-categories/film-categories.module';
 import { MaterialsModule } from './materials/materials.module';
 import { PlottersModule } from './plotters/plotters.module';
+import { MobileHomeModule } from './mobile-home/mobile-home.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { PlottersModule } from './plotters/plotters.module';
     FilmCategoriesModule,
     MaterialsModule,
     PlottersModule,
+    MobileHomeModule,
   ],
   controllers: [AppController],
   providers: [

@@ -1,7 +1,107 @@
 import 'package:flutter/material.dart';
+import '../services/api_service.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  bool _isLoading = true;
+  List<dynamic> _promotions = [];
+  List<dynamic> _actions = [];
+  List<dynamic> _infocards = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHomeContent();
+  }
+
+  Future<void> _loadHomeContent() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final data = await ApiService.fetchMobileHomeContent();
+    if (data != null && mounted) {
+      setState(() {
+        _promotions = data['promotions'] ?? [];
+        _actions = data['actions'] ?? [];
+        _infocards = data['infocards'] ?? [];
+        _isLoading = false;
+      });
+    } else if (mounted) {
+      // Fallback/Default static values if offline or error
+      setState(() {
+        _promotions = [
+          {
+            'title': 'Exclusive iPhone 17 Launch',
+            'subtitle': 'Get 20% off on all iPhone 17 Pro designs!',
+            'backgroundColor': '#CE1D19',
+            'iconName': 'phone_iphone',
+          },
+          {
+            'title': 'New Galaxy S25 Skins',
+            'subtitle': 'Explore the latest styles for Samsung S25.',
+            'backgroundColor': '#E6B82C',
+            'iconName': 'smartphone',
+          }
+        ];
+        _actions = [
+          {'label': 'Scan', 'iconName': 'qr_code_scanner', 'action': 'scan'},
+          {'label': 'History', 'iconName': 'history', 'action': 'history'},
+          {'label': 'Stock', 'iconName': 'inventory_2_outlined', 'action': 'stock'},
+          {'label': 'Help', 'iconName': 'support_agent', 'action': 'help'},
+        ];
+        _infocards = [
+          {
+            'title': 'How to apply Flashgard Skins',
+            'excerpt': 'Learn the best techniques for a perfect application every time.',
+            'timeText': '5 min read',
+          },
+          {
+            'title': 'New Machine Firmware v2.1',
+            'excerpt': 'Stability improvements and 15% faster cutting speeds.',
+            'timeText': 'Yesterday',
+          },
+          {
+            'title': 'System Maintenance',
+            'excerpt': 'The CRM will be undergoing maintenance on Sunday at 2 AM GMT.',
+            'timeText': '2 days ago',
+          }
+        ];
+        _isLoading = false;
+      });
+    }
+  }
+
+  IconData _getIconData(String name) {
+    switch (name) {
+      case 'phone_iphone': return Icons.phone_iphone;
+      case 'smartphone': return Icons.smartphone;
+      case 'qr_code_scanner': return Icons.qr_code_scanner;
+      case 'history': return Icons.history;
+      case 'inventory_2_outlined': return Icons.inventory_2_outlined;
+      case 'support_agent': return Icons.support_agent;
+      case 'info_outline': return Icons.info_outline;
+      default: return Icons.info_outline;
+    }
+  }
+
+  Color _parseColor(String hexColor) {
+    try {
+      hexColor = hexColor.replaceAll('#', '');
+      if (hexColor.length == 6) {
+        hexColor = 'FF$hexColor';
+      }
+      return Color(int.parse(hexColor, radix: 16));
+    } catch (_) {
+      return const Color(0xFFCE1D19);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -10,87 +110,99 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Flashgard', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh), 
+            onPressed: _loadHomeContent,
+          ),
           IconButton(icon: const Icon(Icons.notifications_none), onPressed: () {}),
-          IconButton(icon: const Icon(Icons.account_circle_outlined), onPressed: () {}),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Promotions Carousel (Simplified)
-            SizedBox(
-              height: 200,
-              child: PageView(
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator())
+        : RefreshIndicator(
+            onRefresh: _loadHomeContent,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildPromotionCard(
-                    'Exclusive iPhone 17 Launch',
-                    'Get 20% off on all iPhone 17 Pro designs!',
-                    const Color(0xFFCE1D19), // Logo Red
-                    Icons.phone_iphone,
-                  ),
-                  _buildPromotionCard(
-                    'New Galaxy S25 Skins',
-                    'Explore the latest styles for Samsung S25.',
-                    const Color(0xFFE6B82C), // Logo Gold
-                    Icons.smartphone,
-                  ),
+                  // Promotions Carousel
+                  if (_promotions.isNotEmpty)
+                    SizedBox(
+                      height: 200,
+                      child: PageView.builder(
+                        itemCount: _promotions.length,
+                        itemBuilder: (context, index) {
+                          final promo = _promotions[index];
+                          return _buildPromotionCard(
+                            promo['title'] ?? '',
+                            promo['subtitle'] ?? '',
+                            _parseColor(promo['backgroundColor'] ?? '#CE1D19'),
+                            _getIconData(promo['iconName'] ?? 'phone_iphone'),
+                          );
+                        },
+                      ),
+                    ),
+                  
+                  if (_actions.isNotEmpty) ...[
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
+                      child: Text(
+                        'Quick Actions',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 4,
+                        mainAxisSpacing: 10,
+                        crossAxisSpacing: 10,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _actions.length,
+                      itemBuilder: (context, index) {
+                        final act = _actions[index];
+                        return _buildActionItem(
+                          _getIconData(act['iconName'] ?? 'info_outline'),
+                          act['label'] ?? '',
+                        );
+                      },
+                    ),
+                  ],
+
+                  if (_infocards.isNotEmpty) ...[
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(20, 32, 20, 12),
+                      child: Text(
+                        'Information & Updates',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _infocards.length,
+                      itemBuilder: (context, index) {
+                        final card = _infocards[index];
+                        return _buildInfoCard(
+                          context,
+                          card['title'] ?? '',
+                          card['excerpt'] ?? '',
+                          card['timeText'] ?? card['timeLabel'] ?? '5 min read',
+                        );
+                      },
+                    ),
+                  ],
+                  
+                  const SizedBox(height: 32),
                 ],
               ),
             ),
-            
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
-              child: Text(
-                'Quick Actions',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-            
-            GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 4,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                _buildActionItem(Icons.qr_code_scanner, 'Scan'),
-                _buildActionItem(Icons.history, 'History'),
-                _buildActionItem(Icons.inventory_2_outlined, 'Stock'),
-                _buildActionItem(Icons.support_agent, 'Help'),
-              ],
-            ),
-
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 32, 20, 12),
-              child: Text(
-                'Information & Updates',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-
-            _buildInfoCard(
-              context,
-              'How to apply Flashgard Skins',
-              'Learn the best techniques for a perfect application every time.',
-              '5 min read',
-            ),
-            _buildInfoCard(
-              context,
-              'New Machine Firmware v2.1',
-              'Stability improvements and 15% faster cutting speeds.',
-              'Yesterday',
-            ),
-            _buildInfoCard(
-              context,
-              'System Maintenance',
-              'The CRM will be undergoing maintenance on Sunday at 2 AM GMT.',
-              '2 days ago',
-            ),
-            
-            const SizedBox(height: 32),
-          ],
-        ),
-      ),
+          ),
     );
   }
 

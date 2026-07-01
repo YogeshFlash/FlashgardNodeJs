@@ -1099,6 +1099,44 @@ model Material {
   @@map("materials")
 }
 
+model MobilePromotion {
+  id              String   @id @default(uuid()) @db.Uuid
+  title           String   @db.VarChar(255)
+  subtitle        String   @db.VarChar(255)
+  backgroundColor String   @db.VarChar(50) // Hex Color e.g. #CE1D19
+  iconName        String   @db.VarChar(100) // Icon name
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("mobile_promotions")
+}
+
+model MobileQuickAction {
+  id        String   @id @default(uuid()) @db.Uuid
+  label     String   @db.VarChar(100)
+  iconName  String   @db.VarChar(100)
+  action    String   @db.VarChar(100) // e.g. scan, history, stock, help
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("mobile_quick_actions")
+}
+
+model MobileInfoCard {
+  id        String   @id @default(uuid()) @db.Uuid
+  title     String   @db.VarChar(255)
+  excerpt   String   @db.VarChar(1000)
+  timeText  String   @db.VarChar(100) // e.g. "5 min read", "Yesterday"
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("mobile_info_cards")
+}
+
+
 
 
 

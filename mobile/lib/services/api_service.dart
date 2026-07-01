@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // Use 10.0.2.2 for Android Emulator, localhost for Windows/Web, or your machine IP for physical devices
-  static const String baseUrl = 'http://192.168.1.5:3000/api'; 
+  static const String baseUrl = 'http://192.168.1.9:3000/api'; 
 
   static Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -149,5 +149,20 @@ class ApiService {
       print('Error searching models: $e');
     }
     return [];
+  }
+
+  static Future<Map<String, dynamic>?> fetchMobileHomeContent() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/mobile-home/content'),
+        headers: await _getHeaders(),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      print('Error fetching mobile home content: $e');
+    }
+    return null;
   }
 }

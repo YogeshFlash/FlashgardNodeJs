@@ -16,6 +16,7 @@ import ModelsPage from './pages/ModelsPage';
 import InventoryPage from './pages/InventoryPage';
 import LicensesPage from './pages/LicensesPage';
 import DataMigration from './pages/DataMigration';
+import MobileHomeManager from './pages/MobileHomeManager';
 
 function App() {
   return (
@@ -46,6 +47,7 @@ function App() {
               <Route path="inventory" element={<InventoryPage />} />
               <Route path="licenses" element={<LicensesPage />} />
               <Route path="migration" element={<DataMigration />} />
+              <Route path="mobile-home" element={<MobileHomeManager />} />
             </Route>
 
             {/* Catch-all → redirect to dashboard */}
