@@ -383,13 +383,24 @@ export class MigrationService {
 
                 if (!category) {
                     category = await (this.prisma as any).modelCategory.create({ 
-                        data: { name: row.Name, parentId: parentId, legacyId, legacyParentId, sortOrder: 0 } 
+                        data: { 
+                            name: row.Name, 
+                            parentId: parentId, 
+                            legacyId, 
+                            legacyParentId, 
+                            sortOrder: 0,
+                            imageUrl: row.ImageUrl && row.ImageUrl !== 'NULL' ? row.ImageUrl : null
+                        } 
                     });
                     importedCategories++;
                 } else {
                     await (this.prisma as any).modelCategory.update({ 
                         where: { id: category.id }, 
-                        data: { legacyId, legacyParentId } 
+                        data: { 
+                            legacyId, 
+                            legacyParentId,
+                            imageUrl: row.ImageUrl && row.ImageUrl !== 'NULL' ? row.ImageUrl : null
+                        } 
                     });
                     updatedCategories++;
                 }
