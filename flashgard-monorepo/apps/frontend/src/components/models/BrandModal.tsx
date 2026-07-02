@@ -9,7 +9,7 @@ interface BrandModalProps {
 }
 
 const BrandModal: React.FC<BrandModalProps> = ({ item, onClose, onSave }) => {
-  const [form, setForm] = useState(item || { name: '', sortOrder: 0 });
+  const [form, setForm] = useState(item || { name: '', sortOrder: 0, imageUrl: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -46,6 +46,16 @@ const BrandModal: React.FC<BrandModalProps> = ({ item, onClose, onSave }) => {
               onChange={e => setForm({ ...form, name: e.target.value })} 
               required 
               placeholder="e.g. Apple" 
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Image URL / Filename</label>
+            <input 
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--color-accent)]/20 outline-none"
+              value={form.imageUrl || ''} 
+              onChange={e => setForm({ ...form, imageUrl: e.target.value })} 
+              placeholder="e.g. Apple.jpg" 
             />
           </div>
 

@@ -354,6 +354,7 @@ model CutPattern {
   deletedAt      DateTime?      @map("deleted_at")
   isDeleted      Boolean        @default(false) @map("is_deleted")
   sortOrder      Int            @default(0) @map("sort_order")
+  imageUrl       String?        @map("image_url") @db.VarChar(255)
   modelFiles     ModelCutFile[]
 
   @@map("cut_patterns")

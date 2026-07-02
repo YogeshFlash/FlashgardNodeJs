@@ -60,7 +60,7 @@ function buildCategoryRows(categories: any[]) {
 }
 
 const ModelModal: React.FC<ModelModalProps> = ({ item, brands, categories, onClose, onSave }) => {
-  const [form, setForm] = useState(item || { name: '', brandId: '', categoryId: '', sortOrder: 0 });
+  const [form, setForm] = useState(item || { name: '', brandId: '', categoryId: '', sortOrder: 0, imageUrl: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -273,6 +273,16 @@ const ModelModal: React.FC<ModelModalProps> = ({ item, brands, categories, onClo
                 )}
               </div>
             </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Image URL / Filename</label>
+            <input 
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--color-accent)]/20 outline-none"
+              value={form.imageUrl || ''} 
+              onChange={e => setForm({ ...form, imageUrl: e.target.value })} 
+              placeholder="e.g. iphone13.jpg" 
+            />
           </div>
 
           <div>
