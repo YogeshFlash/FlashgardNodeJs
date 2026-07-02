@@ -160,9 +160,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: Container(
         decoration: BoxDecoration(gradient: bgGradient),
-        child: ListView(
-          padding: const EdgeInsets.only(bottom: 24),
-          children: [
+        child: RefreshIndicator(
+          color: const Color(0xFFCE1D19),
+          backgroundColor: Colors.white,
+          onRefresh: _loadConnectionStatus,
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: 24),
+            children: [
             _buildSectionHeader('Hardware'),
             
             // Plotter Connection Card
@@ -322,6 +326,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
