@@ -599,6 +599,27 @@ const ModelsPage: React.FC = () => {
               {/* Designs Tab */}
               {activeTab === 'designs' && (
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4">
+                  <div className="px-6 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">
+                      Showing {Math.min(designsTotal, (designsPage - 1) * itemsPerPage + 1)} - {Math.min(designsTotal, designsPage * itemsPerPage)} of {designsTotal}
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setDesignsPage(p => Math.max(1, p - 1))}
+                        disabled={designsPage === 1}
+                        className="p-1.5 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setDesignsPage(p => p + 1)}
+                        disabled={designsPage * itemsPerPage >= designsTotal}
+                        className="p-1.5 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead className="bg-slate-50/50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -694,6 +715,15 @@ const ModelsPage: React.FC = () => {
                   </div>
 
                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    {totalPages > 1 && (
+                      <div className="px-6 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">Page {currentPage} of {totalPages}</p>
+                        <div className="flex gap-2">
+                          <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 border rounded-lg disabled:opacity-50 bg-white hover:bg-slate-50"><ChevronLeft className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 border rounded-lg disabled:opacity-50 bg-white hover:bg-slate-50"><ChevronRight className="w-3.5 h-3.5" /></button>
+                        </div>
+                      </div>
+                    )}
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs">
                         <thead className="bg-slate-50/50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
