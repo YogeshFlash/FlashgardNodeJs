@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
-import { modelsApi } from '../../lib/api';
+import { modelsApi, filesApi } from '../../lib/api';
 
 interface ModelModalProps {
   item: any;
@@ -62,7 +62,26 @@ function buildCategoryRows(categories: any[]) {
 const ModelModal: React.FC<ModelModalProps> = ({ item, brands, categories, onClose, onSave }) => {
   const [form, setForm] = useState(item || { name: '', brandId: '', categoryId: '', sortOrder: 0, imageUrl: '' });
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setError('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await filesApi.uploadCatalog(formData);
+      setForm({ ...form, imageUrl: res.filename });
+    } catch (err: any) {
+      setError(err.message || 'Failed to upload image');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const [searchCategory, setSearchCategory] = useState('');
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
@@ -277,12 +296,24 @@ const ModelModal: React.FC<ModelModalProps> = ({ item, brands, categories, onClo
 
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1">Image URL / Filename</label>
-            <input 
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--color-accent)]/20 outline-none"
-              value={form.imageUrl || ''} 
-              onChange={e => setForm({ ...form, imageUrl: e.target.value })} 
-              placeholder="e.g. iphone13.jpg" 
-            />
+            <div className="flex gap-2">
+              <input 
+                className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--color-accent)]/20 outline-none"
+                value={form.imageUrl || ''} 
+                onChange={e => setForm({ ...form, imageUrl: e.target.value })} 
+                placeholder="e.g. iphone13.jpg" 
+              />
+              <label className="cursor-pointer px-4 py-2 bg-slate-100 border border-slate-200 hover:bg-slate-200 rounded-lg text-xs font-bold flex items-center justify-center shrink-0">
+                {uploading ? 'Uploading...' : 'Upload File'}
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  onChange={handleFileUpload} 
+                  disabled={uploading}
+                />
+              </label>
+            </div>
           </div>
 
           <div>

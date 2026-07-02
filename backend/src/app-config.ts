@@ -33,6 +33,11 @@ export const CONFIG = {
   // AWS S3 Configuration
   S3: {
     // Base URL for catalog images stored in S3
-    CATALOG_IMAGE_BASE_URL: "https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog",
+    CATALOG_IMAGE_BASE_URL: getEnv('S3_CATALOG_IMAGE_BASE_URL', "https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog"),
+    ACCESS_KEY_ID: getEnv('AWS_ACCESS_KEY_ID', ''),
+    SECRET_ACCESS_KEY: getEnv('AWS_SECRET_ACCESS_KEY', ''),
+    REGION: getEnv('AWS_REGION', 'ap-south-1'),
+    BUCKET: getEnv('AWS_S3_BUCKET', 'flash-buk-01'),
+    KEY_PREFIX: getEnv('AWS_S3_KEY_PREFIX', 'ScratchGardImages/Uploads/Owner/Catalog/'),
   },
 };

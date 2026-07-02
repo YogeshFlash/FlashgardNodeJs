@@ -453,6 +453,7 @@ export const filesApi = {
       },
     });
   },
+  uploadCatalog: (formData: FormData) => request<{ filename: string; url: string }>('/files/upload-catalog', { method: 'POST', body: formData }),
 };
 
 // ─── Migration ──────────────────────────────────────
