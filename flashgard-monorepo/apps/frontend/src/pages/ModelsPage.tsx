@@ -778,11 +778,12 @@ const ModelsPage: React.FC = () => {
                                 </td>
                               )}
                               <td className="px-6 py-4">
-                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                                  item.isActive === false 
-                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400' 
-                                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                }`}>
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                                  <span className={`w-1.5 h-1.5 rounded-full ${
+                                    item.isActive === false 
+                                      ? 'bg-rose-500' 
+                                      : 'bg-emerald-500'
+                                  }`} />
                                   {item.isActive === false ? 'Inactive' : 'Active'}
                                 </span>
                               </td>
