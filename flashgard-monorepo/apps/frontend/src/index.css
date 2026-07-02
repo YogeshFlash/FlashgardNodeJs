@@ -8,25 +8,26 @@
     --color-accent-dark: #C29E30; /* Darker Gold for hover state */
     --color-gold-light: #2c2512;
     --color-gold-muted: #3a3219;
-    --color-secondary: #1e293b;
-    --color-background: #0f172a;
-    --color-surface: #1e293b;
+    --color-secondary: #151824;
+    --color-background: #0f111a;
+    --color-surface: #151824;
+    --color-sidebar: #090a0f;
     --color-text-main: #f8fafc;
     --color-text-muted: #94a3b8;
     --color-success: #10b981;
     --color-danger: #ef4444;
     --color-warning: #f59e0b;
-    --color-border: #334155;
+    --color-border: #1e2235;
   }
 }
 
 @theme {
-  --color-white: #1e293b;
-  --color-slate-50: #0f172a;
-  --color-slate-100: #1e293b;
-  --color-slate-200: #334155;
-  --color-slate-300: #475569;
-  --color-slate-400: #94a3b8;
+  --color-white: #151824;
+  --color-slate-50: #0f111a;
+  --color-slate-100: #151824;
+  --color-slate-200: #1e2235;
+  --color-slate-300: #293046;
+  --color-slate-400: #8a96b3;
   --color-slate-500: #cbd5e1;
   --color-slate-600: #e2e8f0;
   --color-slate-700: #f1f5f9;
