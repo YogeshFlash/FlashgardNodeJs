@@ -728,7 +728,7 @@ const ModelsPage: React.FC = () => {
                       <table className="w-full text-left text-xs">
                         <thead className="bg-slate-50/50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                           <tr>
-                            <th className="px-6 py-4">Image</th>
+                            {activeTab !== 'patterns' && <th className="px-6 py-4">Image</th>}
                             <th className="px-6 py-4">Name</th>
                             {activeTab === 'catalog' && <th className="px-6 py-4">Brand</th>}
                             {activeTab === 'patterns' && <th className="px-6 py-4">Cut For</th>}
@@ -743,23 +743,25 @@ const ModelsPage: React.FC = () => {
                             <tr><td colSpan={10} className="p-10 text-center text-slate-400">No items found.</td></tr>
                           ) : paginatedItems.map((item: any) => (
                             <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
-                              <td className="px-6 py-4">
-                                <div className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => setPreviewImage(getImageUrl(item.imageUrl, item.name))}>
-                                  <img 
-                                    src={getImageUrl(item.imageUrl, item.name)} 
-                                    alt={item.name} 
-                                    className="w-full h-full object-contain p-1"
-                                    onError={(e) => {
-                                      (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                      const sibling = e.currentTarget.nextElementSibling;
-                                      if (sibling) (sibling as HTMLElement).style.display = 'flex';
-                                    }}
-                                  />
-                                  <div style={{ display: 'none' }} className="w-full h-full items-center justify-center text-slate-300">
-                                    {activeTab === 'catalog' ? <Smartphone className="w-5 h-5" /> : <Box className="w-5 h-5" />}
+                              {activeTab !== 'patterns' && (
+                                <td className="px-6 py-4">
+                                  <div className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => setPreviewImage(getImageUrl(item.imageUrl, item.name))}>
+                                    <img 
+                                      src={getImageUrl(item.imageUrl, item.name)} 
+                                      alt={item.name} 
+                                      className="w-full h-full object-contain p-1"
+                                      onError={(e) => {
+                                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                        const sibling = e.currentTarget.nextElementSibling;
+                                        if (sibling) (sibling as HTMLElement).style.display = 'flex';
+                                      }}
+                                    />
+                                    <div style={{ display: 'none' }} className="w-full h-full items-center justify-center text-slate-300">
+                                      {activeTab === 'catalog' ? <Smartphone className="w-5 h-5" /> : <Box className="w-5 h-5" />}
+                                    </div>
                                   </div>
-                                </div>
-                              </td>
+                                </td>
+                              )}
                               <td className="px-6 py-4 font-bold">
                                 {activeTab === 'catalog' ? (
                                   <button onClick={() => fetchModelDetails(item.id)} className="hover:text-[var(--color-accent)] text-left">{item.name}</button>
