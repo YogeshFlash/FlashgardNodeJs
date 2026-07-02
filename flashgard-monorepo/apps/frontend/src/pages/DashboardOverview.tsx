@@ -104,7 +104,7 @@ const DashboardOverview = () => {
     <div className="space-y-8">
       
       {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-slate-900 text-white p-6 md:p-8 rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white dark:bg-slate-900 text-slate-900 dark:text-white p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl relative overflow-hidden">
         <div className="absolute right-0 top-0 w-96 h-96 bg-red-600/10 rounded-full blur-[100px] pointer-events-none" />
         <div className="relative z-10">
           <div className="flex items-center gap-2 text-rose-500 text-xs font-black uppercase tracking-widest mb-2">
@@ -112,11 +112,11 @@ const DashboardOverview = () => {
             Core Telemetry Console
           </div>
           <h1 className="text-3xl font-black tracking-tight">System Overview</h1>
-          <p className="text-slate-400 mt-2 text-sm max-w-xl">
-            Operator context: <span className="font-bold text-rose-400">{user?.email || 'User'}</span>. System modules are online. Database connection established.
+          <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm max-w-xl">
+            Operator context: <span className="font-bold text-rose-500 dark:text-rose-400">{user?.email || 'User'}</span>. System modules are online. Database connection established.
           </p>
         </div>
-        <div className="flex items-center gap-3 bg-slate-800/60 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-slate-700/50 self-start md:self-auto text-xs font-semibold text-slate-300 relative z-10">
+        <div className="flex items-center gap-3 bg-slate-50/80 dark:bg-slate-800/60 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-slate-200/50 dark:border-slate-700/50 self-start md:self-auto text-xs font-semibold text-slate-600 dark:text-slate-300 relative z-10">
           <Clock className="w-4 h-4 text-rose-500" />
           {new Date().toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
         </div>
@@ -220,39 +220,39 @@ const DashboardOverview = () => {
         <div className="space-y-6">
           
           {/* Telemetry panel */}
-          <div className="bg-slate-950 text-white border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
-            <div className="absolute right-0 bottom-0 w-48 h-48 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
-            <h3 className="text-xs font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1.5 mb-5">
+          <div className="bg-white dark:bg-slate-950 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+            <div className="absolute right-0 bottom-0 w-48 h-48 bg-emerald-500/10 dark:bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+            <h3 className="text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 mb-5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
               Live Telemetry Status
             </h3>
             
             <div className="space-y-4">
               {/* API Node */}
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <Globe className="w-4 h-4 text-slate-400" />
-                  <span className="text-xs font-bold text-slate-300">API Node Status</span>
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">API Node Status</span>
                 </div>
                 <Badge variant="green">Healthy</Badge>
               </div>
 
               {/* Database Node */}
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <Database className="w-4 h-4 text-slate-400" />
-                  <span className="text-xs font-bold text-slate-300">Database Cluster</span>
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Database Cluster</span>
                 </div>
-                <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">Online (0.4ms)</span>
+                <span className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-wider">Online (0.4ms)</span>
               </div>
 
               {/* CPU load */}
               <div>
                 <div className="flex items-center justify-between text-xs mb-1.5">
-                  <span className="text-slate-400 font-bold">App Server CPU Load</span>
-                  <span className="text-emerald-400 font-black">{cpuLoad}%</span>
+                  <span className="text-slate-500 dark:text-slate-400 font-bold">App Server CPU Load</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-black">{cpuLoad}%</span>
                 </div>
-                <div className="w-full bg-slate-800 rounded-full h-1 overflow-hidden">
+                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1 overflow-hidden">
                   <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${Math.min(100, cpuLoad * 15)}%` }} />
                 </div>
               </div>
@@ -260,10 +260,10 @@ const DashboardOverview = () => {
               {/* Memory load */}
               <div>
                 <div className="flex items-center justify-between text-xs mb-1.5">
-                  <span className="text-slate-400 font-bold">App Server Memory</span>
-                  <span className="text-slate-300 font-black">{memUsage} MB / 1024 MB</span>
+                  <span className="text-slate-500 dark:text-slate-400 font-bold">App Server Memory</span>
+                  <span className="text-slate-700 dark:text-slate-300 font-black">{memUsage} MB / 1024 MB</span>
                 </div>
-                <div className="w-full bg-slate-800 rounded-full h-1 overflow-hidden">
+                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1 overflow-hidden">
                   <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${(memUsage / 1024) * 100}%` }} />
                 </div>
               </div>
