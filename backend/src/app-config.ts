@@ -28,5 +28,11 @@ export const CONFIG = {
   FRONTEND: {
     // API Base URL for frontend requests
     API_BASE_URL: "http://localhost:3000/api",
-  }
+  },
+
+  // AWS S3 Configuration
+  S3: {
+    // Base URL for catalog images stored in S3
+    CATALOG_IMAGE_BASE_URL: "https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog",
+  },
 };

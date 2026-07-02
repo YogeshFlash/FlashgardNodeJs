@@ -520,7 +520,7 @@ export class MigrationService {
                             legacyId,
                             legacyParentId,
                             sortOrder: 0,
-                            imageUrl: row.ImageUrl && row.ImageUrl !== 'NULL' ? `https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog/${row.ImageUrl}` : null
+                            imageUrl: row.ImageUrl && row.ImageUrl !== 'NULL' ? row.ImageUrl : null
                         }
                     });
                     importedModels++;
@@ -532,7 +532,7 @@ export class MigrationService {
                             categoryId: finalCategoryId,
                             legacyId,
                             legacyParentId,
-                            imageUrl: row.ImageUrl && row.ImageUrl !== 'NULL' ? `https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog/${row.ImageUrl}` : null
+                            imageUrl: row.ImageUrl && row.ImageUrl !== 'NULL' ? row.ImageUrl : null
                         } 
                     });
                     updatedModels++;

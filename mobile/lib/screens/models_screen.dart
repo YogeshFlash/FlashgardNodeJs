@@ -381,33 +381,48 @@ class _ModelsScreenState extends State<ModelsScreen> {
           Expanded(
             child: _isSearching
                 ? _buildSearchResults()
-                : (_isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _filteredItems.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.search_off_outlined, size: 48, color: Colors.grey[300]),
-                                const SizedBox(height: 16),
-                                Text('No results found', style: TextStyle(color: Colors.grey[500])),
-                              ],
-                            ),
+                : RefreshIndicator(
+                    color: const Color(0xFFCE1D19),
+                    backgroundColor: Colors.white,
+                    onRefresh: _fetchData,
+                    child: _isLoading
+                        ? ListView(
+                            children: const [
+                              SizedBox(height: 200),
+                              Center(child: CircularProgressIndicator()),
+                            ],
                           )
-                        : GridView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                              childAspectRatio: 0.8,
-                            ),
-                            itemCount: _filteredItems.length,
-                            itemBuilder: (context, index) {
-                              final item = _filteredItems[index];
-                              return _buildGridItem(item);
-                            },
-                          )),
+                        : _filteredItems.isEmpty
+                            ? ListView(
+                                children: [
+                                  const SizedBox(height: 200),
+                                  Center(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.search_off_outlined, size: 48, color: Colors.grey[300]),
+                                        const SizedBox(height: 16),
+                                        Text('No results found', style: TextStyle(color: Colors.grey[500])),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : GridView.builder(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 3,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                  childAspectRatio: 0.8,
+                                ),
+                                itemCount: _filteredItems.length,
+                                itemBuilder: (context, index) {
+                                  final item = _filteredItems[index];
+                                  return _buildGridItem(item);
+                                },
+                              ),
+                  ),
           ),
         ],
       ),
@@ -507,12 +522,14 @@ class _ModelsScreenState extends State<ModelsScreen> {
     );
   }
 
+  static const _s3CatalogBaseUrl = 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog';
+
   String _getImageUrl(dynamic item) {
     final path = item['imageUrl']?.toString() ?? '';
     if (path.isNotEmpty) {
       if (path.startsWith('http')) return path;
       if (!path.contains('/')) {
-        return 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog/$path';
+        return '$_s3CatalogBaseUrl/$path';
       }
       final cleanPath = path.startsWith('/') ? path.substring(1) : path;
       return '${ApiService.baseUrl.replaceFirst('/api', '')}/$cleanPath';
@@ -520,11 +537,11 @@ class _ModelsScreenState extends State<ModelsScreen> {
     
     // Construct default category image based on name from S3
     final name = item['name']?.toString() ?? '';
-    if (name.isEmpty) return 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog/Phone.jpg';
+    if (name.isEmpty) return '$_s3CatalogBaseUrl/Phone.jpg';
     
     // Format name (Capitalize first letter, lower case the rest)
     final formattedName = name[0].toUpperCase() + name.substring(1).toLowerCase();
-    return 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog/$formattedName.jpg';
+    return '$_s3CatalogBaseUrl/$formattedName.jpg';
   }
 
   IconData _getIconForItem(String name, [String? iconUrl]) {

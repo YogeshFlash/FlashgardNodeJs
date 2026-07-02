@@ -71,9 +71,13 @@ const ModelsPage: React.FC = () => {
   const [normalizingId, setNormalizingId] = useState<string | null>(null);
   const [normalizedId, setNormalizedId] = useState<string | null>(null);
 
+  const S3_CATALOG_BASE = 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog';
+
   const getImageUrl = (url: string) => {
     if (!url) return '';
     if (url.startsWith('http')) return url;
+    // Plain filename (e.g. "Phone.jpg") → resolve to S3 catalog path
+    if (!url.includes('/')) return `${S3_CATALOG_BASE}/${url}`;
     // Remove leading slash if present to prevent double slashes with API_BASE
     const cleanUrl = url.startsWith('/') ? url.substring(1) : url;
     return `${API_BASE.replace('/api', '')}/${cleanUrl}`;
