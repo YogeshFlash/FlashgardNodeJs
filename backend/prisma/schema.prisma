@@ -291,6 +291,7 @@ model ModelCategory {
   createdAt      DateTime        @default(now()) @map("created_at")
   deletedAt      DateTime?       @map("deleted_at")
   isDeleted      Boolean         @default(false) @map("is_deleted")
+  isActive       Boolean         @default(true) @map("is_active")
   iconUrl        String?         @map("icon_url") @db.VarChar(255)
   imageUrl       String?         @map("image_url") @db.VarChar(255)
   sortOrder      Int             @default(0) @map("sort_order")
@@ -310,6 +311,7 @@ model Brand {
   createdAt      DateTime  @default(now()) @map("created_at")
   deletedAt      DateTime? @map("deleted_at")
   isDeleted      Boolean   @default(false) @map("is_deleted")
+  isActive       Boolean   @default(true) @map("is_active")
   imageUrl       String?   @map("image_url") @db.VarChar(255)
   iconUrl        String?   @map("icon_url") @db.VarChar(255)
   sortOrder      Int       @default(0) @map("sort_order")
@@ -325,6 +327,7 @@ model Model {
   createdAt      DateTime        @default(now()) @map("created_at")
   deletedAt      DateTime?       @map("deleted_at")
   isDeleted      Boolean         @default(false) @map("is_deleted")
+  isActive       Boolean         @default(true) @map("is_active")
   imageUrl       String?         @map("image_url") @db.VarChar(255)
   iconUrl        String?         @map("icon_url") @db.VarChar(255)
   categoryId     String          @map("category_id") @db.Uuid

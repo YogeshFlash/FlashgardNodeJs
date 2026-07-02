@@ -12,6 +12,7 @@ export class ModelCategoriesService {
         parentId: data.parentId || null,
         iconUrl: data.iconUrl,
         imageUrl: data.imageUrl,
+        isActive: data.isActive !== undefined ? !!data.isActive : true,
         sortOrder: isNaN(parseInt(data.sortOrder)) ? 0 : parseInt(data.sortOrder),
       },
     });
@@ -65,6 +66,7 @@ export class ModelCategoriesService {
         parentId: data.parentId !== undefined ? data.parentId : undefined,
         iconUrl: data.iconUrl,
         imageUrl: data.imageUrl,
+        isActive: data.isActive !== undefined ? !!data.isActive : undefined,
         sortOrder: data.sortOrder !== undefined ? (isNaN(parseInt(data.sortOrder)) ? 0 : parseInt(data.sortOrder)) : undefined,
       },
     });

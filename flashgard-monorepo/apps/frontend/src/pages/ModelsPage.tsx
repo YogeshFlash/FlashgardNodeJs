@@ -733,6 +733,7 @@ const ModelsPage: React.FC = () => {
                             {activeTab === 'catalog' && <th className="px-6 py-4">Brand</th>}
                             {activeTab === 'patterns' && <th className="px-6 py-4">Cut For</th>}
                             {['categories', 'brands', 'patterns', 'catalog'].includes(activeTab) && <th className="px-6 py-4">Order</th>}
+                            <th className="px-6 py-4">Status</th>
                             <th className="px-6 py-4 text-right">Actions</th>
                           </tr>
                         </thead>
@@ -776,6 +777,15 @@ const ModelsPage: React.FC = () => {
                                   </span>
                                 </td>
                               )}
+                              <td className="px-6 py-4">
+                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                  item.isActive === false 
+                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400' 
+                                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                }`}>
+                                  {item.isActive === false ? 'Inactive' : 'Active'}
+                                </span>
+                              </td>
                               <td className="px-6 py-4 text-right">
                                 <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   {activeTab === 'catalog' && (

@@ -59,7 +59,7 @@ function buildCategoryRows(categories: any[]) {
 }
 
 const ModelCategoryModal: React.FC<ModelCategoryModalProps> = ({ item, categories, onClose, onSave }) => {
-  const [form, setForm] = useState(item || { name: '', parentId: '', sortOrder: 0, imageUrl: '' });
+  const [form, setForm] = useState(item || { name: '', parentId: '', sortOrder: 0, imageUrl: '', isActive: true });
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -286,6 +286,17 @@ const ModelCategoryModal: React.FC<ModelCategoryModalProps> = ({ item, categorie
               onChange={e => setForm({ ...form, sortOrder: e.target.value })} 
               placeholder="0" 
             />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input 
+              type="checkbox"
+              id="isActive"
+              className="rounded border-slate-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)] h-4 w-4"
+              checked={form.isActive === undefined ? true : !!form.isActive} 
+              onChange={e => setForm({ ...form, isActive: e.target.checked })} 
+            />
+            <label htmlFor="isActive" className="text-sm font-medium text-slate-700 select-none">Active</label>
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
