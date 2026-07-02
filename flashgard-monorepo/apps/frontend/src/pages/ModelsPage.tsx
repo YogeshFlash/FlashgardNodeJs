@@ -778,7 +778,7 @@ const ModelsPage: React.FC = () => {
                                 </td>
                               )}
                               <td className="px-6 py-4">
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-extrabold text-slate-900 dark:text-slate-100">
                                   <span className={`w-1.5 h-1.5 rounded-full ${
                                     item.isActive === false 
                                       ? 'bg-rose-500' 
