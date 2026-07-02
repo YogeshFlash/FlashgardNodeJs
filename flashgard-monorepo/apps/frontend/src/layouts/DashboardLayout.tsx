@@ -36,12 +36,14 @@ const Sidebar = ({
   mobile = false, 
   onClose, 
   collapsed = false, 
-  onToggle 
+  onToggle,
+  theme = 'light'
 }: { 
   mobile?: boolean; 
   onClose?: () => void; 
   collapsed?: boolean; 
   onToggle?: () => void;
+  theme?: string;
 }) => {
   const { user } = useAuth();
   const { hasPermission } = usePermissions();
@@ -49,21 +51,23 @@ const Sidebar = ({
   
   const visibleNavItems = navItems.filter(item => hasPermission(item.permission));
 
+  const isDark = theme === 'dark';
+
   return (
-    <aside className={`${mobile ? 'w-full' : `${collapsed ? 'w-20' : 'w-64'} transition-all duration-300 fixed left-0 top-0 h-screen`} bg-zinc-950 text-slate-300 flex flex-col z-20`}>
-      <div className={`h-16 flex items-center px-6 border-b border-zinc-900 bg-zinc-950 ${collapsed ? 'justify-center px-0' : 'justify-between'}`}>
-        <div className={`flex items-center gap-3 font-bold text-white tracking-wide ${collapsed ? 'hidden' : 'flex'}`}>
+    <aside className={`${mobile ? 'w-full' : `${collapsed ? 'w-20' : 'w-64'} transition-all duration-300 fixed left-0 top-0 h-screen`} ${isDark ? 'bg-zinc-950 text-slate-400 border-r border-zinc-900' : 'bg-slate-50 text-slate-600 border-r border-slate-200'} flex flex-col z-20`}>
+      <div className={`h-16 flex items-center px-6 border-b ${isDark ? 'border-zinc-900 bg-zinc-950' : 'border-slate-200 bg-white'} ${collapsed ? 'justify-center px-0' : 'justify-between'}`}>
+        <div className={`flex items-center gap-3 font-bold ${isDark ? 'text-white' : 'text-slate-800'} tracking-wide ${collapsed ? 'hidden' : 'flex'}`}>
           <img src={logo} alt="Flashgard" className="w-8 h-8 object-contain" />
           <span className="text-lg">Flashgard</span>
         </div>
         <button 
           onClick={onToggle}
-          className={`p-1.5 text-slate-400 hover:text-white hover:bg-zinc-900 rounded-lg transition-colors ${collapsed ? '' : 'ml-2'}`}
+          className={`p-1.5 rounded-lg transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-zinc-900' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'} ${collapsed ? '' : 'ml-2'}`}
         >
           <Menu className="w-5 h-5" />
         </button>
         {mobile && (
-          <button onClick={onClose} className="text-slate-400 hover:text-white ml-2">
+          <button onClick={onClose} className={`ml-2 ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'}`}>
             <X className="w-5 h-5" />
           </button>
         )}
@@ -81,8 +85,12 @@ const Sidebar = ({
               `flex items-center rounded-lg transition-all font-medium text-sm gap-3
               ${collapsed ? 'justify-center p-2.5' : 'px-3 py-2.5'}
               ${isActive
-                ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20'
-                : 'hover:bg-zinc-900 hover:text-white text-slate-400'}`
+                ? isDark 
+                  ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20' 
+                  : 'bg-[var(--color-primary)]/5 text-[var(--color-primary)] border border-[var(--color-primary)]/10'
+                : isDark 
+                  ? 'hover:bg-zinc-900 hover:text-white text-slate-400' 
+                  : 'hover:bg-slate-100 hover:text-slate-900 text-slate-500'}`
             }
           >
             <item.icon className="w-5 h-5 flex-shrink-0" />
@@ -91,7 +99,7 @@ const Sidebar = ({
         ))}
       </nav>
 
-      <div className={`p-4 border-t border-zinc-900 ${collapsed ? 'flex justify-center' : ''}`}>
+      <div className={`p-4 border-t ${isDark ? 'border-zinc-900' : 'border-slate-200'} ${collapsed ? 'flex justify-center' : ''}`}>
         {!collapsed && (
           <>
             {user?.isSuperAdmin ? (
@@ -109,7 +117,7 @@ const Sidebar = ({
           </>
         )}
         {collapsed && (
-          <div className="w-8 h-8 rounded-full bg-zinc-900 flex items-center justify-center text-xs text-slate-500">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs text-slate-500 ${isDark ? 'bg-zinc-900' : 'bg-slate-100'}`}>
             {user?.email?.slice(0, 1).toUpperCase()}
           </div>
         )}
@@ -251,7 +259,7 @@ const DashboardLayout = () => {
     <div className="min-h-screen bg-slate-50">
       {/* Desktop Sidebar */}
       <div className="hidden md:block">
-        <Sidebar collapsed={isCollapsed} onToggle={() => setIsCollapsed(!isCollapsed)} />
+        <Sidebar collapsed={isCollapsed} onToggle={() => setIsCollapsed(!isCollapsed)} theme={theme} />
       </div>
 
       {/* Mobile Overlay */}
@@ -259,7 +267,7 @@ const DashboardLayout = () => {
         <div className="fixed inset-0 z-30 md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
           <div className="absolute left-0 top-0 h-full w-72">
-            <Sidebar mobile onClose={() => setMobileOpen(false)} />
+            <Sidebar mobile onClose={() => setMobileOpen(false)} theme={theme} />
           </div>
         </div>
       )}
