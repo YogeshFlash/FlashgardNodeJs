@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../widgets/plotter_status_action.dart';
+import 'cut_selection_screen.dart';
 import 'diy_designer_screen.dart';
+import 'recharge_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,7 +19,13 @@ class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> _promotions = [];
   List<dynamic> _actions = [];
   List<dynamic> _infocards = [];
+  List<dynamic> _recentCuts = [];
+  List<dynamic> _topCuts = [];
   int _activePage = 0;
+  int? _walletBalance;
+  bool _hasUnlimited = false;
+  String? _unlimitedPlanType;
+  String? _unlimitedEndDate;
 
   @override
   void initState() {
@@ -34,11 +45,28 @@ class _HomeScreenState extends State<HomeScreen> {
         _promotions = data['promotions'] ?? [];
         _actions = data['actions'] ?? [];
         _infocards = data['infocards'] ?? [];
+        _recentCuts = data['recentCuts'] ?? [];
+        _topCuts = data['topCuts'] ?? [];
+        
+        final walletData = data['wallet'];
+        if (walletData != null) {
+          _walletBalance = walletData['balance'];
+          _hasUnlimited = walletData['hasUnlimited'] ?? false;
+          _unlimitedPlanType = walletData['unlimitedPlanType'];
+          _unlimitedEndDate = walletData['unlimitedEndDate'];
+        } else {
+          _walletBalance = null;
+          _hasUnlimited = false;
+          _unlimitedPlanType = null;
+          _unlimitedEndDate = null;
+        }
         _isLoading = false;
       });
     } else if (mounted) {
       // Fallback/Default static values if offline or error
       setState(() {
+        _recentCuts = [];
+        _topCuts = [];
         _promotions = [
           {
             'title': 'Exclusive iPhone 17 Launch',
@@ -120,17 +148,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     final bgGradient = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [
-        const Color(0xFFF8FAFC), // Very soft slate 50
-        const Color(0xFFF1F5F9), // Slate 100
-      ],
+      colors: isDark
+          ? [const Color(0xFF0F172A), const Color(0xFF1E293B)]
+          : [const Color(0xFFF8FAFC), const Color(0xFFF1F5F9)],
     );
 
+    final authProvider = Provider.of<AuthProvider>(context);
+    final userName = authProvider.userName ?? 'Flashgarder';
+
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
       body: Container(
         decoration: BoxDecoration(gradient: bgGradient),
         child: SafeArea(
@@ -142,7 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
               )
             : RefreshIndicator(
                 color: const Color(0xFFCE1D19),
-                backgroundColor: Colors.white,
+                backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
                 onRefresh: _loadHomeContent,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -155,56 +188,159 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Text(
-                                      'Yo! ',
-                                      style: TextStyle(
-                                        color: Color(0xFF0F172A),
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.w900,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Yo! ',
+                                        style: TextStyle(
+                                          color: theme.colorScheme.onSurface,
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w900,
+                                        ),
                                       ),
-                                    ),
-                                    Text(
-                                      'Flashgarder ⚡',
-                                      style: TextStyle(
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.w900,
-                                        foreground: Paint()..shader = const LinearGradient(
-                                          colors: [Color(0xFFCE1D19), Color(0xFFFF9500)],
-                                        ).createShader(const Rect.fromLTWH(0.0, 0.0, 200.0, 70.0)),
+                                      Expanded(
+                                        child: Text(
+                                          '$userName ⚡',
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                          style: TextStyle(
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.w900,
+                                            foreground: Paint()..shader = const LinearGradient(
+                                              colors: [Color(0xFFCE1D19), Color(0xFFFF9500)],
+                                            ).createShader(const Rect.fromLTWH(0.0, 0.0, 200.0, 70.0)),
+                                          ),
+                                        ),
                                       ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Ready to cut some awesome protector?',
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
                                     ),
-                                  ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            const PlotterStatusAction(),
+                          ],
+                        ),
+                      ),
+
+                      // Wallet Balance Card
+                      if (_walletBalance != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+                          child: Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: isDark
+                                    ? [const Color(0xFF1E293B), const Color(0xFF0F172A)]
+                                    : [Colors.white, const Color(0xFFF1F5F9)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                                width: 1.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.03),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Ready to cut some awesome skins?',
-                                  style: TextStyle(
-                                    color: const Color(0xFF475569),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.account_balance_wallet_rounded,
+                                  color: Color(0xFF4F46E5),
+                                  size: 32,
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _hasUnlimited
+                                            ? (_unlimitedPlanType == 'LIFETIME' ? 'Lifetime Sub' : 'Unlimited cuts')
+                                            : 'Wallet Balance',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        _hasUnlimited
+                                            ? 'Active'
+                                            : '$_walletBalance Credits',
+                                        style: TextStyle(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w900,
+                                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                      if (_hasUnlimited && _unlimitedEndDate != null) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'Expires: ${DateTime.tryParse(_unlimitedEndDate!)?.toLocal().toString().split(' ')[0] ?? _unlimitedEndDate}',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.orange.shade600,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                ElevatedButton.icon(
+                                  onPressed: () async {
+                                    final result = await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(builder: (context) => const RechargeScreen()),
+                                    );
+                                    if (result == true) {
+                                      _loadHomeContent();
+                                    }
+                                  },
+                                  icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                                  label: const Text('Recharge'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF4F46E5),
+                                    foregroundColor: Colors.white,
+                                    minimumSize: const Size(0, 40),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                    elevation: 0,
                                   ),
                                 ),
                               ],
                             ),
-                            Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: const Color(0xFF0F172A).withOpacity(0.08), width: 1.5),
-                                color: Colors.white,
-                              ),
-                              child: IconButton(
-                                icon: const Icon(Icons.refresh_rounded, color: Color(0xFF0F172A)),
-                                onPressed: _loadHomeContent,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
+
+                      const SizedBox(height: 8),
 
                       // Promotions Carousel
                       if (_promotions.isNotEmpty) ...[
@@ -251,14 +387,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       
                       // Quick Actions Grid
                       if (_actions.isNotEmpty) ...[
-                        const Padding(
-                          padding: EdgeInsets.fromLTRB(20, 32, 20, 16),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 32, 20, 16),
                           child: Text(
                             'Quick Actions',
                             style: TextStyle(
                               fontSize: 20, 
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFF0F172A),
+                              color: theme.colorScheme.onSurface,
                               letterSpacing: 0.5,
                             ),
                           ),
@@ -291,16 +427,112 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ],
 
+                      // R                      // Recent Cuts Section
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Recent Cuts',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                                color: theme.colorScheme.onSurface,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            Text(
+                              'Tap to Re-cut ⚡',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        height: 105,
+                        child: _recentCuts.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                              child: _buildEmptyStateCard(
+                                context,
+                                icon: Icons.history_toggle_off_rounded,
+                                message: "No recent cuts. Start cutting to see them here!",
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              scrollDirection: Axis.horizontal,
+                              itemCount: _recentCuts.length,
+                              itemBuilder: (context, index) {
+                                final cut = _recentCuts[index];
+                                return _buildRecentCutCard(context, cut);
+                              },
+                            ),
+                      ),
+
+                      // Top Cuts Section
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Top Cuts',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                                color: theme.colorScheme.onSurface,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            Text(
+                              'Most Popular 🔥',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber[700],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        height: 105,
+                        child: _topCuts.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                              child: _buildEmptyStateCard(
+                                context,
+                                icon: Icons.local_fire_department_rounded,
+                                message: "No top cuts yet. Keep cutting to populate this list!",
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              scrollDirection: Axis.horizontal,
+                              itemCount: _topCuts.length,
+                              itemBuilder: (context, index) {
+                                final item = _topCuts[index];
+                                return _buildTopCutCard(context, item);
+                              },
+                            ),
+                      ),
+
                       // Information & Updates
                       if (_infocards.isNotEmpty) ...[
-                        const Padding(
-                          padding: EdgeInsets.fromLTRB(20, 36, 20, 16),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 36, 20, 16),
                           child: Text(
                             'What\'s New?',
                             style: TextStyle(
                               fontSize: 20, 
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFF0F172A),
+                              color: theme.colorScheme.onSurface,
                               letterSpacing: 0.5,
                             ),
                           ),
@@ -425,16 +657,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildActionItem(IconData icon, String label, List<Color> gradientColors, VoidCallback onTap) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Expanded(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 4),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF0F172A).withOpacity(0.05), width: 1.5),
+          border: Border.all(
+            color: isDark ? const Color(0xFF334155) : const Color(0xFF0F172A).withOpacity(0.05),
+            width: 1.5,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.02),
+              color: Colors.black.withOpacity(isDark ? 0.2 : 0.02),
               blurRadius: 8,
               offset: const Offset(0, 2),
             )
@@ -473,10 +711,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     label, 
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11, 
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
+                      color: theme.colorScheme.onSurface,
                       letterSpacing: 0.1,
                     ),
                     maxLines: 1,
@@ -492,6 +730,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildInfoCard(BuildContext context, String title, String excerpt, String tagLabel, int index) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     // Determine dynamic accent color based on index to look rich and playful
     final accentColors = [
       const Color(0xFFCE1D19), // Gold
@@ -505,12 +746,15 @@ class _HomeScreenState extends State<HomeScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF0F172A).withOpacity(0.05), width: 1.5),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : const Color(0xFF0F172A).withOpacity(0.05),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           )
@@ -547,10 +791,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 6),
                 Text(
                   title, 
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w900, 
                     fontSize: 16,
-                    color: Color(0xFF0F172A),
+                    color: theme.colorScheme.onSurface,
                     height: 1.2,
                   ),
                 ),
@@ -558,7 +802,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(
                   excerpt, 
                   style: TextStyle(
-                    color: const Color(0xFF475569), 
+                    color: theme.colorScheme.onSurface.withOpacity(0.6), 
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                     height: 1.4,
@@ -567,6 +811,304 @@ class _HomeScreenState extends State<HomeScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentCutCard(BuildContext context, dynamic cut) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final model = cut['model'];
+    
+    // Fallback if model relation doesn't exist
+    if (model == null) return const SizedBox.shrink();
+
+    final modelName = cut['modelName'] ?? model['name'] ?? 'Unknown Model';
+    final brandName = cut['brandName'] ?? 'Device';
+    final patternName = cut['patternName'] ?? 'Custom Cut';
+    
+    // Parse time
+    String timeAgo = '';
+    try {
+      final createdAt = DateTime.parse(cut['createdAt']);
+      final diff = DateTime.now().difference(createdAt);
+      if (diff.inMinutes < 60) {
+        timeAgo = '${diff.inMinutes}m ago';
+      } else if (diff.inHours < 24) {
+        timeAgo = '${diff.inHours}h ago';
+      } else {
+        timeAgo = '${diff.inDays}d ago';
+      }
+    } catch (_) {
+      timeAgo = 'Recent';
+    }
+
+    return Container(
+      width: 270,
+      margin: const EdgeInsets.fromLTRB(6, 4, 6, 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : const Color(0xFF0F172A).withOpacity(0.05),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          )
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () {
+            final modelItem = {
+              'id': model['id'],
+              'name': model['name'],
+              'imageUrl': model['imageUrl'],
+            };
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => CutSelectionScreen(item: modelItem),
+              ),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Row(
+              children: [
+                // Icon / Thumbnail Container
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    Icons.history_toggle_off_rounded,
+                    color: theme.colorScheme.primary,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                
+                // Text details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              modelName,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            timeAgo,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onSurface.withOpacity(0.4),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '$brandName • $patternName',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopCutCard(BuildContext context, dynamic item) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final model = item['model'];
+    final cutCount = item['cutCount'] ?? 0;
+    
+    if (model == null) return const SizedBox.shrink();
+
+    final modelName = model['name'] ?? 'Unknown Model';
+    final brandName = model['brand']?['name'] ?? 'Device';
+
+    return Container(
+      width: 270,
+      margin: const EdgeInsets.fromLTRB(6, 4, 6, 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : const Color(0xFF0F172A).withOpacity(0.05),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          )
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () {
+            final modelItem = {
+              'id': model['id'],
+              'name': model['name'],
+              'imageUrl': model['imageUrl'],
+            };
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => CutSelectionScreen(item: modelItem),
+              ),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Row(
+              children: [
+                // Star/Flame Icon Container
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.local_fire_department_rounded,
+                    color: Colors.amber,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                
+                // Text details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        modelName,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              brandName,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '$cutCount cuts',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyStateCard(BuildContext context, {required IconData icon, required String message}) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : const Color(0xFF0F172A).withOpacity(0.05),
+          width: 1.5,
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: theme.colorScheme.primary.withOpacity(0.5), size: 30),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurface.withOpacity(0.5),
+              ),
             ),
           ),
         ],
