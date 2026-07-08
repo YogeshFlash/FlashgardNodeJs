@@ -26,20 +26,39 @@ export class RechargeController {
   @Post('packages')
   async createPackage(@Request() req: any, @Body() body: any) {
     if (!req.user?.isSuperAdmin) throw new BadRequestException('Super admin only');
-    const { name, description, credits, price, currency } = body;
-    if (!name || !credits || !price) throw new BadRequestException('name, credits, price are required');
-    return this.rechargeService.createPackage({ name, description, credits: Number(credits), price: Number(price), currency });
+    const { name, description, planType, credits, validityDays, price, currency } = body;
+    if (!name || !price) throw new BadRequestException('name and price are required');
+    
+    const pType = planType || 'USAGE';
+    if (pType === 'USAGE' && credits === undefined) {
+      throw new BadRequestException('credits is required for USAGE plans');
+    }
+    if (pType === 'UNLIMITED' && !validityDays) {
+      throw new BadRequestException('validityDays is required for UNLIMITED plans');
+    }
+
+    return this.rechargeService.createPackage({
+      name,
+      description,
+      planType: pType,
+      credits: credits !== undefined ? Number(credits) : null,
+      validityDays: validityDays !== undefined ? Number(validityDays) : null,
+      price: Number(price),
+      currency,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
   @Patch('packages/:id')
   async updatePackage(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     if (!req.user?.isSuperAdmin) throw new BadRequestException('Super admin only');
-    const { name, description, credits, price, isActive } = body;
+    const { name, description, planType, credits, validityDays, price, isActive } = body;
     return this.rechargeService.updatePackage(id, {
       ...(name !== undefined && { name }),
       ...(description !== undefined && { description }),
-      ...(credits !== undefined && { credits: Number(credits) }),
+      ...(planType !== undefined && { planType }),
+      ...(credits !== undefined && { credits: credits !== null ? Number(credits) : null }),
+      ...(validityDays !== undefined && { validityDays: validityDays !== null ? Number(validityDays) : null }),
       ...(price !== undefined && { price: Number(price) }),
       ...(isActive !== undefined && { isActive }),
     });

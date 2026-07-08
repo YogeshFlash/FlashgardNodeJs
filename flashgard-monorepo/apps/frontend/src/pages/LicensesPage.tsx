@@ -737,7 +737,9 @@ const RechargePackageModal = ({ pkg, onClose, onSave }: { pkg?: any; onClose: ()
   const [form, setForm] = useState({
     name: pkg?.name || '',
     description: pkg?.description || '',
+    planType: pkg?.planType || 'USAGE',
     credits: pkg?.credits?.toString() || '',
+    validityDays: pkg?.validityDays?.toString() || '',
     price: pkg ? Number(pkg.price).toString() : '',
     currency: pkg?.currency || 'INR',
   });
@@ -747,13 +749,26 @@ const RechargePackageModal = ({ pkg, onClose, onSave }: { pkg?: any; onClose: ()
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!form.name || !form.credits || !form.price) { setError('Name, Credits and Price are required.'); return; }
+    if (!form.name || !form.price) { setError('Name and Price are required.'); return; }
+    if (form.planType === 'USAGE' && !form.credits) { setError('Credits is required for USAGE plans.'); return; }
+    if (form.planType === 'UNLIMITED' && !form.validityDays) { setError('Validity Days is required for UNLIMITED plans.'); return; }
+
     setLoading(true);
     try {
+      const payload = {
+        name: form.name,
+        description: form.description,
+        planType: form.planType,
+        credits: form.planType === 'USAGE' ? Number(form.credits) : null,
+        validityDays: form.planType === 'UNLIMITED' ? Number(form.validityDays) : null,
+        price: Number(form.price),
+        currency: form.currency,
+      };
+
       if (isEdit) {
-        await rechargeApi.updatePackage(pkg.id, { name: form.name, description: form.description, credits: Number(form.credits), price: Number(form.price) });
+        await rechargeApi.updatePackage(pkg.id, payload);
       } else {
-        await rechargeApi.createPackage({ name: form.name, description: form.description, credits: Number(form.credits), price: Number(form.price), currency: form.currency });
+        await rechargeApi.createPackage(payload);
       }
       onSave();
     } catch (err: any) {
@@ -780,16 +795,36 @@ const RechargePackageModal = ({ pkg, onClose, onSave }: { pkg?: any; onClose: ()
             <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Description</label>
             <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional description" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Credits (Cuts) *</label>
-              <input type="number" min="1" value={form.credits} onChange={e => setForm(f => ({ ...f, credits: e.target.value }))} placeholder="500" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Plan Type *</label>
+              <select value={form.planType} onChange={e => setForm(f => ({ ...f, planType: e.target.value }))} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white">
+                <option value="USAGE">Usage (Cuts)</option>
+                <option value="UNLIMITED">Unlimited Time</option>
+                <option value="LIFETIME">Lifetime Unlimited</option>
+              </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Price (₹) *</label>
               <input type="number" min="1" step="0.01" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="499" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
             </div>
           </div>
+
+          {form.planType === 'USAGE' && (
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Credits (Cuts) *</label>
+              <input type="number" min="1" value={form.credits} onChange={e => setForm(f => ({ ...f, credits: e.target.value }))} placeholder="500" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+            </div>
+          )}
+
+          {form.planType === 'UNLIMITED' && (
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Validity Days *</label>
+              <input type="number" min="1" value={form.validityDays} onChange={e => setForm(f => ({ ...f, validityDays: e.target.value }))} placeholder="30" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+            </div>
+          )}
+
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">Cancel</button>
             <button type="submit" disabled={loading} className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition-colors text-sm">
@@ -1593,14 +1628,28 @@ const LicensesPage = () => {
                 </div>
                 <div className="flex items-end justify-between mt-1">
                   <div>
-                    <p className="text-3xl font-black text-indigo-700">{pkg.credits}</p>
-                    <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Cuts</p>
+                    {pkg.planType === 'UNLIMITED' ? (
+                      <>
+                        <p className="text-2xl font-black text-indigo-700">{pkg.validityDays || 0}</p>
+                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Days</p>
+                      </>
+                    ) : pkg.planType === 'LIFETIME' ? (
+                      <>
+                        <p className="text-xl font-black text-indigo-700">Lifetime</p>
+                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Plan</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-3xl font-black text-indigo-700">{pkg.credits}</p>
+                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Cuts</p>
+                      </>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="text-xl font-black text-slate-800 flex items-center gap-0.5">
                       <IndianRupee className="w-4 h-4" />{Number(pkg.price).toLocaleString('en-IN')}
                     </p>
-                    <p className="text-xs text-slate-400">{pkg.currency || 'INR'}</p>
+                    <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider">{pkg.planType || 'USAGE'}</p>
                   </div>
                 </div>
                 <div className="flex gap-2 mt-1">

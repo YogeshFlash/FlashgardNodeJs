@@ -55,6 +55,7 @@ model Organization {
   dealerMasterQRs        DealerMasterQR[]    @relation("DealerMasterQRs")
   ownerMasterQRs         DealerMasterQR[]    @relation("OwnerMasterQRs")
   plotters               Plotter[]
+  payments               PaymentTransaction[]
 
   @@map("organizations")
 }
@@ -181,6 +182,7 @@ model User {
   createdWorkOrders      WorkOrder[]
   MachineCutLog          MachineCutLog[]
   creatorMasterQRs       DealerMasterQR[]    @relation("CreatorMasterQRs")
+  payments               PaymentTransaction[]
 
   @@map("users")
 }
@@ -971,6 +973,12 @@ model PlotterMaster {
   maxSpeed      Int?     @map("max_speed")
   maxForce      Int?     @map("max_force")
   status        String   @default("ACTIVE") @db.VarChar(50)
+  splitCommands Boolean  @default(false) @map("split_commands")
+  startString   String?  @map("start_string") @db.VarChar(255)
+  endString     String?  @map("end_string") @db.VarChar(255)
+  xySeparator   String?  @map("xy_separator") @db.VarChar(50)
+  mirrorX       Boolean  @default(false) @map("mirror_x")
+  mirrorY       Boolean  @default(false) @map("mirror_y")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
 
@@ -1007,9 +1015,6 @@ model PlotterMasterLegacy {
   targetPenUp                Int?     @map("target_pen_up")
   targetPenDown              Int?     @map("target_pen_down")
   baseXYSeparator            String?  @map("base_xy_separator") @db.VarChar(50)
-  xySeparator                String?  @map("xy_separator") @db.VarChar(50)
-  startString                String?  @map("start_string") @db.VarChar(255)
-  endString                  String?  @map("end_string") @db.VarChar(255)
   isAndroid                  Boolean  @default(false) @map("is_android")
 
   plotterMaster PlotterMaster @relation(fields: [plotterMasterId], references: [id], onDelete: Cascade)
@@ -1141,6 +1146,55 @@ model MobileInfoCard {
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("mobile_info_cards")
+}
+
+model RechargePackage {
+  id           String               @id @default(uuid()) @db.Uuid
+  name         String               @db.VarChar(150)
+  description  String?              @db.Text
+  planType     CreditPlanType       @default(USAGE) @map("plan_type")
+  credits      Int?
+  validityDays Int?                 @map("validity_days")
+  price        Decimal              @db.Decimal(10, 2)
+  currency     String               @default("INR") @db.VarChar(10)
+  isActive     Boolean              @default(true) @map("is_active")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @default(now()) @updatedAt @map("updated_at")
+  payments     PaymentTransaction[]
+
+  @@map("recharge_packages")
+}
+
+model PaymentTransaction {
+  id                String          @id @default(uuid()) @db.Uuid
+  organizationId    String          @map("organization_id") @db.Uuid
+  userId            String          @map("user_id") @db.Uuid
+  packageId         String          @map("package_id") @db.Uuid
+  razorpayOrderId   String          @unique @map("razorpay_order_id")
+  razorpayPaymentId String?         @unique @map("razorpay_payment_id")
+  amount            Decimal         @db.Decimal(10, 2)
+  status            PaymentStatus   @default(PENDING)
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at")
+
+  organization      Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  package           RechargePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@map("payment_transactions")
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model SystemSetting {
+  key   String @id @db.VarChar(100)
+  value String @db.Text
+
+  @@map("system_settings")
 }
 
 

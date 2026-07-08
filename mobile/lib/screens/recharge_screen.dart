@@ -392,7 +392,11 @@ class _RechargeScreenState extends State<RechargeScreen> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        '${pkg['credits']} Cuts',
+                        pkg['planType'] == 'UNLIMITED'
+                            ? '${pkg['validityDays']} Days Unlimited'
+                            : pkg['planType'] == 'LIFETIME'
+                                ? 'Lifetime Unlimited'
+                                : '${pkg['credits']} Cuts',
                         style: GoogleFonts.outfit(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,

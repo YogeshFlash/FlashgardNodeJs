@@ -41,11 +41,11 @@ export class RechargeService {
     return this.prisma.rechargePackage.findMany({ orderBy: { price: 'asc' } });
   }
 
-  async createPackage(data: { name: string; description?: string; credits: number; price: number; currency?: string }) {
+  async createPackage(data: { name: string; description?: string; planType: any; credits?: number | null; validityDays?: number | null; price: number; currency?: string }) {
     return this.prisma.rechargePackage.create({ data: { ...data, currency: data.currency || 'INR' } });
   }
 
-  async updatePackage(id: string, data: { name?: string; description?: string; credits?: number; price?: number; isActive?: boolean }) {
+  async updatePackage(id: string, data: { name?: string; description?: string; planType?: any; credits?: number | null; validityDays?: number | null; price?: number; isActive?: boolean }) {
     return this.prisma.rechargePackage.update({ where: { id }, data });
   }
 
@@ -214,53 +214,67 @@ export class RechargeService {
         distributorId = flashgardOrg?.id || 'f36fa0d9-2f6b-4d6a-be1c-06062611f870';
       }
 
+      // Calculate end date for UNLIMITED packages
+      let endDate: Date | null = null;
+      if (transaction.package.planType === 'UNLIMITED' && transaction.package.validityDays) {
+        endDate = new Date();
+        endDate.setDate(endDate.getDate() + transaction.package.validityDays);
+      }
+
       // Create CutCredit (Assignment History log entry)
       await tx.cutCredit.create({
         data: {
-          planType: 'USAGE',
-          credits: transaction.package.credits,
+          planType: transaction.package.planType,
+          credits: transaction.package.planType === 'USAGE' ? (transaction.package.credits ?? 0) : null,
+          validityDays: transaction.package.planType === 'UNLIMITED' ? transaction.package.validityDays : null,
           notes: `UPI Online Recharge • Gateway: Razorpay • Order ID: ${transaction.razorpayOrderId} • Payment ID: ${razorpayPaymentId}`,
           ownerId: distributorId,
           tenantId: transaction.organizationId,
           licenseId: activeLicense?.id || null,
           startDate: new Date(),
+          endDate: endDate,
         },
       });
 
+      // Ensure entity wallet exists for all recharges
       if (!wallet) {
+        const initialCredits = transaction.package.planType === 'USAGE' ? (transaction.package.credits ?? 0) : 0;
         const newWallet = await tx.entityWallet.create({
           data: {
             tenantId: transaction.organizationId,
             orgId: transaction.organizationId,
-            totalCredits: transaction.package.credits,
+            totalCredits: initialCredits,
             usedCredits: 0,
-            balance: transaction.package.credits,
+            balance: initialCredits,
           },
         });
         
-        await tx.creditTransaction.create({
-          data: {
-            walletId: newWallet.id,
-            amount: transaction.package.credits,
-            type: 'CREDIT',
-            source: 'RECHARGE',
-            notes: `UPI Wallet Recharge - ${transaction.package.name}`,
-            tenantId: transaction.organizationId,
-          },
-        });
-      } else {
+        if (transaction.package.planType === 'USAGE' && (transaction.package.credits ?? 0) > 0) {
+          await tx.creditTransaction.create({
+            data: {
+              walletId: newWallet.id,
+              amount: transaction.package.credits ?? 0,
+              type: 'CREDIT',
+              source: 'RECHARGE',
+              notes: `UPI Wallet Recharge - ${transaction.package.name}`,
+              tenantId: transaction.organizationId,
+            },
+          });
+        }
+      } else if (transaction.package.planType === 'USAGE' && (transaction.package.credits ?? 0) > 0) {
+        // Only update wallet balance for USAGE packs
         await tx.entityWallet.update({
           where: { id: wallet.id },
           data: {
-            totalCredits: { increment: transaction.package.credits },
-            balance: { increment: transaction.package.credits },
+            totalCredits: { increment: transaction.package.credits ?? 0 },
+            balance: { increment: transaction.package.credits ?? 0 },
           },
         });
 
         await tx.creditTransaction.create({
           data: {
             walletId: wallet.id,
-            amount: transaction.package.credits,
+            amount: transaction.package.credits ?? 0,
             type: 'CREDIT',
             source: 'RECHARGE',
             notes: `UPI Wallet Recharge - ${transaction.package.name}`,
@@ -308,23 +322,89 @@ export class RechargeService {
                 },
               });
 
+              // Query active license for this tenant
+              const activeLicense = await tx.orgLicense.findFirst({
+                where: {
+                  tenantId: transaction.organizationId,
+                  status: 'ACTIVE',
+                },
+              });
+
+              // Query Flashgard parent organization to set as the credit distributor
+              const distributorSetting = await tx.systemSetting.findUnique({
+                where: { key: 'recharge_distributor_id' }
+              });
+              let distributorId = distributorSetting?.value;
+              if (!distributorId) {
+                const flashgardOrg = await tx.organization.findFirst({
+                  where: { name: { contains: 'Flashgard Pvt Ltd Hyd', mode: 'insensitive' } }
+                });
+                distributorId = flashgardOrg?.id || 'f36fa0d9-2f6b-4d6a-be1c-06062611f870';
+              }
+
+              // Calculate end date for UNLIMITED packages
+              let endDate: Date | null = null;
+              if (transaction.package.planType === 'UNLIMITED' && transaction.package.validityDays) {
+                endDate = new Date();
+                endDate.setDate(endDate.getDate() + transaction.package.validityDays);
+              }
+
+              // Create CutCredit (Assignment History log entry)
+              await tx.cutCredit.create({
+                data: {
+                  planType: transaction.package.planType,
+                  credits: transaction.package.planType === 'USAGE' ? (transaction.package.credits ?? 0) : null,
+                  validityDays: transaction.package.planType === 'UNLIMITED' ? transaction.package.validityDays : null,
+                  notes: `UPI Webhook Recharge • Gateway: Razorpay • Order ID: ${transaction.razorpayOrderId} • Payment ID: ${razorpayPaymentId}`,
+                  ownerId: distributorId,
+                  tenantId: transaction.organizationId,
+                  licenseId: activeLicense?.id || null,
+                  startDate: new Date(),
+                  endDate: endDate,
+                },
+              });
+
               const wallet = await tx.entityWallet.findFirst({
                 where: { tenantId: transaction.organizationId },
               });
 
-              if (wallet) {
+              if (!wallet) {
+                const initialCredits = transaction.package.planType === 'USAGE' ? (transaction.package.credits ?? 0) : 0;
+                const newWallet = await tx.entityWallet.create({
+                  data: {
+                    tenantId: transaction.organizationId,
+                    orgId: transaction.organizationId,
+                    totalCredits: initialCredits,
+                    usedCredits: 0,
+                    balance: initialCredits,
+                  },
+                });
+
+                if (transaction.package.planType === 'USAGE' && (transaction.package.credits ?? 0) > 0) {
+                  await tx.creditTransaction.create({
+                    data: {
+                      walletId: newWallet.id,
+                      amount: transaction.package.credits ?? 0,
+                      type: 'CREDIT',
+                      source: 'RECHARGE',
+                      notes: `UPI Webhook Wallet Recharge - ${transaction.package.name}`,
+                      tenantId: transaction.organizationId,
+                    },
+                  });
+                }
+              } else if (transaction.package.planType === 'USAGE' && (transaction.package.credits ?? 0) > 0) {
                 await tx.entityWallet.update({
                   where: { id: wallet.id },
                   data: {
-                    totalCredits: { increment: transaction.package.credits },
-                    balance: { increment: transaction.package.credits },
+                    totalCredits: { increment: transaction.package.credits ?? 0 },
+                    balance: { increment: transaction.package.credits ?? 0 },
                   },
                 });
 
                 await tx.creditTransaction.create({
                   data: {
                     walletId: wallet.id,
-                    amount: transaction.package.credits,
+                    amount: transaction.package.credits ?? 0,
                     type: 'CREDIT',
                     source: 'RECHARGE',
                     notes: `UPI Webhook Wallet Recharge - ${transaction.package.name}`,
