@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, Plus, Send, X, AlertCircle, RotateCcw, Search, ChevronLeft, ChevronRight, Gift,
-  Ticket, List, History
+  Ticket, List, History, CreditCard, Pencil, Trash2, ToggleLeft, ToggleRight, IndianRupee, BadgeCheck, Clock
 } from 'lucide-react';
-import { licensesApi, cutCreditsApi, orgsApi, modelCategoriesApi } from '../lib/api';
+import { licensesApi, cutCreditsApi, orgsApi, modelCategoriesApi, rechargeApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 
 const Badge = ({ children, variant = 'gray' }: any) => {
@@ -732,10 +732,80 @@ const DispatchModal = ({ onClose, onSave, orgs, type, selectedIds, items }: any)
   );
 };
 
+const RechargePackageModal = ({ pkg, onClose, onSave }: { pkg?: any; onClose: () => void; onSave: () => void }) => {
+  const isEdit = !!pkg;
+  const [form, setForm] = useState({
+    name: pkg?.name || '',
+    description: pkg?.description || '',
+    credits: pkg?.credits?.toString() || '',
+    price: pkg ? Number(pkg.price).toString() : '',
+    currency: pkg?.currency || 'INR',
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!form.name || !form.credits || !form.price) { setError('Name, Credits and Price are required.'); return; }
+    setLoading(true);
+    try {
+      if (isEdit) {
+        await rechargeApi.updatePackage(pkg.id, { name: form.name, description: form.description, credits: Number(form.credits), price: Number(form.price) });
+      } else {
+        await rechargeApi.createPackage({ name: form.name, description: form.description, credits: Number(form.credits), price: Number(form.price), currency: form.currency });
+      }
+      onSave();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to save package');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between p-6 border-b border-slate-100">
+          <h2 className="text-lg font-bold text-slate-800">{isEdit ? 'Edit Package' : 'New Recharge Package'}</h2>
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"><X className="w-5 h-5" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && <div className="flex gap-2 items-start p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600"><AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />{error}</div>}
+          <div>
+            <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Package Name *</label>
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Starter Pack" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Description</label>
+            <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional description" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Credits (Cuts) *</label>
+              <input type="number" min="1" value={form.credits} onChange={e => setForm(f => ({ ...f, credits: e.target.value }))} placeholder="500" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Price (₹) *</label>
+              <input type="number" min="1" step="0.01" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="499" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+            </div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">Cancel</button>
+            <button type="submit" disabled={loading} className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition-colors text-sm">
+              {loading ? 'Saving...' : isEdit ? 'Update Package' : 'Create Package'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const LicensesPage = () => {
   const { user } = useAuth();
-  const [tab, setTab] = useState<'licenses' | 'credits' | 'cut-logs' | 'master-qrs' | 'history'>('licenses');
-  const handleTabChange = (newTab: 'licenses' | 'credits' | 'cut-logs' | 'master-qrs' | 'history') => {
+  const [tab, setTab] = useState<'licenses' | 'credits' | 'cut-logs' | 'master-qrs' | 'history' | 'recharge-packages'>('licenses');
+  const handleTabChange = (newTab: 'licenses' | 'credits' | 'cut-logs' | 'master-qrs' | 'history' | 'recharge-packages') => {
     setTab(newTab);
     setPage(1);
     setSelectedIds([]);
@@ -751,13 +821,17 @@ const LicensesPage = () => {
     { id: 'credits', label: 'Cut Credits', icon: Ticket },
     { id: 'cut-logs', label: 'Cut Logs', icon: List },
     { id: 'master-qrs', label: 'Master QRs', icon: Search },
-    { id: 'history', label: 'History', icon: History }
+    { id: 'history', label: 'History', icon: History },
+    ...(user?.isSuperAdmin ? [{ id: 'recharge-packages', label: 'Recharge', icon: CreditCard }] : []),
   ];
   const [orgLicenses, setOrgLicenses] = useState<any[]>([]);
   const [cutCredits, setCutCredits] = useState<any[]>([]);
   const [transfers, setTransfers] = useState<any[]>([]);
   const [cutLogs, setCutLogs] = useState<any[]>([]);
   const [masterQRs, setMasterQRs] = useState<any[]>([]);
+  const [rechargePackages, setRechargePackages] = useState<any[]>([]);
+  const [rechargeTransactions, setRechargeTransactions] = useState<any[]>([]);
+  const [rechargePackageModal, setRechargePackageModal] = useState<{ mode: 'create' | 'edit'; pkg?: any } | null>(null);
   const [orgs, setOrgs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<string | null>(null);
@@ -818,6 +892,14 @@ const LicensesPage = () => {
       } else if (tab === 'master-qrs') {
         const res: any = await (licensesApi as any).getMasterQRs(skip, ITEMS_PER_PAGE, searchQuery || undefined).catch(() => ({ items: [], total: 0 }));
         setMasterQRs(res.items || []); setTotalItems(res.total || 0);
+      } else if (tab === 'recharge-packages') {
+        const [pkgs, txns]: any = await Promise.all([
+          rechargeApi.getAllPackages().catch(() => []),
+          rechargeApi.getTransactions(0, 100).catch(() => ({ items: [], total: 0 })),
+        ]);
+        setRechargePackages(Array.isArray(pkgs) ? pkgs : []);
+        setRechargeTransactions((txns as any)?.items || []);
+        setTotalItems((txns as any)?.total || 0);
       } else if (tab === 'history') {
         const transferLicRes = await licensesApi.getTransfers().catch(() => []);
         const transferCredRes = await cutCreditsApi.getTransfers().catch(() => []);
@@ -1472,6 +1554,160 @@ const LicensesPage = () => {
             </div>
             {renderPagination()}
           </div>
+        </div>
+      ) : tab === 'recharge-packages' ? (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Package Management */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">Recharge Packages</h2>
+              <p className="text-sm text-slate-500 mt-0.5">Manage UPI recharge packages visible to retailers in the mobile app.</p>
+            </div>
+            <button
+              onClick={() => setRechargePackageModal({ mode: 'create' })}
+              className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-md transition-all text-sm"
+            >
+              <Plus className="w-4 h-4" /> New Package
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {rechargePackages.length === 0 ? (
+              <div className="col-span-4 text-center py-16 text-slate-400 italic">No recharge packages found. Create one above.</div>
+            ) : rechargePackages.map((pkg: any) => (
+              <div key={pkg.id} className={`relative bg-white rounded-2xl border-2 shadow-sm p-5 flex flex-col gap-3 transition-all ${pkg.isActive ? 'border-indigo-200' : 'border-slate-200 opacity-60'}`}>
+                {!pkg.isActive && (
+                  <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold uppercase">Inactive</span>
+                )}
+                {pkg.isActive && (
+                  <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase border border-emerald-100">Active</span>
+                )}
+                <div className="flex items-center gap-2">
+                  <div className="p-2.5 bg-indigo-50 rounded-xl">
+                    <CreditCard className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800 text-sm leading-tight">{pkg.name}</p>
+                    <p className="text-xs text-slate-400">{pkg.description || 'No description'}</p>
+                  </div>
+                </div>
+                <div className="flex items-end justify-between mt-1">
+                  <div>
+                    <p className="text-3xl font-black text-indigo-700">{pkg.credits}</p>
+                    <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Cuts</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-black text-slate-800 flex items-center gap-0.5">
+                      <IndianRupee className="w-4 h-4" />{Number(pkg.price).toLocaleString('en-IN')}
+                    </p>
+                    <p className="text-xs text-slate-400">{pkg.currency || 'INR'}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-1">
+                  <button
+                    onClick={() => setRechargePackageModal({ mode: 'edit', pkg })}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" /> Edit
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await rechargeApi.updatePackage(pkg.id, { isActive: !pkg.isActive });
+                      fetchData();
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${pkg.isActive ? 'text-amber-600 bg-amber-50 hover:bg-amber-100' : 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'}`}
+                  >
+                    {pkg.isActive ? <ToggleLeft className="w-3.5 h-3.5" /> : <ToggleRight className="w-3.5 h-3.5" />}
+                    {pkg.isActive ? 'Disable' : 'Enable'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (confirm(`Delete package "${pkg.name}"?`)) {
+                        await rechargeApi.deletePackage(pkg.id);
+                        fetchData();
+                      }
+                    }}
+                    className="p-1.5 text-red-400 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                    title="Delete"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Payment Transactions */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-slate-800">Payment Transactions</h2>
+              <span className="text-xs text-slate-400 font-medium">Last 100 transactions</span>
+            </div>
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase border-b border-slate-100">
+                      <th className="px-5 py-3">Organization</th>
+                      <th className="px-5 py-3">User</th>
+                      <th className="px-5 py-3">Package</th>
+                      <th className="px-5 py-3">Amount</th>
+                      <th className="px-5 py-3">Razorpay Order ID</th>
+                      <th className="px-5 py-3">Payment ID</th>
+                      <th className="px-5 py-3">Status</th>
+                      <th className="px-5 py-3">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-sm">
+                    {rechargeTransactions.length === 0 ? (
+                      <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-400 italic">No payment transactions yet.</td></tr>
+                    ) : rechargeTransactions.map((txn: any) => (
+                      <tr key={txn.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-5 py-3 font-semibold text-slate-800">{txn.organization?.name || '—'}</td>
+                        <td className="px-5 py-3 text-slate-600">
+                          {txn.user ? `${txn.user.firstName || ''} ${txn.user.lastName || ''}`.trim() || txn.user.email : '—'}
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-slate-700">{txn.package?.name || '—'}</span>
+                            <span className="text-xs text-indigo-600 font-bold">{txn.package?.credits} cuts</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 font-bold text-slate-800">
+                          <span className="flex items-center gap-0.5"><IndianRupee className="w-3.5 h-3.5" />{Number(txn.amount).toLocaleString('en-IN')}</span>
+                        </td>
+                        <td className="px-5 py-3 font-mono text-xs text-slate-600">{txn.razorpayOrderId}</td>
+                        <td className="px-5 py-3 font-mono text-xs text-slate-600">{txn.razorpayPaymentId || <span className="text-slate-300">—</span>}</td>
+                        <td className="px-5 py-3">
+                          {txn.status === 'SUCCESS' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-100">
+                              <BadgeCheck className="w-3 h-3" /> Success
+                            </span>
+                          ) : txn.status === 'PENDING' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-bold border border-amber-100">
+                              <Clock className="w-3 h-3" /> Pending
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-xs font-bold border border-red-100">Failed</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-slate-500 whitespace-nowrap">{new Date(txn.createdAt).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Package Create/Edit Modal */}
+          {rechargePackageModal && (
+            <RechargePackageModal
+              pkg={rechargePackageModal.pkg}
+              onClose={() => setRechargePackageModal(null)}
+              onSave={() => { setRechargePackageModal(null); fetchData(); }}
+            />
+          )}
         </div>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">

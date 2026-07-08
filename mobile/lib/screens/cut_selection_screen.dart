@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../services/plotter_service.dart';
 
@@ -92,20 +94,21 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
                               offset: const Offset(0, 10),
                             ),
                           ],
-                          image: (widget.item['imageUrl'] != null && widget.item['imageUrl'].toString().isNotEmpty)
-                              ? DecorationImage(
-                                  image: NetworkImage(
-                                    widget.item['imageUrl'].toString().startsWith('http')
-                                        ? widget.item['imageUrl']
-                                        : '${ApiService.baseUrl.replaceFirst('/api', '')}${widget.item['imageUrl']}',
-                                  ),
-                                  fit: BoxFit.contain,
-                                )
-                              : null,
                         ),
-                        child: (widget.item['imageUrl'] == null || widget.item['imageUrl'].toString().isEmpty)
-                            ? Icon(Icons.smartphone, size: 64, color: Theme.of(context).colorScheme.primary)
-                            : null,
+                        child: (widget.item['imageUrl'] != null && widget.item['imageUrl'].toString().isNotEmpty)
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(24),
+                                child: Image.network(
+                                  widget.item['imageUrl'].toString().startsWith('http')
+                                      ? widget.item['imageUrl']
+                                      : '${ApiService.baseUrl.replaceFirst('/api', '')}${widget.item['imageUrl'].toString().startsWith('/') ? '' : '/'}${widget.item['imageUrl']}',
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Icon(Icons.smartphone, size: 64, color: Theme.of(context).colorScheme.primary);
+                                  },
+                                ),
+                              )
+                            : Icon(Icons.smartphone, size: 64, color: Theme.of(context).colorScheme.primary),
                       ),
                       const SizedBox(height: 16),
                       Text(
@@ -130,13 +133,19 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
                       ? const Center(child: CircularProgressIndicator())
                       : _designs.isEmpty
                           ? _buildEmptyState()
-                          : ListView.builder(
-                              padding: const EdgeInsets.all(16),
-                              itemCount: _designs.length,
-                              itemBuilder: (context, index) {
-                                final design = _designs[index];
-                                return _buildDesignCard(design);
-                              },
+                          : RefreshIndicator(
+                              color: const Color(0xFFCE1D19),
+                              backgroundColor: Colors.white,
+                              onRefresh: _fetchDesigns,
+                              child: ListView.builder(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: const EdgeInsets.all(16),
+                                itemCount: _designs.length,
+                                itemBuilder: (context, index) {
+                                  final design = _designs[index];
+                                  return _buildDesignCard(design);
+                                },
+                              ),
                             ),
                 ),
               ],
@@ -233,20 +242,21 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
                 decoration: BoxDecoration(
                   color: Colors.grey[50],
                   borderRadius: BorderRadius.circular(12),
-                  image: (previewPath != null && previewPath.isNotEmpty)
-                      ? DecorationImage(
-                          image: NetworkImage(
-                            previewPath.startsWith('http')
-                                ? previewPath
-                                : '${ApiService.baseUrl.replaceFirst('/api', '')}${previewPath.startsWith('/') ? '' : '/'}$previewPath',
-                          ),
-                          fit: BoxFit.contain,
-                        )
-                      : null,
                 ),
-                child: (previewPath == null || previewPath.isEmpty)
-                    ? Icon(Icons.layers_outlined, size: 32, color: Theme.of(context).colorScheme.primary)
-                    : null,
+                child: (previewPath != null && previewPath.isNotEmpty)
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.network(
+                          previewPath.startsWith('http')
+                              ? previewPath
+                              : '${ApiService.baseUrl.replaceFirst('/api', '')}${previewPath.startsWith('/') ? '' : '/'}$previewPath',
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(Icons.layers_outlined, size: 32, color: Theme.of(context).colorScheme.primary);
+                          },
+                        ),
+                      )
+                    : Icon(Icons.layers_outlined, size: 32, color: Theme.of(context).colorScheme.primary),
               ),
               const SizedBox(width: 20),
               Expanded(
@@ -430,10 +440,31 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
   Future<void> _handleCut(dynamic design) async {
     setState(() {
       _isCutting = true;
-      _loadingMessage = 'Downloading Design...';
+      _loadingMessage = 'Validating Cut...';
     });
 
     try {
+      // Validate Cut on Backend
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final validation = await ApiService.validateCut(
+        licenseKey: authProvider.licenseKey,
+        organizationId: authProvider.organizationId,
+        modelId: widget.item['id'] ?? '',
+      );
+
+      if (validation == null || validation['valid'] != true || validation['cutToken'] == null) {
+        final reason = validation?['error'] ?? 'Insufficient credits or inactive license.';
+        throw Exception('Cut validation failed: $reason');
+      }
+
+      final cutToken = validation['cutToken'] as String;
+
+      if (mounted) {
+        setState(() {
+          _loadingMessage = 'Downloading Design...';
+        });
+      }
+
       // PHASE 1: Complete Download from Database
       // This ensures we have the full file on the phone before touching the hardware
       final details = await ApiService.getCutFileDetails(design['id']);
@@ -508,6 +539,18 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
         height: _selectedHeight,
       );
 
+      if (success) {
+        try {
+          await ApiService.logCut(
+            cutToken: cutToken,
+            plotterId: _plotterService.connectedName ?? 'Plotter',
+            isPositiveCut: true,
+          );
+        } catch (e) {
+          print('Error logging cut on server: $e');
+        }
+      }
+
       if (mounted) {
         setState(() => _isCutting = false);
         _progressSubscription?.cancel();
@@ -516,6 +559,21 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
           SnackBar(
             content: Text(success ? 'Cut completed successfully!' : 'Plotter error during cutting'),
             backgroundColor: success ? Colors.green : Colors.red,
+            action: success ? null : SnackBarAction(
+              label: 'Reset Plotter',
+              textColor: Colors.white,
+              onPressed: () async {
+                final resetSuccess = await _plotterService.reset();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(resetSuccess ? 'Plotter reset/reconnected successfully!' : 'Failed to reset plotter.'),
+                      backgroundColor: resetSuccess ? Colors.green : Colors.red,
+                    ),
+                  );
+                }
+              },
+            ),
           ),
         );
       }
@@ -525,7 +583,25 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
         _progressSubscription?.cancel();
         _progressSubscription = null;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Error: $e'), 
+            backgroundColor: Colors.red,
+            action: SnackBarAction(
+              label: 'Reset Plotter',
+              textColor: Colors.white,
+              onPressed: () async {
+                final resetSuccess = await _plotterService.reset();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(resetSuccess ? 'Plotter reset/reconnected successfully!' : 'Failed to reset plotter.'),
+                      backgroundColor: resetSuccess ? Colors.green : Colors.red,
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
         );
       }
     }

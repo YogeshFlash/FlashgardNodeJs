@@ -236,6 +236,18 @@ export class CutCreditsService {
     });
   }
 
+  async getReceivedInventory(orgId: string) {
+    return (this.prisma.cutCredit as any).findMany({
+      where: { tenantId: orgId },
+      include: {
+        owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } },
+        tenant: { select: { name: true } },
+        license: { select: { key: true, batch: { select: { licenseType: true } } } }
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async getTransfers(orgId: string, isSuperAdmin = false) {
     const where: any = {};
     if (!isSuperAdmin) {

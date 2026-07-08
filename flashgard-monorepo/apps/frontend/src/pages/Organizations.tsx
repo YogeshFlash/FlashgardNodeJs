@@ -998,8 +998,8 @@ const CreditsTab = ({ orgId, org, orgs, reload }: { orgId: string, org: any, org
 
   useEffect(() => {
     setLoading(true);
-    cutCreditsApi.getInventory(orgId).then((res: any) => {
-      const items = res.data ? res.data : (Array.isArray(res) ? res : []);
+    cutCreditsApi.getInventory(undefined, undefined, undefined, undefined, undefined, orgId).then((res: any) => {
+      const items = Array.isArray(res) ? res : (res.data ? res.data : []);
       setTransfers(items);
     }).catch(() => {}).finally(() => setLoading(false));
   }, [orgId]);
@@ -1043,14 +1043,15 @@ const CreditsTab = ({ orgId, org, orgs, reload }: { orgId: string, org: any, org
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
               <tr>
                 <th className="p-3">Assigned From</th>
-                <th className="p-3">Plan / Credits Assigned</th>
+                <th className="p-3">Credits / Plan</th>
+                <th className="p-3">Notes / Payment</th>
                 <th className="p-3">Date</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {transfers.map(t => (
                 <tr key={t.id}>
-                  <td className="p-3 font-semibold text-slate-700">{t.tenant?.name || 'System'}</td>
+                  <td className="p-3 font-semibold text-slate-700">{t.owner?.name || 'System'}</td>
                   <td className="p-3 font-bold">
                     <div className="flex flex-col">
                       <span className={t.planType === 'UNLIMITED' ? 'text-purple-600' : t.planType === 'LIFETIME' ? 'text-amber-600' : 'text-emerald-600'}>
@@ -1065,12 +1066,19 @@ const CreditsTab = ({ orgId, org, orgs, reload }: { orgId: string, org: any, org
                       <span className="text-[10px] text-slate-400 uppercase tracking-wider">{t.planType || 'USAGE'} Plan</span>
                       {t.isOffer && (
                         <div className="flex items-center gap-1 mt-1 text-[10px] text-purple-600 font-bold uppercase tracking-wider">
-                          <Gift className="w-3 h-3" /> Offer {t.notes ? `• ${t.notes}` : ''}
+                          <Gift className="w-3 h-3" /> Offer
                         </div>
                       )}
                     </div>
                   </td>
-                  <td className="p-3 text-slate-500">{new Date(t.createdAt).toLocaleDateString()}</td>
+                  <td className="p-3 max-w-[220px]">
+                    {t.notes ? (
+                      <span className="text-xs text-slate-500 break-words">{t.notes}</span>
+                    ) : (
+                      <span className="text-slate-300 text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="p-3 text-slate-500 whitespace-nowrap">{new Date(t.createdAt).toLocaleDateString()}</td>
                 </tr>
               ))}
             </tbody>

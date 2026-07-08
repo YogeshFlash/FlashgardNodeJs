@@ -427,9 +427,10 @@ export const cutCreditsApi = {
   issue: (data: any) => request<any>('/cut-credits/issue', { method: 'POST', body: JSON.stringify(data) }),
   dispatch: (data: { amount: number; toOrgId: string; fromOrgId?: string; targetLicenseId?: string }) => 
     request<any>('/cut-credits/dispatch', { method: 'POST', body: JSON.stringify(data) }),
-  getInventory: (orgId?: string, skip?: number, take?: number, search?: string, planType?: string) => {
+  getInventory: (orgId?: string, skip?: number, take?: number, search?: string, planType?: string, receivingOrgId?: string) => {
     const p = new URLSearchParams();
     if (orgId) p.append('orgId', orgId);
+    if (receivingOrgId) p.append('receivingOrgId', receivingOrgId);
     if (skip !== undefined) p.append('skip', skip.toString());
     if (take !== undefined) p.append('take', take.toString());
     if (search) p.append('search', search);
@@ -438,6 +439,27 @@ export const cutCreditsApi = {
   },
   getTransfers: (orgId?: string) => request<any[]>(`/cut-credits/transfers${orgId ? `?orgId=${orgId}` : ''}`),
   getWallet: (machineId: string) => request<any>(`/cut-credits/wallet/${machineId}`),
+};
+
+// ─── Recharge ──────────────────────────────────────────
+export const rechargeApi = {
+  // Public/user
+  getPackages: () => request<any[]>('/recharge/packages'),
+  // Admin
+  getAllPackages: () => request<any[]>('/recharge/packages/all'),
+  createPackage: (data: { name: string; description?: string; credits: number; price: number; currency?: string }) =>
+    request<any>('/recharge/packages', { method: 'POST', body: JSON.stringify(data) }),
+  updatePackage: (id: string, data: any) =>
+    request<any>(`/recharge/packages/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deletePackage: (id: string) =>
+    request<any>(`/recharge/packages/${id}`, { method: 'DELETE' }),
+  getTransactions: (skip?: number, take?: number, search?: string) => {
+    const p = new URLSearchParams();
+    if (skip !== undefined) p.append('skip', skip.toString());
+    if (take !== undefined) p.append('take', take.toString());
+    if (search) p.append('search', search);
+    return request<any>(`/recharge/transactions${p.toString() ? `?${p.toString()}` : ''}`);
+  },
 };
 
 // ─── Files ──────────────────────────────────────────
@@ -512,6 +534,21 @@ export const migrationApi = {
   },
   generateDesignImagesForModel: (modelId: string) => {
     return request<any>(`/migration/legacy/designs/generate-images/model/${modelId}`, { method: 'POST' });
+  },
+  generateDesignImagesForCategory: (categoryId: string) => {
+    return request<any>(`/migration/legacy/designs/generate-images/category/${categoryId}`, { method: 'POST' });
+  },
+  generateDesignImagesForBrand: (brandId: string) => {
+    return request<any>(`/migration/legacy/designs/generate-images/brand/${brandId}`, { method: 'POST' });
+  },
+  normalizeCategory: (categoryId: string) => {
+    return request<any>(`/migration/legacy/designs/normalize/category/${categoryId}`, { method: 'POST' });
+  },
+  normalizeBrand: (brandId: string) => {
+    return request<any>(`/migration/legacy/designs/normalize/brand/${brandId}`, { method: 'POST' });
+  },
+  normalizeModel: (modelId: string) => {
+    return request<any>(`/migration/legacy/designs/normalize/model/${modelId}`, { method: 'POST' });
   },
   generateDesignImageForCutFile: (cutFileId: string) => {
     return request<any>(`/migration/legacy/designs/generate-images/cut-file/${cutFileId}`, { method: 'POST' });
@@ -674,6 +711,12 @@ export const mobileHomeApi = {
   createInfoCard: (data: any) => request<any>('/mobile-home/infocards', { method: 'POST', body: JSON.stringify(data) }),
   updateInfoCard: (id: string, data: any) => request<any>(`/mobile-home/infocards/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteInfoCard: (id: string) => request<void>(`/mobile-home/infocards/${id}`, { method: 'DELETE' }),
+};
+
+export const paymentGatewayApi = {
+  getSettings: () => request<{ razorpayKeyId: string; razorpayKeySecret: string; rechargeDistributorId: string }>('/recharge/gateway-settings'),
+  saveSettings: (data: { razorpayKeyId: string; razorpayKeySecret: string; rechargeDistributorId: string }) =>
+    request<any>('/recharge/gateway-settings', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 

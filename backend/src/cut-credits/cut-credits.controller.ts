@@ -40,11 +40,16 @@ export class CutCreditsController {
   getInventory(
     @Request() req: any, 
     @Query('orgId') targetOrgId?: string,
+    @Query('receivingOrgId') receivingOrgId?: string,
     @Query('skip') skip?: number,
     @Query('take') take?: number,
     @Query('search') search?: string,
     @Query('planType') planType?: string
   ) {
+    // When receivingOrgId is supplied, return credits RECEIVED by that org (tenantId filter)
+    if (receivingOrgId) {
+      return this.cutCreditsService.getReceivedInventory(receivingOrgId);
+    }
     const orgId = targetOrgId || req.user?.organizationId;
     const isSuperAdminForQuery = req.user?.isSuperAdmin && !targetOrgId;
     return this.cutCreditsService.getMyInventory(orgId, isSuperAdminForQuery, skip, take, search, planType);
