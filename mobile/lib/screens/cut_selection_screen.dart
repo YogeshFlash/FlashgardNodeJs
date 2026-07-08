@@ -56,6 +56,40 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
     }
   }
 
+  static const _s3CatalogBaseUrl = 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog';
+
+  String _getImageUrl(dynamic item) {
+    final path = item['imageUrl']?.toString() ?? '';
+    if (path.isNotEmpty) {
+      if (path.startsWith('http')) return path;
+      if (!path.contains('/')) {
+        return '$_s3CatalogBaseUrl/$path';
+      }
+      final cleanPath = path.startsWith('/') ? path.substring(1) : path;
+      return '${ApiService.baseUrl.replaceFirst('/api', '')}/$cleanPath';
+    }
+    
+    final name = item['name']?.toString() ?? '';
+    if (name.isEmpty) return '$_s3CatalogBaseUrl/Phone.jpg';
+    
+    final formattedName = name[0].toUpperCase() + name.substring(1).toLowerCase();
+    return '$_s3CatalogBaseUrl/$formattedName.jpg';
+  }
+
+  Widget _buildModelImage() {
+    final imageUrl = _getImageUrl(widget.item);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Image.network(
+        imageUrl,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) {
+          return Icon(Icons.smartphone, size: 64, color: Theme.of(context).colorScheme.primary);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -95,20 +129,7 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
                             ),
                           ],
                         ),
-                        child: (widget.item['imageUrl'] != null && widget.item['imageUrl'].toString().isNotEmpty)
-                            ? ClipRRect(
-                                borderRadius: BorderRadius.circular(24),
-                                child: Image.network(
-                                  widget.item['imageUrl'].toString().startsWith('http')
-                                      ? widget.item['imageUrl']
-                                      : '${ApiService.baseUrl.replaceFirst('/api', '')}${widget.item['imageUrl'].toString().startsWith('/') ? '' : '/'}${widget.item['imageUrl']}',
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Icon(Icons.smartphone, size: 64, color: Theme.of(context).colorScheme.primary);
-                                  },
-                                ),
-                              )
-                            : Icon(Icons.smartphone, size: 64, color: Theme.of(context).colorScheme.primary),
+                        child: _buildModelImage(),
                       ),
                       const SizedBox(height: 16),
                       Text(
