@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../services/plotter_service.dart';
+import 'diy_designer_screen.dart';
 
 class CutSelectionScreen extends StatefulWidget {
   final Map<String, dynamic> item;
@@ -251,7 +252,16 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
         ],
       ),
       child: InkWell(
-        onTap: () => _showCutConfirmation(design),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DiyDesignerScreen(
+                initialCutFileId: design['id'],
+              ),
+            ),
+          );
+        },
         borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.all(16),

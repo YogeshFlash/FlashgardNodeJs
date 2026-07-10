@@ -4,7 +4,10 @@ import 'dart:typed_data';
 import 'dart:async';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api_service.dart';
+import '../services/plotter_service.dart';
+import '../providers/auth_provider.dart';
 
 enum CutoutType {
   circle,
@@ -51,13 +54,52 @@ class CutoutShape {
   }
 }
 
+class DecalElement {
+  final String id;
+  final String imageUrl;
+  final String name;
+  double x; // X position relative to top-left of base shape in mm
+  double y; // Y position relative to top-left of base shape in mm
+  double width; // in mm
+  double height; // in mm
+
+  DecalElement({
+    required this.id,
+    required this.imageUrl,
+    required this.name,
+    required this.x,
+    required this.y,
+    required this.width,
+    required this.height,
+  });
+
+  DecalElement copyWith({
+    double? x,
+    double? y,
+    double? width,
+    double? height,
+  }) {
+    return DecalElement(
+      id: id,
+      imageUrl: imageUrl,
+      name: name,
+      x: x ?? this.x,
+      y: y ?? this.y,
+      width: width ?? this.width,
+      height: height ?? this.height,
+    );
+  }
+}
+
 class DesignerStateHistory {
   final double baseWidth;
   final double baseHeight;
   final double baseCornerRadius;
   final List<Offset> customBaseOutline;
   final List<CutoutShape> cutouts;
+  final List<DecalElement> decals;
   final String? selectedCutoutId;
+  final String? selectedDecalId;
   final bool isBaseSelected;
 
   DesignerStateHistory({
@@ -66,7 +108,9 @@ class DesignerStateHistory {
     required this.baseCornerRadius,
     required this.customBaseOutline,
     required this.cutouts,
+    required this.decals,
     required this.selectedCutoutId,
+    required this.selectedDecalId,
     required this.isBaseSelected,
   });
 
@@ -76,58 +120,77 @@ class DesignerStateHistory {
     required double baseCornerRadius,
     required List<Offset> customBaseOutline,
     required List<CutoutShape> cutouts,
+    required List<DecalElement> decals,
     required String? selectedCutoutId,
+    required String? selectedDecalId,
     required bool isBaseSelected,
-  }) : 
-    baseWidth = baseWidth,
-    baseHeight = baseHeight,
-    baseCornerRadius = baseCornerRadius,
-    customBaseOutline = List<Offset>.from(customBaseOutline),
-    cutouts = cutouts.map((c) => c.copyWith()).toList(),
-    selectedCutoutId = selectedCutoutId,
-    isBaseSelected = isBaseSelected;
+  })  : baseWidth = baseWidth,
+        baseHeight = baseHeight,
+        baseCornerRadius = baseCornerRadius,
+        customBaseOutline = List<Offset>.from(customBaseOutline),
+        cutouts = cutouts.map((c) => c.copyWith()).toList(),
+        decals = decals.map((d) => d.copyWith()).toList(),
+        selectedCutoutId = selectedCutoutId,
+        selectedDecalId = selectedDecalId,
+        isBaseSelected = isBaseSelected;
 }
 
 class DiyDesignerScreen extends StatefulWidget {
-  const DiyDesignerScreen({super.key});
+  final String? initialCutFileId;
+
+  const DiyDesignerScreen({super.key, this.initialCutFileId});
 
   @override
   State<DiyDesignerScreen> createState() => _DiyDesignerScreenState();
 }
 
 class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
-  // Base protector dimensions in mm
-  double _baseWidth = 300.0; 
+  final PlotterService _plotterService = PlotterService();
+  String? _originalPltContent;
+  
+  // Base dimensions in mm
+  double _baseWidth = 300.0;
   double _baseHeight = 200.0;
   double _baseCornerRadius = 8.0;
 
-  // Custom PLT parsed shape points
+  // Custom outline points parsed from PLT
   List<Offset> _customBaseOutline = [];
 
-  // Selected cutout elements
+  // Cutouts and Decals layers
   final List<CutoutShape> _cutouts = [];
+  final List<DecalElement> _decals = [];
+  
   CutoutShape? _selectedCutout;
+  DecalElement? _selectedDecal;
   bool _isBaseSelected = true;
 
-  // Bottom tab switcher: 0 = Properties, 1 = Components Layer List
-  int _bottomTabIndex = 0;
-
   // Drag interaction states
-  String? _activeDragType; // 'move', 'resize-base-w', 'resize-base-h', 'resize-cutout'
+  String? _activeDragType; // 'move', 'resize-base-w', 'resize-base-h', 'resize-cutout', 'move-decal', 'resize-decal'
   Offset _dragStartOffset = Offset.zero;
   double _dragStartValX = 0.0;
   double _dragStartValY = 0.0;
   double _dragStartWidth = 0.0;
   double _dragStartHeight = 0.0;
 
-  // Helper variables for layout scale mapping
-  double _scale = 1.0; // mm to logical pixels
+  // Layout scale mapping
+  double _scale = 1.0;
   double _canvasLeft = 0.0;
   double _canvasTop = 0.0;
+
+  // Plotter settings
+  int _selectedSpeed = 300;
+  int _selectedForce = 300;
 
   // Undo / Redo Stacks
   final List<DesignerStateHistory> _undoStack = [];
   final List<DesignerStateHistory> _redoStack = [];
+
+  // Loading state
+  bool _isLoading = false;
+  bool _isCutting = false;
+  String _loadingMessage = 'Processing...';
+  int _cutProgress = 0;
+  StreamSubscription<int>? _progressSubscription;
 
   void _saveToHistory() {
     _undoStack.add(
@@ -137,7 +200,9 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         baseCornerRadius: _baseCornerRadius,
         customBaseOutline: _customBaseOutline,
         cutouts: _cutouts,
+        decals: _decals,
         selectedCutoutId: _selectedCutout?.id,
+        selectedDecalId: _selectedDecal?.id,
         isBaseSelected: _isBaseSelected,
       ),
     );
@@ -154,7 +219,9 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           baseCornerRadius: _baseCornerRadius,
           customBaseOutline: _customBaseOutline,
           cutouts: _cutouts,
+          decals: _decals,
           selectedCutoutId: _selectedCutout?.id,
+          selectedDecalId: _selectedDecal?.id,
           isBaseSelected: _isBaseSelected,
         ),
       );
@@ -164,16 +231,30 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       _baseHeight = previous.baseHeight;
       _baseCornerRadius = previous.baseCornerRadius;
       _customBaseOutline = previous.customBaseOutline;
+      
       _cutouts.clear();
       _cutouts.addAll(previous.cutouts);
+      
+      _decals.clear();
+      _decals.addAll(previous.decals);
+      
       _isBaseSelected = previous.isBaseSelected;
+      
       if (previous.selectedCutoutId != null) {
         _selectedCutout = _cutouts.firstWhere(
           (c) => c.id == previous.selectedCutoutId,
           orElse: () => _cutouts.first,
         );
+        _selectedDecal = null;
+      } else if (previous.selectedDecalId != null) {
+        _selectedDecal = _decals.firstWhere(
+          (d) => d.id == previous.selectedDecalId,
+          orElse: () => _decals.first,
+        );
+        _selectedCutout = null;
       } else {
         _selectedCutout = null;
+        _selectedDecal = null;
       }
     });
   }
@@ -188,7 +269,9 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           baseCornerRadius: _baseCornerRadius,
           customBaseOutline: _customBaseOutline,
           cutouts: _cutouts,
+          decals: _decals,
           selectedCutoutId: _selectedCutout?.id,
+          selectedDecalId: _selectedDecal?.id,
           isBaseSelected: _isBaseSelected,
         ),
       );
@@ -198,16 +281,30 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       _baseHeight = next.baseHeight;
       _baseCornerRadius = next.baseCornerRadius;
       _customBaseOutline = next.customBaseOutline;
+      
       _cutouts.clear();
       _cutouts.addAll(next.cutouts);
+
+      _decals.clear();
+      _decals.addAll(next.decals);
+
       _isBaseSelected = next.isBaseSelected;
+
       if (next.selectedCutoutId != null) {
         _selectedCutout = _cutouts.firstWhere(
           (c) => c.id == next.selectedCutoutId,
           orElse: () => _cutouts.first,
         );
+        _selectedDecal = null;
+      } else if (next.selectedDecalId != null) {
+        _selectedDecal = _decals.firstWhere(
+          (d) => d.id == next.selectedDecalId,
+          orElse: () => _decals.first,
+        );
+        _selectedCutout = null;
       } else {
         _selectedCutout = null;
+        _selectedDecal = null;
       }
     });
   }
@@ -215,7 +312,28 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
   @override
   void initState() {
     super.initState();
-    _addCutout(CutoutType.circle);
+    if (widget.initialCutFileId != null) {
+      _fetchAndDecryptPlt(widget.initialCutFileId!);
+    } else {
+      _addCutout(CutoutType.circle);
+    }
+    _initPlotterParams();
+  }
+
+  @override
+  void dispose() {
+    _progressSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initPlotterParams() async {
+    final params = await _plotterService.getMachineParameters();
+    if (params != null && mounted) {
+      setState(() {
+        _selectedSpeed = params['speed'] ?? 300;
+        _selectedForce = params['pressure'] ?? 300;
+      });
+    }
   }
 
   void _addCutout(CutoutType type) {
@@ -238,14 +356,15 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       final newCutout = CutoutShape(
         id: id,
         type: type,
-        x: (_baseWidth - w) / 2, // Centered
-        y: 10.0, // 10mm from top
+        x: (_baseWidth - w) / 2,
+        y: 10.0,
         width: w,
         height: h,
       );
 
       _cutouts.add(newCutout);
       _selectedCutout = newCutout;
+      _selectedDecal = null;
       _isBaseSelected = false;
     });
   }
@@ -265,8 +384,8 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
   void _importPltData(String content) {
     if (content.trim().isEmpty) return;
     _saveToHistory();
+    _originalPltContent = content;
 
-    // Regex matches PU/PD coordinate pairs
     final regex = RegExp(r'(PU|PD)\s*(-?\d+)[\s,]+\s*(-?\d+)');
     final matches = regex.allMatches(content);
     
@@ -278,7 +397,6 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       final double xVal = double.tryParse(match.group(2) ?? '0') ?? 0.0;
       final double yVal = double.tryParse(match.group(3) ?? '0') ?? 0.0;
       
-      // Plotter units: 1mm = 40 units
       final double xMm = xVal / 40.0;
       final double yMm = yVal / 40.0;
 
@@ -296,12 +414,11 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
 
     if (rawPaths.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No valid HP-GL PU/PD coordinates found in PLT input.')),
+        const SnackBar(content: Text('No valid HP-GL PU/PD coordinates found.')),
       );
       return;
     }
 
-    // Flip Y-axis coordinates because HP-GL Y increases upwards but screen Y increases downwards.
     double globalMaxY = -double.infinity;
     for (final path in rawPaths) {
       for (final pt in path) {
@@ -319,7 +436,6 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     }
     rawPaths = flippedPaths;
 
-    // Find the largest path by bounding box area (this will be the base screen protector template)
     List<Offset>? baseRawPath;
     double maxArea = -1.0;
     
@@ -357,12 +473,10 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
 
     if (baseRawPath == null) return;
 
-    // Normalize coordinates of the base path relative to its own minX and minY
     final List<Offset> normalizedBaseOutline = baseRawPath.map((pt) => Offset(pt.dx - minX, pt.dy - minY)).toList();
     final double computedBaseWidth = (maxX - minX).clamp(40.0, 500.0);
     final double computedBaseHeight = (maxY - minY).clamp(40.0, 350.0);
 
-    // Identify all other sub-paths as cutouts relative to the base template bounds
     final List<CutoutShape> importedCutouts = [];
     for (final path in rawPaths) {
       if (path == baseRawPath) continue;
@@ -382,14 +496,11 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       final double cW = cMaxX - cMinX;
       final double cH = cMaxY - cMinY;
 
-      // Skip noise shapes
       if (cW < 1.0 || cH < 1.0) continue;
 
-      // Translate coordinates relative to the top-left of the base outline
       final double relativeX = cMinX - minX;
       final double relativeY = cMinY - minY;
 
-      // Classify the cutout type based on geometric proportions
       CutoutType detectedType = CutoutType.rect;
       if ((cW - cH).abs() < 2.0 && cW < 15.0) {
         detectedType = CutoutType.circle;
@@ -419,18 +530,12 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       
       _isBaseSelected = true;
       _selectedCutout = null;
+      _selectedDecal = null;
     });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Imported design successfully! Found ${importedCutouts.length} editable cutouts.',
-        ),
-      ),
-    );
   }
 
   Future<void> _fetchAndDecryptPlt(String cutFileId) async {
+    setState(() => _isLoading = true);
     try {
       final details = await ApiService.getCutFileDetails(cutFileId);
       if (details == null || details['encryptedPltData'] == null) {
@@ -471,183 +576,20 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to load design: $e'), backgroundColor: Colors.red),
       );
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
-  void _showImportDesignDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        final searchController = TextEditingController();
-        List<dynamic> searchResults = [];
-        bool isSearching = false;
-        
-        Map<String, dynamic>? selectedModel;
-        List<dynamic> cutFiles = [];
-        bool isLoadingCutFiles = false;
-        Timer? debounceTimer;
-
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Import Design Base Outline'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (selectedModel == null) ...[
-                        TextField(
-                          controller: searchController,
-                          decoration: InputDecoration(
-                            hintText: 'Search model (e.g. iPhone 15)',
-                            prefixIcon: const Icon(Icons.search, size: 20),
-                            suffixIcon: isSearching ? const SizedBox(width: 20, height: 20, child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2))) : null,
-                          ),
-                          onChanged: (val) {
-                            if (debounceTimer?.isActive ?? false) {
-                              debounceTimer!.cancel();
-                            }
-                            
-                            if (val.trim().isEmpty) {
-                              setDialogState(() {
-                                searchResults = [];
-                                isSearching = false;
-                              });
-                              return;
-                            }
-                            
-                            setDialogState(() {
-                              isSearching = true;
-                            });
-
-                            debounceTimer = Timer(const Duration(milliseconds: 300), () async {
-                              try {
-                                final res = await ApiService.searchModels(val);
-                                if (!context.mounted) return;
-                                setDialogState(() {
-                                  searchResults = res;
-                                  isSearching = false;
-                                });
-                              } catch (_) {
-                                if (context.mounted) {
-                                  setDialogState(() => isSearching = false);
-                                }
-                              }
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        Container(
-                          height: 200,
-                          child: searchResults.isEmpty
-                              ? const Center(child: Text('Type to search catalog designs...', style: TextStyle(color: Colors.grey, fontSize: 12)))
-                              : ListView.builder(
-                                  itemCount: searchResults.length,
-                                  itemBuilder: (context, index) {
-                                    final m = searchResults[index];
-                                    return ListTile(
-                                      title: Text(m['name']),
-                                      subtitle: Text(m['brand']?['name'] ?? 'Model'),
-                                      trailing: const Icon(Icons.chevron_right, size: 16),
-                                      onTap: () async {
-                                        setDialogState(() {
-                                          selectedModel = m;
-                                          isLoadingCutFiles = true;
-                                        });
-                                        try {
-                                          final cuts = await ApiService.getModelCutFiles(m['id']);
-                                          setDialogState(() {
-                                            cutFiles = cuts;
-                                            isLoadingCutFiles = false;
-                                          });
-                                        } catch (_) {
-                                          setDialogState(() => isLoadingCutFiles = false);
-                                        }
-                                      },
-                                    );
-                                  },
-                                ),
-                        ),
-                      ] else ...[
-                        // Selected Model - Show Cut Files List
-                        Row(
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.arrow_back, size: 18),
-                              onPressed: () {
-                                setDialogState(() {
-                                  selectedModel = null;
-                                  cutFiles = [];
-                                });
-                              },
-                            ),
-                            Expanded(
-                              child: Text(
-                                selectedModel!['name'],
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          height: 200,
-                          child: isLoadingCutFiles
-                              ? const Center(child: CircularProgressIndicator())
-                              : cutFiles.isEmpty
-                                  ? const Center(child: Text('No cut templates available for this model.', style: TextStyle(fontSize: 12)))
-                                  : ListView.builder(
-                                      itemCount: cutFiles.length,
-                                      itemBuilder: (context, index) {
-                                        final c = cutFiles[index];
-                                        return ListTile(
-                                          title: Text(c['cutPattern']?['name'] ?? 'Cut Design'),
-                                          subtitle: Text(c['cutPattern']?['description'] ?? 'Vector Outline'),
-                                          leading: const Icon(Icons.architecture, color: Colors.blue),
-                                          onTap: () {
-                                            Navigator.pop(context);
-                                            _fetchAndDecryptPlt(c['id']);
-                                          },
-                                        );
-                                      },
-                                    ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  // Snapping math: round to nearest 1mm
-  double _snap(double val) {
-    return val.roundToDouble();
-  }
+  double _snap(double val) => (val * 2).roundToDouble() / 2; // snap to 0.5mm
 
   void _handlePointerDown(Offset localPosition) {
-    final double baseRightPixel = _canvasLeft + _baseWidth * _scale;
-    final double baseBottomPixel = _canvasTop + _baseHeight * _scale;
-    final double centerYPixel = _canvasTop + (_baseHeight / 2) * _scale;
-    final double centerXPixel = _canvasLeft + (_baseWidth / 2) * _scale;
+    if (_isLoading || _isCutting) return;
 
-    final baseWHandle = Offset(baseRightPixel, centerYPixel);
-    final baseHHandle = Offset(centerXPixel, baseBottomPixel);
+    // 1. Drag base scale handles (Width, Height resize handles)
+    final baseWHandle = Offset(_canvasLeft + _baseWidth * _scale, _canvasTop + (_baseHeight / 2) * _scale);
+    final baseHHandle = Offset(_canvasLeft + (_baseWidth / 2) * _scale, _canvasTop + _baseHeight * _scale);
 
-    // 1. Check if hit resize handles for the base screen protector (only if using default RRect base)
     if (_customBaseOutline.isEmpty) {
       if ((localPosition - baseWHandle).distance < 20) {
         _saveToHistory();
@@ -666,7 +608,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       }
     }
 
-    // 2. Check if clicked a cutout's resize handle
+    // 2. Check if clicked selected cutout's resize handle
     if (_selectedCutout != null) {
       final double cutoutRight = _canvasLeft + (_selectedCutout!.x + _selectedCutout!.width) * _scale;
       final double cutoutBottom = _canvasTop + (_selectedCutout!.y + _selectedCutout!.height) * _scale;
@@ -682,7 +624,23 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       }
     }
 
-    // 3. Check if clicked inside a cutout
+    // 3. Check if clicked selected decal's resize handle
+    if (_selectedDecal != null) {
+      final double decalRight = _canvasLeft + (_selectedDecal!.x + _selectedDecal!.width) * _scale;
+      final double decalBottom = _canvasTop + (_selectedDecal!.y + _selectedDecal!.height) * _scale;
+      final decalHandle = Offset(decalRight, decalBottom);
+
+      if ((localPosition - decalHandle).distance < 20) {
+        _saveToHistory();
+        _activeDragType = 'resize-decal';
+        _dragStartOffset = localPosition;
+        _dragStartWidth = _selectedDecal!.width;
+        _dragStartHeight = _selectedDecal!.height;
+        return;
+      }
+    }
+
+    // 4. Clicked inside a cutout shape
     for (int i = _cutouts.length - 1; i >= 0; i--) {
       final cutout = _cutouts[i];
       final double cLeft = _canvasLeft + cutout.x * _scale;
@@ -697,6 +655,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         _saveToHistory();
         setState(() {
           _selectedCutout = cutout;
+          _selectedDecal = null;
           _isBaseSelected = false;
         });
 
@@ -708,7 +667,34 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       }
     }
 
-    // 4. Check if hit base shape itself
+    // 5. Clicked inside a decal shape
+    for (int i = _decals.length - 1; i >= 0; i--) {
+      final decal = _decals[i];
+      final double dLeft = _canvasLeft + decal.x * _scale;
+      final double dTop = _canvasTop + decal.y * _scale;
+      final double dRight = dLeft + decal.width * _scale;
+      final double dBottom = dTop + decal.height * _scale;
+
+      if (localPosition.dx >= dLeft &&
+          localPosition.dx <= dRight &&
+          localPosition.dy >= dTop &&
+          localPosition.dy <= dBottom) {
+        _saveToHistory();
+        setState(() {
+          _selectedDecal = decal;
+          _selectedCutout = null;
+          _isBaseSelected = false;
+        });
+
+        _activeDragType = 'move-decal';
+        _dragStartOffset = localPosition;
+        _dragStartValX = decal.x;
+        _dragStartValY = decal.y;
+        return;
+      }
+    }
+
+    // 6. Hit base shape
     final double bLeft = _canvasLeft;
     final double bTop = _canvasTop;
     final double bRight = bLeft + _baseWidth * _scale;
@@ -721,6 +707,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       setState(() {
         _isBaseSelected = true;
         _selectedCutout = null;
+        _selectedDecal = null;
       });
     }
   }
@@ -747,6 +734,18 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           _cutouts[idx] = _selectedCutout!.copyWith(x: newX, y: newY);
           _selectedCutout = _cutouts[idx];
         }
+      } else if (_activeDragType == 'move-decal' && _selectedDecal != null) {
+        double newX = _snap(_dragStartValX + dxMm);
+        double newY = _snap(_dragStartValY + dyMm);
+
+        newX = newX.clamp(0.0, _baseWidth - _selectedDecal!.width);
+        newY = newY.clamp(0.0, _baseHeight - _selectedDecal!.height);
+
+        final idx = _decals.indexWhere((d) => d.id == _selectedDecal!.id);
+        if (idx != -1) {
+          _decals[idx] = _selectedDecal!.copyWith(x: newX, y: newY);
+          _selectedDecal = _decals[idx];
+        }
       } else if (_activeDragType == 'resize-base-w') {
         _baseWidth = _snap(_dragStartWidth + dxMm).clamp(40.0, 500.0);
       } else if (_activeDragType == 'resize-base-h') {
@@ -767,6 +766,22 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           _cutouts[idx] = _selectedCutout!.copyWith(width: newW, height: newH);
           _selectedCutout = _cutouts[idx];
         }
+      } else if (_activeDragType == 'resize-decal' && _selectedDecal != null) {
+        double newW = _snap(_dragStartWidth + dxMm).clamp(5.0, _baseWidth);
+        double newH = _snap(_dragStartHeight + dyMm).clamp(5.0, _baseHeight);
+
+        if (_selectedDecal!.x + newW > _baseWidth) {
+          newW = _baseWidth - _selectedDecal!.x;
+        }
+        if (_selectedDecal!.y + newH > _baseHeight) {
+          newH = _baseHeight - _selectedDecal!.y;
+        }
+
+        final idx = _decals.indexWhere((d) => d.id == _selectedDecal!.id);
+        if (idx != -1) {
+          _decals[idx] = _selectedDecal!.copyWith(width: newW, height: newH);
+          _selectedDecal = _decals[idx];
+        }
       }
     });
   }
@@ -775,96 +790,374 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     _activeDragType = null;
   }
 
-  void _exportSvg() {
-    final buffer = StringBuffer();
-    buffer.writeln('<?xml version="1.0" encoding="UTF-8" standalone="no"?>');
-    buffer.writeln('<svg width="${_baseWidth}mm" height="${_baseHeight}mm" viewBox="0 0 $_baseWidth $_baseHeight" xmlns="http://www.w3.org/2000/svg">');
-    
-    buffer.writeln('  <!-- Outer Cut Outline -->');
-    if (_customBaseOutline.isNotEmpty) {
-      buffer.write('  <path d="');
-      final start = _customBaseOutline.first;
-      buffer.write('M ${start.dx} ${start.dy} ');
-      for (int i = 1; i < _customBaseOutline.length; i++) {
-        final pt = _customBaseOutline[i];
-        buffer.write('L ${pt.dx} ${pt.dy} ');
-      }
-      buffer.writeln('Z" fill="none" stroke="#FF0000" stroke-width="0.2mm" />');
-    } else {
-      final r = _baseCornerRadius;
-      final w = _baseWidth;
-      final h = _baseHeight;
-      buffer.write('  <path d="M $r 0 L ${w - r} 0 ');
-      buffer.write('A $r $r 0 0 1 $w $r ');
-      buffer.write('L $w ${h - r} ');
-      buffer.write('A $r $r 0 0 1 ${w - r} $h ');
-      buffer.write('L $r $h ');
-      buffer.write('A $r $r 0 0 1 0 ${h - r} ');
-      buffer.write('L 0 $r ');
-      buffer.writeln('A $r $r 0 0 1 $r 0 Z" fill="none" stroke="#FF0000" stroke-width="0.2mm" />');
+  void _showPresetDecalsSheet() async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        List<dynamic> dbDecals = [];
+        bool isLoadingDb = true;
+
+        return StatefulBuilder(
+          builder: (ctx, setStateSheet) {
+            // Load db decals under category "Mobile Decals" dynamically
+            if (isLoadingDb) {
+              ApiService.getModelsByCategoryName('Mobile Decals').then((models) {
+                if (ctx.mounted) {
+                  setStateSheet(() {
+                    dbDecals = models;
+                    isLoadingDb = false;
+                  });
+                }
+              }).catchError((err) {
+                if (ctx.mounted) {
+                  setStateSheet(() => isLoadingDb = false);
+                }
+              });
+            }
+
+            final presets = [
+              {'name': 'Carbon Fiber', 'url': 'https://images.unsplash.com/photo-1501526029524-a8ea952b15be?q=80&w=400'},
+              {'name': 'Camouflage', 'url': 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80&w=400'},
+              {'name': 'Wood Grain', 'url': 'https://images.unsplash.com/photo-1541123437800-1bb1317badc2?q=80&w=400'},
+              {'name': 'Brown Leather', 'url': 'https://images.unsplash.com/photo-1589156280159-27698a70f29e?q=80&w=400'},
+              {'name': 'Neon Cyber', 'url': 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=400'},
+              {'name': 'Floral Art', 'url': 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?q=80&w=400'},
+            ];
+
+            return Container(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Select Decal Skin / Texture',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      if (isLoadingDb)
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  const Text('DB CATEGORY: MOBILE DECALS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey)),
+                  const SizedBox(height: 8),
+                  
+                  if (!isLoadingDb && dbDecals.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text('No decals found in DB. Try checking your category "Mobile Decals" inside CRM.', style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic)),
+                    ),
+                  
+                  if (dbDecals.isNotEmpty)
+                    SizedBox(
+                      height: 110,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: dbDecals.length,
+                        itemBuilder: (ctx, idx) {
+                          final model = dbDecals[idx];
+                          final name = model['name'] ?? 'Decal';
+                          final imgPath = model['imageUrl']?.toString() ?? '';
+                          final imgUrl = imgPath.startsWith('http')
+                              ? imgPath
+                              : '${ApiService.baseUrl.replaceFirst('/api', '')}/${imgPath.startsWith('/') ? imgPath.substring(1) : imgPath}';
+
+                          return GestureDetector(
+                            onTap: () {
+                              Navigator.pop(context);
+                              _addDecal(name, imgUrl);
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 12),
+                              width: 90,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.indigo.withOpacity(0.3), width: 1.5),
+                              ),
+                              child: Column(
+                                children: [
+                                  Expanded(
+                                    child: ClipRRect(
+                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+                                      child: Image.network(
+                                        imgUrl,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (ctx, err, stack) => const Icon(Icons.broken_image, color: Colors.grey),
+                                      ),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.all(6),
+                                    child: Text(name, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  
+                  const SizedBox(height: 16),
+                  const Text('PRESET TEXTURES', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey)),
+                  const SizedBox(height: 8),
+                  
+                  SizedBox(
+                    height: 110,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: presets.length,
+                      itemBuilder: (ctx, idx) {
+                        final p = presets[idx];
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.pop(context);
+                            _addDecal(p['name']!, p['url']!);
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(right: 12),
+                            width: 90,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey[200]!),
+                            ),
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: ClipRRect(
+                                    borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+                                    child: Image.network(p['url']!, fit: BoxFit.cover),
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.all(6),
+                                  child: Text(p['name']!, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _addDecal(String name, String url) {
+    _saveToHistory();
+    setState(() {
+      final id = 'decal_${DateTime.now().millisecondsSinceEpoch}';
+      final newDecal = DecalElement(
+        id: id,
+        name: name,
+        imageUrl: url,
+        x: (_baseWidth - 100.0) / 2,
+        y: (_baseHeight - 100.0) / 2,
+        width: 100.0,
+        height: 100.0,
+      );
+      _decals.add(newDecal);
+      _selectedDecal = newDecal;
+      _selectedCutout = null;
+      _isBaseSelected = false;
+    });
+  }
+
+  void _deleteSelectedDecal() {
+    if (_selectedDecal != null) {
+      _saveToHistory();
+      setState(() {
+        _decals.removeWhere((d) => d.id == _selectedDecal!.id);
+        _selectedDecal = null;
+        _isBaseSelected = true;
+      });
+    }
+  }
+
+  // Plotter Cutting Workflow
+  Future<void> _startCutting() async {
+    if (widget.initialCutFileId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot cut a custom blank workspace. Select a device template first.')),
+      );
+      return;
     }
 
-    buffer.writeln('  <!-- Inner Cutouts -->');
-    for (final c in _cutouts) {
-      if (c.type == CutoutType.circle) {
-        final double rX = c.x + c.width / 2;
-        final double rY = c.y + c.height / 2;
-        final double radius = c.width / 2;
-        buffer.writeln('  <circle cx="$rX" cy="$rY" r="$radius" fill="none" stroke="#0000FF" stroke-width="0.2mm" />');
-      } else if (c.type == CutoutType.rect) {
-        buffer.writeln('  <rect x="${c.x}" y="${c.y}" width="${c.width}" height="${c.height}" rx="${c.cornerRadius}" ry="${c.cornerRadius}" fill="none" stroke="#0000FF" stroke-width="0.2mm" />');
-      } else if (c.type == CutoutType.slit || c.type == CutoutType.pill) {
-        final rx = c.height / 2;
-        buffer.writeln('  <rect x="${c.x}" y="${c.y}" width="${c.width}" height="${c.height}" rx="$rx" ry="$rx" fill="none" stroke="#0000FF" stroke-width="0.2mm" />');
-      }
+    final isConnected = await _plotterService.isConnected();
+    if (!isConnected) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Plotter Not Connected'),
+          content: const Text('Please connect to the plotter in settings before cutting.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+          ],
+        ),
+      );
+      return;
     }
-    buffer.writeln('</svg>');
 
+    // Show cut parameters confirm
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Export Vector Cut Path'),
-        content: SingleChildScrollView(
-          child: Column(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Confirm Cut Output'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'This SVG is compatible with standard screen protector cutters and laser plotters.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+              const Text('Send the final design vector lines to the plotter machine?'),
+              const SizedBox(height: 16),
+              const Text('Cutting Speed', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              Slider(
+                value: _selectedSpeed.toDouble(),
+                min: 10,
+                max: 1000,
+                divisions: 99,
+                label: '$_selectedSpeed',
+                onChanged: (val) => setDialogState(() => _selectedSpeed = val.toInt()),
               ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey[300]!),
-                ),
-                child: Text(
-                  buffer.toString(),
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 10),
-                ),
+              const SizedBox(height: 8),
+              const Text('Cutting Force / Pressure', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              Slider(
+                value: _selectedForce.toDouble(),
+                min: 10,
+                max: 1000,
+                divisions: 99,
+                label: '$_selectedForce',
+                onChanged: (val) => setDialogState(() => _selectedForce = val.toInt()),
               ),
             ],
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _handlePlotterCut();
+              },
+              child: const Text('START CUT'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('SVG Vector copied to clipboard (Simulated)')),
-              );
-            },
-            child: const Text('Send to Plotter'),
-          ),
-        ],
       ),
     );
+  }
+
+  Future<void> _handlePlotterCut() async {
+    setState(() {
+      _isCutting = true;
+      _loadingMessage = 'Validating Cut Token...';
+      _cutProgress = 0;
+    });
+
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final validation = await ApiService.validateCut(
+        licenseKey: authProvider.licenseKey,
+        organizationId: authProvider.organizationId,
+        modelId: '', // Blank since we can dynamically cut
+      );
+
+      if (validation == null || validation['valid'] != true || validation['cutToken'] == null) {
+        final reason = validation?['error'] ?? 'Insufficient credits or inactive license.';
+        throw Exception('Cut validation failed: $reason');
+      }
+
+      final cutToken = validation['cutToken'] as String;
+
+      setState(() {
+        _loadingMessage = 'Sending Vector to Plotter...';
+      });
+
+      // Listen to progress
+      _progressSubscription = _plotterService.progressStream.listen((progress) {
+        if (mounted) {
+          setState(() {
+            _cutProgress = progress;
+            _loadingMessage = 'Cutting: $progress%';
+          });
+        }
+      });
+
+      // Use decoded original PLT content or custom exported
+      final contentToCut = _originalPltContent ?? '';
+      if (contentToCut.isEmpty) {
+        throw Exception('Invalid vector cut data.');
+      }
+
+      final success = await _plotterService.cutFile(
+        content: contentToCut,
+        name: 'DecalSkin',
+        speed: _selectedSpeed,
+        force: _selectedForce,
+        width: _baseWidth,
+        height: _baseHeight,
+      );
+
+      if (success) {
+        try {
+          await ApiService.logCut(
+            cutToken: cutToken,
+            plotterId: _plotterService.connectedName ?? 'Plotter',
+            isPositiveCut: true,
+          );
+        } catch (e) {
+          print('Error logging cut on server: $e');
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success ? 'Decal skin cut completed successfully!' : 'Plotter cut failed.'),
+            backgroundColor: success ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Cut failed: $e');
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Error Cutting'),
+            content: Text(e.toString().replaceAll('Exception:', '')),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+            ],
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCutting = false;
+        });
+        _progressSubscription?.cancel();
+        _progressSubscription = null;
+      }
+    }
   }
 
   @override
@@ -872,16 +1165,11 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text('DIY Vector Designer', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Skin & Decal Canvas Editor', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
         actions: [
-          TextButton.icon(
-            icon: const Icon(Icons.file_upload_outlined, size: 18),
-            label: const Text('Import Design'),
-            onPressed: _showImportDesignDialog,
-          ),
           IconButton(
             icon: const Icon(Icons.undo),
             onPressed: _undoStack.isNotEmpty ? _undo : null,
@@ -894,383 +1182,348 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red),
-            onPressed: _selectedCutout != null ? _deleteSelectedCutout : null,
-            tooltip: 'Delete Selected Cutout',
-          ),
-          IconButton(
-            icon: const Icon(Icons.download, color: Colors.blue),
-            onPressed: _exportSvg,
-            tooltip: 'Export SVG Cut File',
+            onPressed: _selectedCutout != null
+                ? _deleteSelectedCutout
+                : (_selectedDecal != null ? _deleteSelectedDecal : null),
+            tooltip: 'Delete Selected',
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          // Tool Drawer (Add blocks)
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Add Building Blocks',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey),
-                ),
-                const SizedBox(height: 8),
-                Row(
+          Column(
+            children: [
+              // Tool Drawer (Add items)
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildAddBlockBtn(CutoutType.circle, 'Camera Hole', Icons.circle_outlined),
-                    const SizedBox(width: 8),
-                    _buildAddBlockBtn(CutoutType.pill, 'Pill Island', Icons.brightness_1_outlined),
-                    const SizedBox(width: 8),
-                    _buildAddBlockBtn(CutoutType.slit, 'Speaker Slit', Icons.remove),
-                    const SizedBox(width: 8),
-                    _buildAddBlockBtn(CutoutType.rect, 'Notch / Rect', Icons.crop_square_outlined),
+                    const Text(
+                      'Decal Canvas Actions',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: _showPresetDecalsSheet,
+                          icon: const Icon(Icons.brush, size: 16),
+                          label: const Text('ADD DECAL / SKIN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.indigo,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildAddBlockBtn(CutoutType.circle, 'Add Hole', Icons.circle_outlined),
+                        const SizedBox(width: 4),
+                        _buildAddBlockBtn(CutoutType.rect, 'Add Notch', Icons.crop_square_outlined),
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
-          ),
+              ),
 
-          // Scaling Canvas Area
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final double requiredW = _baseWidth + 40.0;
-                final double requiredH = _baseHeight + 40.0;
+              // Canvas Frame
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          final double requiredW = _baseWidth + 40.0;
+                          final double requiredH = _baseHeight + 40.0;
 
-                final double scaleW = constraints.maxWidth / requiredW;
-                final double scaleH = constraints.maxHeight / requiredH;
-                _scale = min(scaleW, scaleH);
+                          final double scaleW = constraints.maxWidth / requiredW;
+                          final double scaleH = constraints.maxHeight / requiredH;
+                          _scale = min(scaleW, scaleH);
 
-                _canvasLeft = (constraints.maxWidth - _baseWidth * _scale) / 2;
-                _canvasTop = (constraints.maxHeight - _baseHeight * _scale) / 2;
+                          _canvasLeft = (constraints.maxWidth - _baseWidth * _scale) / 2;
+                          _canvasTop = (constraints.maxHeight - _baseHeight * _scale) / 2;
 
-                return GestureDetector(
-                  onPanDown: (details) => _handlePointerDown(details.localPosition),
-                  onPanUpdate: (details) => _handlePointerMove(details.localPosition),
-                  onPanEnd: (_) => _handlePointerUp(),
-                  child: Container(
-                    color: Colors.grey[200],
-                    child: CustomPaint(
-                      size: Size(constraints.maxWidth, constraints.maxHeight),
-                      painter: CanvasGridPainter(
-                        baseWidth: _baseWidth,
-                        baseHeight: _baseHeight,
-                        baseCornerRadius: _baseCornerRadius,
-                        customBaseOutline: _customBaseOutline,
-                        cutouts: _cutouts,
-                        selectedCutout: _selectedCutout,
-                        isBaseSelected: _isBaseSelected,
-                        scale: _scale,
-                        canvasLeft: _canvasLeft,
-                        canvasTop: _canvasTop,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          // Active Components Row (similar to Add Building Blocks)
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Active Components',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey),
-                ),
-                const SizedBox(height: 8),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildActiveComponentBtn(
-                        icon: _customBaseOutline.isNotEmpty ? Icons.architecture : Icons.crop_free,
-                        isSelected: _isBaseSelected,
-                        onTap: () {
-                          setState(() {
-                            _isBaseSelected = true;
-                            _selectedCutout = null;
-                          });
+                          return GestureDetector(
+                            onPanDown: (details) => _handlePointerDown(details.localPosition),
+                            onPanUpdate: (details) => _handlePointerMove(details.localPosition),
+                            onPanEnd: (_) => _handlePointerUp(),
+                            child: Container(
+                              color: Colors.grey[200],
+                              child: Stack(
+                                children: [
+                                  // Grid & Base Canvas Lines
+                                  CustomPaint(
+                                    size: Size(constraints.maxWidth, constraints.maxHeight),
+                                    painter: CanvasGridPainter(
+                                      baseWidth: _baseWidth,
+                                      baseHeight: _baseHeight,
+                                      baseCornerRadius: _baseCornerRadius,
+                                      customBaseOutline: _customBaseOutline,
+                                      cutouts: _cutouts,
+                                      selectedCutout: _selectedCutout,
+                                      isBaseSelected: _isBaseSelected,
+                                      scale: _scale,
+                                      canvasLeft: _canvasLeft,
+                                      canvasTop: _canvasTop,
+                                    ),
+                                  ),
+
+                                  // Clipped Decals Overlay
+                                  ClipPath(
+                                    clipper: BaseOutlineClipper(
+                                      outline: _customBaseOutline,
+                                      baseWidth: _baseWidth,
+                                      baseHeight: _baseHeight,
+                                      baseCornerRadius: _baseCornerRadius,
+                                      scale: _scale,
+                                      canvasLeft: _canvasLeft,
+                                      canvasTop: _canvasTop,
+                                    ),
+                                    child: Stack(
+                                      children: _decals.map((decal) {
+                                        final double dLeft = _canvasLeft + decal.x * _scale;
+                                        final double dTop = _canvasTop + decal.y * _scale;
+                                        final double dW = decal.width * _scale;
+                                        final double dH = decal.height * _scale;
+                                        return Positioned(
+                                          left: dLeft,
+                                          top: dTop,
+                                          width: dW,
+                                          height: dH,
+                                          child: Image.network(
+                                            decal.imageUrl,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (ctx, err, stack) => Container(color: Colors.blueGrey[100]),
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+                                  ),
+
+                                  // Interactive Highlight Boundaries (Visuals only, no tap block)
+                                  if (_selectedDecal != null) ...[
+                                    (() {
+                                      final double dLeft = _canvasLeft + _selectedDecal!.x * _scale;
+                                      final double dTop = _canvasTop + _selectedDecal!.y * _scale;
+                                      final double dW = _selectedDecal!.width * _scale;
+                                      final double dH = _selectedDecal!.height * _scale;
+                                      return Positioned(
+                                        left: dLeft - 2,
+                                        top: dTop - 2,
+                                        width: dW + 4,
+                                        height: dH + 4,
+                                        child: IgnorePointer(
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              border: Border.all(color: Colors.indigo, width: 2.0),
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    })(),
+                                    (() {
+                                      final double dRight = _canvasLeft + (_selectedDecal!.x + _selectedDecal!.width) * _scale;
+                                      final double dBottom = _canvasTop + (_selectedDecal!.y + _selectedDecal!.height) * _scale;
+                                      return Positioned(
+                                        left: dRight - 8,
+                                        top: dBottom - 8,
+                                        width: 16,
+                                        height: 16,
+                                        child: IgnorePointer(
+                                          child: Container(
+                                            decoration: const BoxDecoration(
+                                              color: Colors.indigo,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    })(),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          );
                         },
                       ),
-                      ..._cutouts.map((cutout) {
-                        final isSelected = _selectedCutout?.id == cutout.id;
-                        IconData icon;
-                        if (cutout.type == CutoutType.circle) {
-                          icon = Icons.circle_outlined;
-                        } else if (cutout.type == CutoutType.pill) {
-                          icon = Icons.brightness_1_outlined;
-                        } else if (cutout.type == CutoutType.slit) {
-                          icon = Icons.remove;
-                        } else {
-                          icon = Icons.crop_square_outlined;
-                        }
-                        return Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(width: 8),
-                            _buildActiveComponentBtn(
-                              icon: icon,
-                              isSelected: isSelected,
-                              onTap: () {
-                                setState(() {
-                                  _selectedCutout = cutout;
-                                  _isBaseSelected = false;
-                                });
-                              },
-                            ),
-                          ],
-                        );
-                      }).toList(),
+              ),
+
+              // Active Items Toolbar
+              if (!_isLoading)
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                  child: Row(
+                    children: [
+                      const Text('Layers:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              _buildActiveComponentBtn(
+                                icon: Icons.crop_free,
+                                isSelected: _isBaseSelected,
+                                onTap: () {
+                                  setState(() {
+                                    _isBaseSelected = true;
+                                    _selectedCutout = null;
+                                    _selectedDecal = null;
+                                  });
+                                },
+                              ),
+                              ..._decals.map((decal) {
+                                final isSelected = _selectedDecal?.id == decal.id;
+                                return Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const SizedBox(width: 8),
+                                    _buildActiveComponentBtn(
+                                      icon: Icons.broken_image_outlined,
+                                      isSelected: isSelected,
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedDecal = decal;
+                                          _selectedCutout = null;
+                                          _isBaseSelected = false;
+                                        });
+                                      },
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
+                              ..._cutouts.map((cutout) {
+                                final isSelected = _selectedCutout?.id == cutout.id;
+                                return Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const SizedBox(width: 8),
+                                    _buildActiveComponentBtn(
+                                      icon: cutout.type == CutoutType.circle ? Icons.circle_outlined : Icons.crop_square_outlined,
+                                      isSelected: isSelected,
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedCutout = cutout;
+                                          _selectedDecal = null;
+                                          _isBaseSelected = false;
+                                        });
+                                      },
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          const Divider(height: 1, color: Colors.grey),
 
-          // Properties Inspector Panel (No Tabs)
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -2)),
-              ],
-            ),
-            child: SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12, left: 16, right: 16),
-                    child: Row(
+              // Inspector Panel
+              if (!_isLoading)
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -2)),
+                    ],
+                  ),
+                  child: SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _isBaseSelected
+                              ? _buildBaseInspector()
+                              : (_selectedDecal != null ? _buildDecalInspector() : _buildCutoutInspector()),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _startCutting,
+                              icon: const Icon(Icons.bolt, size: 18),
+                              label: const Text('SEND FINAL DECAL TO PLOTTER', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFCE1D19),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+
+          // Cutting Overlay
+          if (_isCutting)
+            Container(
+              color: Colors.black.withOpacity(0.6),
+              child: Center(
+                child: Card(
+                  margin: const EdgeInsets.all(32),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.tune, size: 16, color: Colors.blueGrey),
-                        const SizedBox(width: 8),
-                        Text(
-                          _isBaseSelected ? 'Base Shape Properties' : 'Cutout Properties',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey),
-                        ),
+                        const CircularProgressIndicator(color: Color(0xFFCE1D19)),
+                        const SizedBox(height: 24),
+                        Text(_loadingMessage, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 16),
+                        if (_cutProgress > 0) ...[
+                          LinearProgressIndicator(
+                            value: _cutProgress / 100,
+                            backgroundColor: Colors.grey[200],
+                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFCE1D19)),
+                          ),
+                          const SizedBox(height: 8),
+                          Text('$_cutProgress%', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        ],
                       ],
                     ),
                   ),
-                  const Divider(height: 12, color: Colors.grey),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
-                    child: _isBaseSelected ? _buildBaseInspector() : _buildCutoutInspector(),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
         ],
       ),
-    );
-  }
-
-  Widget _buildTabBtn(int index, String label, IconData icon) {
-    final isSelected = _bottomTabIndex == index;
-    return Expanded(
-      child: InkWell(
-        onTap: () => setState(() => _bottomTabIndex = index),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: isSelected ? Theme.of(context).colorScheme.primary : Colors.transparent,
-                width: 2.0,
-              ),
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 16, color: isSelected ? Theme.of(context).colorScheme.primary : Colors.blueGrey),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: isSelected ? Theme.of(context).colorScheme.primary : Colors.blueGrey,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildComponentsLayerList() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Interactive Layer Manager',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey),
-            ),
-            if (_customBaseOutline.isNotEmpty)
-              TextButton.icon(
-                onPressed: () => setState(() => _customBaseOutline = []),
-                icon: const Icon(Icons.refresh, size: 14),
-                label: const Text('Reset Outline', style: TextStyle(fontSize: 10)),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Container(
-          height: 150,
-          child: ListView.separated(
-            itemCount: _cutouts.length + 1,
-            separatorBuilder: (context, index) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              if (index == 0) {
-                // The Base template layer
-                final isSelected = _isBaseSelected;
-                return ListTile(
-                  dense: true,
-                  selected: isSelected,
-                  leading: Icon(
-                    _customBaseOutline.isNotEmpty ? Icons.architecture : Icons.crop_free,
-                    color: Colors.black87,
-                  ),
-                  title: Text(
-                    _customBaseOutline.isNotEmpty ? 'Custom PLT Vector Base' : 'Rectangular Base Outline',
-                    style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
-                  ),
-                  subtitle: Text('${_baseWidth.toInt()}mm x ${_baseHeight.toInt()}mm'),
-                  onTap: () {
-                    setState(() {
-                      _isBaseSelected = true;
-                      _selectedCutout = null;
-                      _bottomTabIndex = 0; // jump back to editor properties
-                    });
-                  },
-                );
-              }
-
-              final cutout = _cutouts[index - 1];
-              final isSelected = _selectedCutout?.id == cutout.id;
-
-              return ListTile(
-                dense: true,
-                selected: isSelected,
-                leading: Icon(
-                  cutout.type == CutoutType.circle
-                      ? Icons.circle_outlined
-                      : cutout.type == CutoutType.pill
-                          ? Icons.brightness_1_outlined
-                          : cutout.type == CutoutType.slit
-                              ? Icons.remove
-                              : Icons.crop_square_outlined,
-                  color: Colors.red,
-                ),
-                title: Text(
-                  '${cutout.type.name.toUpperCase()} Cutout',
-                  style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
-                ),
-                subtitle: Text('Size: ${cutout.width.toInt()}x${cutout.height.toInt()}mm, Pos: X:${cutout.x.toInt()}, Y:${cutout.y.toInt()}'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Rearrange order button
-                    IconButton(
-                      icon: const Icon(Icons.arrow_upward, size: 16),
-                      onPressed: index > 1
-                          ? () {
-                              _saveToHistory();
-                              setState(() {
-                                final temp = _cutouts[index - 1];
-                                _cutouts[index - 1] = _cutouts[index - 2];
-                                _cutouts[index - 2] = temp;
-                              });
-                            }
-                          : null,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
-                      onPressed: () {
-                        _saveToHistory();
-                        setState(() {
-                          _cutouts.removeAt(index - 1);
-                          if (_selectedCutout?.id == cutout.id) {
-                            _selectedCutout = null;
-                            _isBaseSelected = true;
-                          }
-                        });
-                      },
-                    ),
-                  ],
-                ),
-                onTap: () {
-                  setState(() {
-                    _selectedCutout = cutout;
-                    _isBaseSelected = false;
-                    _bottomTabIndex = 0; // jump back to editor properties
-                  });
-                },
-              );
-            },
-          ),
-        ),
-      ],
     );
   }
 
   Widget _buildAddBlockBtn(CutoutType type, String label, IconData icon) {
-    return Expanded(
-      child: OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          side: BorderSide(color: Colors.grey[300]!),
-        ),
-        onPressed: () => _addCutout(type),
-        child: Column(
-          children: [
-            Icon(icon, size: 18, color: Colors.black87),
-            const SizedBox(height: 4),
-            Text(label, style: const TextStyle(fontSize: 9, color: Colors.black87)),
-          ],
-        ),
+    return ElevatedButton.icon(
+      onPressed: () => _addCutout(type),
+      icon: Icon(icon, size: 14),
+      label: Text(label, style: const TextStyle(fontSize: 10)),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.grey[100],
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
 
-  Widget _buildActiveComponentBtn({
-    required IconData icon,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return OutlinedButton(
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        side: BorderSide(
-          color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey[300]!,
-          width: isSelected ? 2.0 : 1.0,
+  Widget _buildActiveComponentBtn({required IconData icon, required bool isSelected, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.indigo.withOpacity(0.1) : Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: isSelected ? Colors.indigo : Colors.transparent),
         ),
-        backgroundColor: isSelected ? Theme.of(context).colorScheme.primary.withOpacity(0.05) : Colors.transparent,
-      ),
-      onPressed: onTap,
-      child: Icon(
-        icon,
-        size: 20,
-        color: isSelected ? Theme.of(context).colorScheme.primary : Colors.black87,
+        child: Icon(icon, size: 16, color: isSelected ? Colors.indigo : Colors.grey[600]),
       ),
     );
   }
@@ -1280,30 +1533,16 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Base Shape Properties (Snaps to 1mm)',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-            if (_customBaseOutline.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: const BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.all(Radius.circular(8))),
-                child: const Text('PLT Vector Active', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
-              ),
-          ],
-        ),
-        const SizedBox(height: 12),
+        const Text('Base Shape Settings', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
               child: _buildInspectorSlider(
-                'Width (mm)',
+                'Base Width (mm)',
                 _baseWidth,
                 40.0,
-                450.0,
+                500.0,
                 _customBaseOutline.isNotEmpty
                     ? null
                     : (val) => setState(() => _baseWidth = _snap(val)),
@@ -1312,7 +1551,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
             const SizedBox(width: 16),
             Expanded(
               child: _buildInspectorSlider(
-                'Height (mm)',
+                'Base Height (mm)',
                 _baseHeight,
                 40.0,
                 350.0,
@@ -1323,23 +1562,13 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        _buildInspectorSlider(
-          'Corner Radius (mm)',
-          _baseCornerRadius,
-          0.0,
-          30.0,
-          _customBaseOutline.isNotEmpty
-              ? null
-              : (val) => setState(() => _baseCornerRadius = _snap(val)),
-        ),
       ],
     );
   }
 
   Widget _buildCutoutInspector() {
-    if (_selectedCutout == null) return const SizedBox.shrink();
-    final c = _selectedCutout!;
+    final c = _selectedCutout;
+    if (c == null) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1348,17 +1577,13 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              '${c.type.name.toUpperCase()} Cutout Properties',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-            Text(
-              'Pos: X:${c.x.toInt()}mm, Y:${c.y.toInt()}mm',
-              style: const TextStyle(color: Colors.blueGrey, fontSize: 11, fontWeight: FontWeight.bold),
+            Text('Cutout: ${c.type.name.toUpperCase()}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red, size: 18),
+              onPressed: _deleteSelectedCutout,
             ),
           ],
         ),
-        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
@@ -1366,7 +1591,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                 'Width (mm)',
                 c.width,
                 2.0,
-                120.0,
+                100.0,
                 (val) {
                   setState(() {
                     final double newW = _snap(val);
@@ -1385,7 +1610,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                 'Height (mm)',
                 c.height,
                 2.0,
-                120.0,
+                100.0,
                 (val) {
                   setState(() {
                     final double newH = _snap(val);
@@ -1400,22 +1625,43 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Widget _buildDecalInspector() {
+    final d = _selectedDecal;
+    if (d == null) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Decal: ${d.name}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red, size: 18),
+              onPressed: _deleteSelectedDecal,
+            ),
+          ],
+        ),
         Row(
           children: [
             Expanded(
               child: _buildInspectorSlider(
-                'Align X Offset (mm)',
-                c.x,
-                0.0,
-                _baseWidth - c.width,
+                'Width (mm)',
+                d.width,
+                10.0,
+                _baseWidth,
                 (val) {
                   setState(() {
-                    final double newX = _snap(val);
-                    final idx = _cutouts.indexWhere((item) => item.id == c.id);
+                    final double newW = _snap(val);
+                    final idx = _decals.indexWhere((item) => item.id == d.id);
                     if (idx != -1) {
-                      _cutouts[idx] = c.copyWith(x: newX);
-                      _selectedCutout = _cutouts[idx];
+                      _decals[idx] = d.copyWith(width: newW);
+                      _selectedDecal = _decals[idx];
                     }
                   });
                 },
@@ -1424,17 +1670,59 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
             const SizedBox(width: 16),
             Expanded(
               child: _buildInspectorSlider(
-                'Align Y Offset (mm)',
-                c.y,
+                'Height (mm)',
+                d.height,
+                10.0,
+                _baseHeight,
+                (val) {
+                  setState(() {
+                    final double newH = _snap(val);
+                    final idx = _decals.indexWhere((item) => item.id == d.id);
+                    if (idx != -1) {
+                      _decals[idx] = d.copyWith(height: newH);
+                      _selectedDecal = _decals[idx];
+                    }
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildInspectorSlider(
+                'Position X (mm)',
+                d.x,
                 0.0,
-                _baseHeight - c.height,
+                _baseWidth - d.width,
+                (val) {
+                  setState(() {
+                    final double newX = _snap(val);
+                    final idx = _decals.indexWhere((item) => item.id == d.id);
+                    if (idx != -1) {
+                      _decals[idx] = d.copyWith(x: newX);
+                      _selectedDecal = _decals[idx];
+                    }
+                  });
+                },
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildInspectorSlider(
+                'Position Y (mm)',
+                d.y,
+                0.0,
+                _baseHeight - d.height,
                 (val) {
                   setState(() {
                     final double newY = _snap(val);
-                    final idx = _cutouts.indexWhere((item) => item.id == c.id);
+                    final idx = _decals.indexWhere((item) => item.id == d.id);
                     if (idx != -1) {
-                      _cutouts[idx] = c.copyWith(y: newY);
-                      _selectedCutout = _cutouts[idx];
+                      _decals[idx] = d.copyWith(y: newY);
+                      _selectedDecal = _decals[idx];
                     }
                   });
                 },
@@ -1455,8 +1743,8 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
-            Text('${val.toInt()} mm', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isEnabled ? Colors.black87 : Colors.grey)),
+            Text(label, style: const TextStyle(fontSize: 10, color: Colors.blueGrey)),
+            Text('${val.toInt()} mm', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isEnabled ? Colors.black87 : Colors.grey)),
           ],
         ),
         SliderTheme(
@@ -1505,7 +1793,7 @@ class CanvasGridPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. Draw 1mm scale Grid
+    // 1. Draw Grid
     final gridPaint = Paint()
       ..color = Colors.grey[300]!
       ..strokeWidth = 0.5;
@@ -1523,7 +1811,7 @@ class CanvasGridPainter extends CustomPainter {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), y % (gridStepMm * 2 * scale) == 0 ? majorGridPaint : gridPaint);
     }
 
-    // 2. Draw Outer Screen Bounding Box Outline
+    // 2. Draw Base Outline
     final basePaint = Paint()
       ..color = Colors.black87
       ..strokeWidth = 2.0
@@ -1547,7 +1835,6 @@ class CanvasGridPainter extends CustomPainter {
       canvas.drawRRect(baseRect, basePaint);
     }
 
-    // If Base Shape is selected, draw highlight outline
     if (isBaseSelected) {
       final selectPaint = Paint()
         ..color = Colors.blue.withOpacity(0.3)
@@ -1563,9 +1850,8 @@ class CanvasGridPainter extends CustomPainter {
         );
         canvas.drawRRect(baseRect, selectPaint);
 
-        // Draw resize handles for Width and Height (only if standard rectangle outline is active)
         final handlePaint = Paint()
-          ..color = Colors.blue
+          ..color = Colors.indigo
           ..style = PaintingStyle.fill;
 
         canvas.drawCircle(Offset(canvasLeft + baseWidth * scale, canvasTop + (baseHeight / 2) * scale), 8, handlePaint);
@@ -1601,7 +1887,6 @@ class CanvasGridPainter extends CustomPainter {
         );
       }
 
-      // 4. Draw select highlights and guide rules if cutout is selected
       if (isSelected) {
         final highlightPaint = Paint()
           ..color = Colors.blue.withOpacity(0.2)
@@ -1610,49 +1895,56 @@ class CanvasGridPainter extends CustomPainter {
         canvas.drawRect(Rect.fromLTWH(cLeft - 2, cTop - 2, cW + 4, cH + 4), highlightPaint);
 
         final handlePaint = Paint()
-          ..color = Colors.blue
+          ..color = Colors.indigo
           ..style = PaintingStyle.fill;
         canvas.drawCircle(Offset(cLeft + cW, cTop + cH), 6, handlePaint);
-
-        final rulerPaint = Paint()
-          ..color = Colors.blueGrey
-          ..strokeWidth = 1.0
-          ..style = PaintingStyle.stroke;
-
-        // Top edge guide line
-        canvas.drawLine(Offset(cLeft + cW / 2, cTop), Offset(cLeft + cW / 2, canvasTop), rulerPaint);
-        _drawText(canvas, '${c.y.toInt()} mm', Offset(cLeft + cW / 2 + 4, canvasTop + (c.y * scale) / 2));
-
-        // Left edge guide line
-        canvas.drawLine(Offset(cLeft, cTop + cH / 2), Offset(canvasLeft, cTop + cH / 2), rulerPaint);
-        _drawText(canvas, '${c.x.toInt()} mm', Offset(canvasLeft + (c.x * scale) / 2 - 15, cTop + cH / 2 - 14));
-
-        // Right edge guide line
-        final double distRight = baseWidth - (c.x + c.width);
-        canvas.drawLine(Offset(cLeft + cW, cTop + cH / 2), Offset(canvasLeft + baseWidth * scale, cTop + cH / 2), rulerPaint);
-        _drawText(canvas, '${distRight.toInt()} mm', Offset(cLeft + cW + (distRight * scale) / 2 - 15, cTop + cH / 2 - 14));
-
-        // Bottom edge guide line
-        final double distBottom = baseHeight - (c.y + c.height);
-        canvas.drawLine(Offset(cLeft + cW / 2, cTop + cH), Offset(cLeft + cW / 2, canvasTop + baseHeight * scale), rulerPaint);
-        _drawText(canvas, '${distBottom.toInt()} mm', Offset(cLeft + cW / 2 + 4, cTop + cH + (distBottom * scale) / 2 - 6));
       }
     }
   }
 
-  void _drawText(Canvas canvas, String text, Offset offset) {
-    final textSpan = TextSpan(
-      text: text,
-      style: const TextStyle(color: Colors.blueGrey, fontSize: 9, fontWeight: FontWeight.bold),
-    );
-    final textPainter = TextPainter(
-      text: textSpan,
-      textDirection: TextDirection.ltr,
-    );
-    textPainter.layout();
-    textPainter.paint(canvas, offset);
+  @override
+  bool shouldRepaint(covariant CanvasGridPainter oldDelegate) => true;
+}
+
+class BaseOutlineClipper extends CustomClipper<Path> {
+  final List<Offset> outline;
+  final double baseWidth;
+  final double baseHeight;
+  final double baseCornerRadius;
+  final double scale;
+  final double canvasLeft;
+  final double canvasTop;
+
+  BaseOutlineClipper({
+    required this.outline,
+    required this.baseWidth,
+    required this.baseHeight,
+    required this.baseCornerRadius,
+    required this.scale,
+    required this.canvasLeft,
+    required this.canvasTop,
+  });
+
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    if (outline.isNotEmpty) {
+      final start = outline.first;
+      path.moveTo(canvasLeft + start.dx * scale, canvasTop + start.dy * scale);
+      for (int i = 1; i < outline.length; i++) {
+        final pt = outline[i];
+        path.lineTo(canvasLeft + pt.dx * scale, canvasTop + pt.dy * scale);
+      }
+      path.close();
+    } else {
+      path.addRRect(RRect.fromRectAndRadius(
+        Rect.fromLTWH(canvasLeft, canvasTop, baseWidth * scale, baseHeight * scale),
+        Radius.circular(baseCornerRadius * scale),
+      ));
+    }
+    return path;
   }
 
   @override
-  bool shouldRepaint(covariant CanvasGridPainter oldDelegate) => true;
+  bool shouldReclip(covariant BaseOutlineClipper oldClipper) => true;
 }

@@ -362,4 +362,28 @@ class ApiService {
     }
     return null;
   }
+
+  static Future<List<dynamic>> getModelsByCategoryName(String categoryName) async {
+    try {
+      final categories = await getModelCategories();
+      final decalCat = categories.firstWhere(
+        (c) => c['name'].toString().toLowerCase().contains(categoryName.toLowerCase()),
+        orElse: () => null,
+      );
+      if (decalCat == null) return [];
+      
+      final categoryId = decalCat['id'];
+      final response = await http.get(
+        Uri.parse('$baseUrl/models?categoryId=$categoryId&take=100'),
+        headers: await _getHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        return decoded is Map ? (decoded['items'] ?? []) : decoded;
+      }
+    } catch (e) {
+      print('Error fetching models by category name: $e');
+    }
+    return [];
+  }
 }
