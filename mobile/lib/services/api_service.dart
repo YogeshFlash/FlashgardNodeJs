@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // Use 10.0.2.2 for Android Emulator, localhost for Windows/Web, or your machine IP for physical devices
-  static const String baseUrl = 'http://192.168.1.9:3000/api'; 
+  static const String baseUrl = 'http://192.168.1.6:3000/api'; 
 
   static Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -36,6 +36,26 @@ class ApiService {
       return null;
     } catch (e) {
       print('Login Error: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> loginDevice(String licenseKey) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/device-login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'licenseKey': licenseKey,
+        }),
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      print('Device Login Error: $e');
       return null;
     }
   }
@@ -162,6 +182,183 @@ class ApiService {
       }
     } catch (e) {
       print('Error fetching mobile home content: $e');
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> checkOrRegisterPlotter({
+    required String name,
+    required String macAddress,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/plotter-devices/check-or-register'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'name': name,
+          'macAddress': macAddress,
+        }),
+      );
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print('Error checking/registering plotter: $e');
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> validateCut({
+    required String? licenseKey,
+    required String? organizationId,
+    required String modelId,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/cuts/validate'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'licenseKey': licenseKey,
+          'organizationId': organizationId,
+          'modelId': modelId,
+        }),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body);
+      } else {
+        try {
+          final decoded = jsonDecode(response.body);
+          return {
+            'valid': false,
+            'error': decoded['message'] ?? 'Validation failed'
+          };
+        } catch (_) {
+          return {
+            'valid': false,
+            'error': 'Validation failed: ${response.statusCode}'
+          };
+        }
+      }
+    } catch (e) {
+      print('Error validating cut: $e');
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> logCut({
+    required String cutToken,
+    String? plotterId,
+    bool isPositiveCut = true,
+    double? latitude,
+    double? longitude,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/cuts/log'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'cutToken': cutToken,
+          'plotterId': plotterId,
+          'isPositiveCut': isPositiveCut,
+          'latitude': latitude,
+          'longitude': longitude,
+        }),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body);
+      } else {
+        try {
+          final decoded = jsonDecode(response.body);
+          return {
+            'success': false,
+            'error': decoded['message'] ?? 'Logging failed'
+          };
+        } catch (_) {
+          return {
+            'success': false,
+            'error': 'Logging failed: ${response.statusCode}'
+          };
+        }
+      }
+    } catch (e) {
+      print('Error logging cut: $e');
+    }
+    return null;
+  }
+
+  static Future<List<dynamic>?> fetchRechargePackages() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/recharge/packages'),
+        headers: await _getHeaders(),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print('Error fetching recharge packages: $e');
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> createRechargeOrder(String packageId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/recharge/create-order'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'packageId': packageId}),
+      );
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        try {
+          final decoded = jsonDecode(response.body);
+          return {
+            'error': decoded['message'] ?? 'Order creation failed'
+          };
+        } catch (_) {
+          return {
+            'error': 'Order creation failed: ${response.statusCode}'
+          };
+        }
+      }
+    } catch (e) {
+      print('Error creating recharge order: $e');
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> verifyRechargePayment({
+    required String razorpayOrderId,
+    required String razorpayPaymentId,
+    required String razorpaySignature,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/recharge/verify'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'razorpayOrderId': razorpayOrderId,
+          'razorpayPaymentId': razorpayPaymentId,
+          'razorpaySignature': razorpaySignature,
+        }),
+      );
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        try {
+          final decoded = jsonDecode(response.body);
+          return {
+            'error': decoded['message'] ?? 'Payment verification failed'
+          };
+        } catch (_) {
+          return {
+            'error': 'Payment verification failed: ${response.statusCode}'
+          };
+        }
+      }
+    } catch (e) {
+      print('Error verifying recharge payment: $e');
     }
     return null;
   }

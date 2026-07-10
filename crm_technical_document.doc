@@ -1,0 +1,164 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Flashgard Pro CRM</title>
+</head>
+<body style="font-family: 'Segoe UI', Arial, sans-serif; margin: 40px; color: #334155; background-color: #ffffff; line-height: 1.6;">
+  <div style="background-color: #1e1b4b; padding: 30px; border-radius: 16px; color: white; margin-bottom: 30px; font-family: 'Segoe UI', sans-serif;">
+    <h1 style="margin: 0; font-size: 28px; font-weight: 900; letter-spacing: 0.5px;">Flashgard Pro CRM</h1>
+    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 14px;">System Technical Documentation & Reference Guide</p>
+  </div>
+  <h1 style="color: #1e1b4b; font-family: 'Segoe UI', sans-serif; font-size: 26px; border-bottom: 2px solid #1e1b4b; padding-bottom: 8px; margin-top: 24px;">Flashgard Pro CRM: Technical System Document</h1>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">*Version 2.0.0 • Generated: July 7, 2026*</p>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">---</p>
+
+<h2 style="color: #334155; font-family: 'Segoe UI', sans-serif; font-size: 18px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">1. Overview & System Architecture</h2>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">The Flashgard Pro ecosystem is built on a scalable, enterprise-grade monorepo architecture. It connects corporate administrators (HQ), regional distributors, local dealers, and mobile/plotter cutting clients.</p>
+
+<div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 11px; color: #475569; margin: 16px 0;">
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">      <strong>[Operational Workflow Diagram]</strong><br/></p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">      <pre style="margin-top: 8px;">graph TD</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    A[React CRM Frontend] -->|REST APIs / JWT| B[NestJS Backend API Gateway]</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    M[Mobile Cutting Client] -->|REST APIs / AES Keys| B</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    B -->|Prisma ORM| C[PostgreSQL Database]</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    B -->|Payment Callbacks| D[Razorpay Payment Gateway]</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    B -->|Blob Storage| E[AWS S3 Bucket]</pre></p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    </div></p>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">1.1 Technology Stack</h3>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Database Layer</strong>: PostgreSQL database managed via Prisma ORM for type-safe database queries.</li>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Backend API Gateway</strong>: NestJS (Node.js framework) providing guard-protected REST controllers, JWT-based passport authentication, background task schedulers, and payment signature verifiers.</li>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">CRM Portal (Frontend)</strong>: React client compiled via Vite, styled using modern Tailwind CSS frameworks and Lucide-react iconography.</li>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Mobile Client</strong>: Flutter application running native Android Bluetooth classic sockets for hardware printer communication.</li>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">---</p>
+
+<h2 style="color: #334155; font-family: 'Segoe UI', sans-serif; font-size: 18px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">2. Core Functional Modules</h2>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">2.1 Authentication & Authorization</h3>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Roles & Permissions</strong>: Access is gated using granular permission roles (<code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">roles:read</code>, <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">settings:write</code>, <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">licenses:admin</code>).</li>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Data Scopes</strong>: Supports data-access policies:</li>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  * <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">own</code>: User sees only their records.</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  * <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">team</code>: User sees records within their department.</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  * <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">all</code>: Full system-wide visibility (Super Admin default).</p>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">2.2 Organizations Hierarchy</h3>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Organizations are structured hierarchically:</p>
+<pre style="background-color: #1e293b; color: #f8fafc; padding: 14px; border-radius: 8px; font-family: Consolas, monospace; font-size: 12px; overflow-x: auto; margin: 12px 0;">Corporate HQ (Root)
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">   └── Distributor</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">         └── Dealer (Retailer)</p>
+</pre>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Wallet</strong>: Every organization possesses an <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">EntityWallet</code> that tracks total credits, used credits, and remaining balance.</li>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">2.3 Licensing Lifecycle</h3>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Licenses are used to bind plotter cutting hardware to specific organizations.</p>
+
+<div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 11px; color: #475569; margin: 16px 0;">
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">      <strong>[Operational Workflow Diagram]</strong><br/></p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">      <pre style="margin-top: 8px;">sequenceDiagram</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    participant HQ as Corporate HQ</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    participant CRM as CRM Database</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    participant DEV as Plotter/Mobile App</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    HQ->>CRM: Issue License Key (AVAILABLE, activatedAt: null)</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    HQ->>CRM: Dispatch to Organization</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    DEV->>CRM: User Login (Resolves & Activates Org License)</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    Note over CRM: Verifies fingerprint & geo location</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    CRM-->>DEV: Handshake OK (ACTIVE, activatedAt: now())</pre></p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    </div></p>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">---</p>
+
+<h2 style="color: #334155; font-family: 'Segoe UI', sans-serif; font-size: 18px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">3. Recharge & Payment Gateway Architecture</h2>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">The recharge module handles dynamic package selection, secure UPI order generation, and automated wallet reconciliation.</p>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">3.1 Seeding Packages</h3>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Recharge packages are seeded in the database under the <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">RechargePackage</code> model:</p>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Starter</strong>: ₹500 (100 Credits)</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Growth</strong>: ₹1,500 (350 Credits)</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Premium</strong>: ₹3,000 (800 Credits)</li>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">3.2 Dynamic Configurations</h3>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Payment gateway credentials and parent distributors can be hot-swapped dynamically without redeploying backend code:</p>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">System Settings</strong>: Stored in the <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">SystemSetting</code> key-value table:</li>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  * <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">razorpay_key_id</code>: Active merchant API key.</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  * <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">razorpay_key_secret</code>: Key secret.</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  * <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">recharge_distributor_id</code>: The ID of the organization that acts as the distributor ("Assigned From") when creating <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">CutCredit</code> history logs.</p>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">3.3 Transaction Reconciliation Flow</h3>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Order Initialization</strong>: User selects a package in the Flutter app. The app requests <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">/recharge/create-order</code>. The backend contacts Razorpay using dynamic credentials, registers a pending order, and returns the order token.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Checkout</strong>: The client displays the Razorpay UPI overlay.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Verification</strong>: Once paid, the client calls <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">/recharge/verify</code> with the transaction signature. The backend:</li>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">   * Verifies the cryptographic HMAC signature.</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">   * Increments the organization's <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">EntityWallet</code> balance.</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">   * Logs a <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">CreditTransaction</code> record.</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">   * Logs a <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">CutCredit</code> history record linked to the configured parent distributor ID.</p>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">---</p>
+
+<h2 style="color: #334155; font-family: 'Segoe UI', sans-serif; font-size: 18px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">4. Key Database Schema Models</h2>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">4.1 SystemSetting</h3>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Tracks runtime global environment parameters:</p>
+<pre style="background-color: #1e293b; color: #f8fafc; padding: 14px; border-radius: 8px; font-family: Consolas, monospace; font-size: 12px; overflow-x: auto; margin: 12px 0;">model SystemSetting {
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  key   String @id @db.VarChar(100)</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  value String @db.Text</p>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  @@map("system_settings")</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">}</p>
+</pre>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">4.2 EntityWallet & CreditTransaction</h3>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Tracks credit ledger accounts:</p>
+<pre style="background-color: #1e293b; color: #f8fafc; padding: 14px; border-radius: 8px; font-family: Consolas, monospace; font-size: 12px; overflow-x: auto; margin: 12px 0;">model EntityWallet {
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  id              String              @id @default(uuid()) @db.Uuid</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  orgId           String?             @unique @map("org_id") @db.Uuid</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  totalCredits    Int                 @default(0) @map("total_credits")</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  usedCredits     Int                 @default(0) @map("used_credits")</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  balance         Int                 @default(0)</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  transactions    CreditTransaction[]</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">}</p>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">model CreditTransaction {</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  id        String          @id @default(uuid()) @db.Uuid</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  walletId  String          @map("wallet_id") @db.Uuid</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  amount    Int</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  type      TransactionType // CREDIT or DEBIT</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  source    String?         @db.VarChar(255) // e.g. RECHARGE, CUT</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">}</p>
+</pre>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">---</p>
+
+<h2 style="color: #334155; font-family: 'Segoe UI', sans-serif; font-size: 18px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">5. Main Handshakes & APIs</h2>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">5.1 Cut Validation Handshake</h3>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Triggered by the mobile client before initiating any plotter hardware cut.</p>
+
+<pre style="background-color: #1e293b; color: #f8fafc; padding: 14px; border-radius: 8px; font-family: Consolas, monospace; font-size: 12px; overflow-x: auto; margin: 12px 0;">Mobile App (Cut Request) ------&gt; GET /cuts/validate-cut/:modelCutFileId
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">                                          |</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">                                 Checks Wallet Balance &</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">                                 Active Organization License</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">                                          |</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Mobile App &lt;----------------- Returns validation status</p>
+</pre>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">5.2 Payment Verification</h3>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Endpoint</strong>: <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">POST /recharge/verify</code></li>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Access</strong>: Protect (JWT User Auth Guard)</li>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Request Body</strong>:</li>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  <pre style="background-color: #1e293b; color: #f8fafc; padding: 14px; border-radius: 8px; font-family: Consolas, monospace; font-size: 12px; overflow-x: auto; margin: 12px 0;">  {</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    "razorpayOrderId": "order_OkT7zJ2pLq9M0x",</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    "razorpayPaymentId": "pay_OkT8B3zKmR1V2w",</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">    "razorpaySignature": "31b46a9e..."</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  }</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  </pre></p>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Response</strong>: <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">{ "success": true, "message": "Payment verified and wallet credited" }</code></li>
+
+</body>
+</html>
+  

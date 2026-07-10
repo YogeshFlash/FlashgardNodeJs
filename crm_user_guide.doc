@@ -1,0 +1,159 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Flashgard Pro CRM</title>
+</head>
+<body style="font-family: 'Segoe UI', Arial, sans-serif; margin: 40px; color: #334155; background-color: #ffffff; line-height: 1.6;">
+  <div style="background-color: #ce1d19; padding: 30px; border-radius: 16px; color: white; margin-bottom: 30px; font-family: 'Segoe UI', sans-serif;">
+    <h1 style="margin: 0; font-size: 28px; font-weight: 900; letter-spacing: 0.5px;">Flashgard Pro CRM</h1>
+    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 14px;">User Operations & System Admin Manual</p>
+  </div>
+  <h1 style="color: #ce1d19; font-family: 'Segoe UI', sans-serif; font-size: 26px; border-bottom: 2px solid #ce1d19; padding-bottom: 8px; margin-top: 24px;">Flashgard Pro CRM: User Operations Guide</h1>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">*A Step-by-Step Operations Manual for Administrators, Distributors, and Operators*</p>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">---</p>
+
+<h2 style="color: #334155; font-family: 'Segoe UI', sans-serif; font-size: 18px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">1. Introduction & Overview</h2>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Welcome to the <strong style="font-weight: bold; color: #0f172a;">Flashgard Pro CRM</strong> administration portal. This platform is designed to manage the entire lifecycle of device licensing, organization hierarchies, machine cut validation, credit ledgers, and system settings.</p>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">1.1 Accessing the CRM</h3>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Open your web browser and navigate to the CRM URL (usually <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">http://localhost:3000</code> or the company's designated web domain).</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Enter your email address and password on the Login page.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Upon successful authentication, you will be redirected to the <strong style="font-weight: bold; color: #0f172a;">Dashboard Overview</strong> page.</li>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">---</p>
+
+<h2 style="color: #334155; font-family: 'Segoe UI', sans-serif; font-size: 18px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">2. Dashboard Overview</h2>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">The <strong style="font-weight: bold; color: #0f172a;">Dashboard Overview</strong> is the landing screen of the CRM. It provides real-time business and system metrics:</p>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Key Metrics</strong>: View total active licenses, total cut credits consumed, total registered organizations, and active plotter machines.</li>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Graphical Charts</strong>: Visual representation of cutting trends, top-performing organizations, and transaction logs.</li>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Recent Activity Feed</strong>: Real-time log of machine cuts and system logins.</li>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">---</p>
+
+<h2 style="color: #334155; font-family: 'Segoe UI', sans-serif; font-size: 18px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">3. Organizations Management</h2>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">The system operates on a tree-like organizational structure, allowing hierarchical control from Corporate HQ down to local dealers.</p>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">3.1 Organization Hierarchy Types</h3>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Corporate HQ</strong>: Root level organization. Can manage all organizations, users, and licenses.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Distributor</strong>: Mid-level franchise or regional partner. Can manage their downstream dealers and distribute allocated license keys.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Dealer (Retailer)</strong>: Downstream branches or shops. These own the physical cutting plotters and consume credits.</li>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">3.2 Creating a New Organization</h3>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Go to the <strong style="font-weight: bold; color: #0f172a;">Organizations</strong> page from the sidebar menu.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Click the <strong style="font-weight: bold; color: #0f172a;">+ New Organization</strong> button in the top right corner.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Fill in the organization details:</li>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">   * <strong style="font-weight: bold; color: #0f172a;">Name</strong>: Name of the organization (e.g., *Hyderabad Central Dealer*).</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">   * <strong style="font-weight: bold; color: #0f172a;">Organization Type</strong>: Choose from HQ, Distributor, or Dealer.</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">   * <strong style="font-weight: bold; color: #0f172a;">Parent Organization</strong>: Select the parent entity from the dropdown (determines who manages this organization).</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">   * <strong style="font-weight: bold; color: #0f172a;">Active Status</strong>: Toggle to enable or disable the organization.</p>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Click <strong style="font-weight: bold; color: #0f172a;">Save</strong> to create the organization.</li>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">3.3 Managing Organization Wallets</h3>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Each organization has an associated wallet. To view an organization's credit balance:</li>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  1. Open the <strong style="font-weight: bold; color: #0f172a;">Organizations</strong> list.</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  2. Click the organization name to open its profile.</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  3. The wallet overview shows <strong style="font-weight: bold; color: #0f172a;">Total Credits</strong>, <strong style="font-weight: bold; color: #0f172a;">Used Credits</strong>, and the current <strong style="font-weight: bold; color: #0f172a;">Balance</strong>.</p>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">  4. You can adjust credits manually or inspect all historical transaction logs under the <strong style="font-weight: bold; color: #0f172a;">Transaction History</strong> sub-tab.</p>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">---</p>
+
+<h2 style="color: #334155; font-family: 'Segoe UI', sans-serif; font-size: 18px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">4. User & Role Management</h2>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">The CRM implements Role-Based Access Control (RBAC) to ensure that users have access only to what they need.</p>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">4.1 Creating and Managing Roles</h3>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Navigate to <strong style="font-weight: bold; color: #0f172a;">Settings</strong> > <strong style="font-weight: bold; color: #0f172a;">Access Roles</strong> tab.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Click <strong style="font-weight: bold; color: #0f172a;">+ New Role</strong>.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Input the <strong style="font-weight: bold; color: #0f172a;">Role Name</strong> (e.g., *Regional Operations Manager*) and a description.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Select the permissions to associate with this role (e.g., <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">licenses:write</code>, <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">users:read</code>).</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Set the <strong style="font-weight: bold; color: #0f172a;">Data Scope</strong> for each permission (<code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">own</code>, <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">team</code>, or <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">all</code>).</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Click <strong style="font-weight: bold; color: #0f172a;">Save</strong>.</li>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">4.2 Creating and Managing Users</h3>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Go to the <strong style="font-weight: bold; color: #0f172a;">Users</strong> directory page.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Click the <strong style="font-weight: bold; color: #0f172a;">+ New User</strong> button.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Input the user's personal details (First Name, Last Name, Email, Password).</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Assign the user to an <strong style="font-weight: bold; color: #0f172a;">Organization</strong> (which binds their data scope to that branch).</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Assign a <strong style="font-weight: bold; color: #0f172a;">Role</strong> (which defines their actions).</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Click <strong style="font-weight: bold; color: #0f172a;">Save</strong>.</li>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">---</p>
+
+<h2 style="color: #334155; font-family: 'Segoe UI', sans-serif; font-size: 18px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">5. License Management</h2>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Licenses represent structural keys that bind mobile applications or hardware plotters to their assigned organization branch.</p>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">5.1 Issuing License Batches</h3>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Go to the <strong style="font-weight: bold; color: #0f172a;">Licenses</strong> page from the sidebar.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Under the <strong style="font-weight: bold; color: #0f172a;">Batches</strong> tab, click <strong style="font-weight: bold; color: #0f172a;">+ Create License Batch</strong>.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Set the <strong style="font-weight: bold; color: #0f172a;">License Type</strong> (e.g., basic, advanced, or pro), specify the <strong style="font-weight: bold; color: #0f172a;">Total Count</strong> of license keys to generate, and input a description.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Click <strong style="font-weight: bold; color: #0f172a;">Generate</strong>. The system will create unique, encrypted keys.</li>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">5.2 Dispatching Licenses</h3>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Before a license can be activated, it must be assigned to an organization.</p>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">In the <strong style="font-weight: bold; color: #0f172a;">Licenses Inventory</strong> list, select the license keys you want to dispatch.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Click the <strong style="font-weight: bold; color: #0f172a;">Dispatch Selected</strong> button.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Select the target <strong style="font-weight: bold; color: #0f172a;">Organization</strong> (Dealer/Distributor) from the dropdown.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Click <strong style="font-weight: bold; color: #0f172a;">Confirm Dispatch</strong>.</li>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">5.3 License Activation Lifecycle</h3>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">AVAILABLE</strong>: The license key is generated and assigned to an organization, but no user from that organization has logged in yet on the mobile app.</li>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">ACTIVE</strong>: Activation happens transparently on login. Once an operator logs into the Flutter Mobile App using their standard email and password, the system automatically resolves the organization's assigned license, binds it to the device's hardware MAC address/Fingerprint, transitions the status to <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">ACTIVE</code>, and stamps the <code style="background-color: #f1f5f9; color: #ce1d19; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px;">activatedAt</code> date/time.</li>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">5.4 Handling Mismatches & Security Alerts</h3>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">If a dealer moves a license to a different physical phone or plotter, the system flags a <strong style="font-weight: bold; color: #0f172a;">Security Alert</strong>:</p>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">An alert will appear under the <strong style="font-weight: bold; color: #0f172a;">Security Alerts</strong> section of the CRM showing the attempted IP address, attempted hardware fingerprint, and the originally stored fingerprint.</li>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;"><strong style="font-weight: bold; color: #0f172a;">Resolution</strong>: If this is a legitimate hardware upgrade, a Super Admin must open the license details and click <strong style="font-weight: bold; color: #0f172a;">Reset Device Hash</strong> to allow the new machine to register.</li>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">---</p>
+
+<h2 style="color: #334155; font-family: 'Segoe UI', sans-serif; font-size: 18px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">6. Cut Credit & Recharge Management</h2>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Operators must have cut credits to perform film cuts on physical plotter machines.</p>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">6.1 Creating Recharge Packages (Seeding)</h3>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Recharge packages define how many credits a dealer receives for a specific monetary payment.</p>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Navigate to the <strong style="font-weight: bold; color: #0f172a;">Recharge Packages</strong> section of the CRM.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Click <strong style="font-weight: bold; color: #0f172a;">+ New Package</strong>.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Provide a name (e.g., *Gold Starter Package*), cost price, and the credit value (e.g., 500 cuts).</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Save the package.</li>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">6.2 Managing Assignment History</h3>
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Every time an online UPI recharge occurs:</p>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">The transaction registers successfully in the <strong style="font-weight: bold; color: #0f172a;">Assignment History</strong> section.</li>
+<li style="margin-left: 20px; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Click on any transaction inside the <strong style="font-weight: bold; color: #0f172a;">Assignment History</strong> list to view full payment details, including <strong style="font-weight: bold; color: #0f172a;">Razorpay Order ID</strong>, <strong style="font-weight: bold; color: #0f172a;">Razorpay Payment ID</strong>, payment timestamps, and payment statuses.</li>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">---</p>
+
+<h2 style="color: #334155; font-family: 'Segoe UI', sans-serif; font-size: 18px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">7. System Settings & Gateway Configuration</h2>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Super Administrators can configure system parameters dynamically.</p>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">7.1 Editing Payment Gateway Settings</h3>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Navigate to the <strong style="font-weight: bold; color: #0f172a;">Settings</strong> page.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Click on the <strong style="font-weight: bold; color: #0f172a;">Payment Gateway</strong> tab.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Update the <strong style="font-weight: bold; color: #0f172a;">Razorpay Key ID</strong> and <strong style="font-weight: bold; color: #0f172a;">Razorpay Key Secret</strong> for sandbox or production gateways.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Select the <strong style="font-weight: bold; color: #0f172a;">Assigned From Organization</strong> from the dropdown list. This defaults the distributor organization (e.g., *Flashgard Pvt Ltd Hyd*) that acts as the distributor on recharge logs.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Click <strong style="font-weight: bold; color: #0f172a;">Save Settings</strong> to apply immediately.</li>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">---</p>
+
+<h2 style="color: #334155; font-family: 'Segoe UI', sans-serif; font-size: 18px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">8. Materials & Plotters Inventory</h2>
+
+<p style="font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; color: #334155; margin: 8px 0;">Tracks the catalog of cutting templates and machines available.</p>
+
+<h3 style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 14px; margin-top: 16px;">8.1 Registering Physical Plotter Machines</h3>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Open <strong style="font-weight: bold; color: #0f172a;">Settings</strong> > <strong style="font-weight: bold; color: #0f172a;">Plotters Directory</strong> tab.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Under the <strong style="font-weight: bold; color: #0f172a;">Physical Plotters</strong> section, click <strong style="font-weight: bold; color: #0f172a;">+ New Plotter Device</strong>.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Select the manufacturer/template type, input the device name, serial number, and assigned organization.</li>
+<li style="margin-left: 20px; list-style-type: decimal; font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #334155; margin-bottom: 4px;">Saving this generates the unique license key required for the machine to connect.</li>
+
+</body>
+</html>
+  
