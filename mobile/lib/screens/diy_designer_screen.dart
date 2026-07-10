@@ -1222,32 +1222,27 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Decal Canvas Actions',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey),
-                    ),
-                    const SizedBox(height: 8),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          ElevatedButton.icon(
-                            onPressed: _showPresetDecalsSheet,
-                            icon: const Icon(Icons.brush, size: 16),
-                            label: const Text('ADD DECAL / SKIN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.indigo,
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size(0, 36),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Decal Canvas Actions',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey),
+                        ),
+                        TextButton.icon(
+                          onPressed: _showPresetDecalsSheet,
+                          icon: const Icon(Icons.brush, size: 14, color: Colors.indigo),
+                          label: const Text(
+                            'Insert Mobile Decals',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo),
                           ),
-                          const SizedBox(width: 8),
-                          _buildAddBlockBtn(CutoutType.circle, 'Add Hole', Icons.circle_outlined),
-                          const SizedBox(width: 4),
-                          _buildAddBlockBtn(CutoutType.rect, 'Add Notch', Icons.crop_square_outlined),
-                        ],
-                      ),
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                      ],
                     ),
                     if (_isLoadingDbDecals) ...[
                       const SizedBox(height: 12),
@@ -1438,79 +1433,6 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                       ),
               ),
 
-              // Active Items Toolbar
-              if (!_isLoading)
-                Container(
-                  color: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                  child: Row(
-                    children: [
-                      const Text('Layers:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: [
-                              _buildActiveComponentBtn(
-                                icon: Icons.crop_free,
-                                isSelected: _isBaseSelected,
-                                onTap: () {
-                                  setState(() {
-                                    _isBaseSelected = true;
-                                    _selectedCutout = null;
-                                    _selectedDecal = null;
-                                  });
-                                },
-                              ),
-                              ..._decals.map((decal) {
-                                final isSelected = _selectedDecal?.id == decal.id;
-                                return Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const SizedBox(width: 8),
-                                    _buildActiveComponentBtn(
-                                      icon: Icons.broken_image_outlined,
-                                      isSelected: isSelected,
-                                      onTap: () {
-                                        setState(() {
-                                          _selectedDecal = decal;
-                                          _selectedCutout = null;
-                                          _isBaseSelected = false;
-                                        });
-                                      },
-                                    ),
-                                  ],
-                                );
-                              }).toList(),
-                              ..._cutouts.map((cutout) {
-                                final isSelected = _selectedCutout?.id == cutout.id;
-                                return Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const SizedBox(width: 8),
-                                    _buildActiveComponentBtn(
-                                      icon: cutout.type == CutoutType.circle ? Icons.circle_outlined : Icons.crop_square_outlined,
-                                      isSelected: isSelected,
-                                      onTap: () {
-                                        setState(() {
-                                          _selectedCutout = cutout;
-                                          _selectedDecal = null;
-                                          _isBaseSelected = false;
-                                        });
-                                      },
-                                    ),
-                                  ],
-                                );
-                              }).toList(),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
               // Inspector Panel
               if (!_isLoading)
                 Container(
@@ -1526,9 +1448,16 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          _isBaseSelected
-                              ? _buildBaseInspector()
-                              : (_selectedDecal != null ? _buildDecalInspector() : _buildCutoutInspector()),
+                          _selectedDecal != null
+                              ? _buildDecalInspector()
+                              : const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 12),
+                                  child: Text(
+                                    'Select a decal to adjust its size and placement',
+                                    style: TextStyle(fontSize: 11, color: Colors.blueGrey, fontStyle: FontStyle.italic),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
                           const SizedBox(height: 16),
                           SizedBox(
                             width: double.infinity,
