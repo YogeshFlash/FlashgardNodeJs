@@ -192,6 +192,27 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
   int _cutProgress = 0;
   StreamSubscription<int>? _progressSubscription;
 
+  List<dynamic> _dbDecals = [];
+  bool _isLoadingDbDecals = false;
+
+  Future<void> _loadDbDecals() async {
+    setState(() => _isLoadingDbDecals = true);
+    try {
+      final models = await ApiService.getModelsByCategoryName('Mobile Decals');
+      if (mounted) {
+        setState(() {
+          _dbDecals = models;
+          _isLoadingDbDecals = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading DB decals: $e');
+      if (mounted) {
+        setState(() => _isLoadingDbDecals = false);
+      }
+    }
+  }
+
   void _saveToHistory() {
     _undoStack.add(
       DesignerStateHistory.clone(
@@ -318,6 +339,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       _addCutout(CutoutType.circle);
     }
     _initPlotterParams();
+    _loadDbDecals();
   }
 
   @override
@@ -1227,6 +1249,70 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                         ],
                       ),
                     ),
+                    if (_isLoadingDbDecals) ...[
+                      const SizedBox(height: 12),
+                      const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
+                    ] else if (_dbDecals.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Insert Mobile Decals (Category)',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 80,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _dbDecals.length,
+                          itemBuilder: (ctx, idx) {
+                            final model = _dbDecals[idx];
+                            final name = model['name'] ?? 'Decal';
+                            final imgPath = model['imageUrl']?.toString() ?? '';
+                            final imgUrl = imgPath.startsWith('http')
+                                ? imgPath
+                                : '${ApiService.baseUrl.replaceFirst('/api', '')}/${imgPath.startsWith('/') ? imgPath.substring(1) : imgPath}';
+
+                            return GestureDetector(
+                              onTap: () => _addDecal(name, imgUrl),
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 12),
+                                width: 70,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.grey[200]!),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Expanded(
+                                      child: ClipRRect(
+                                        borderRadius: const BorderRadius.vertical(top: Radius.circular(7)),
+                                        child: Image.network(
+                                          imgUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (ctx, err, stack) => const Icon(Icons.broken_image, size: 20, color: Colors.grey),
+                                        ),
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.all(3),
+                                      color: Colors.grey[50],
+                                      width: double.infinity,
+                                      child: Text(
+                                        name, 
+                                        style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold), 
+                                        textAlign: TextAlign.center,
+                                        maxLines: 1, 
+                                        overflow: TextOverflow.ellipsis
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
