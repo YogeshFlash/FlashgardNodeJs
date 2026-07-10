@@ -1205,24 +1205,27 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey),
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: _showPresetDecalsSheet,
-                          icon: const Icon(Icons.brush, size: 16),
-                          label: const Text('ADD DECAL / SKIN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.indigo,
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size(0, 36),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: _showPresetDecalsSheet,
+                            icon: const Icon(Icons.brush, size: 16),
+                            label: const Text('ADD DECAL / SKIN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.indigo,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size(0, 36),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        _buildAddBlockBtn(CutoutType.circle, 'Add Hole', Icons.circle_outlined),
-                        const SizedBox(width: 4),
-                        _buildAddBlockBtn(CutoutType.rect, 'Add Notch', Icons.crop_square_outlined),
-                      ],
+                          const SizedBox(width: 8),
+                          _buildAddBlockBtn(CutoutType.circle, 'Add Hole', Icons.circle_outlined),
+                          const SizedBox(width: 4),
+                          _buildAddBlockBtn(CutoutType.rect, 'Add Notch', Icons.crop_square_outlined),
+                        ],
+                      ),
                     ),
                   ],
                 ),
