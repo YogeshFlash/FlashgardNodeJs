@@ -1787,6 +1787,8 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
 
   Widget _buildInspectorSlider(String label, double val, double minVal, double maxVal, ValueChanged<double>? onChanged) {
     final isEnabled = onChanged != null;
+    final double safeMax = maxVal < minVal ? minVal + 1.0 : maxVal;
+    final double safeVal = val.clamp(minVal, safeMax);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -1795,7 +1797,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label, style: const TextStyle(fontSize: 10, color: Colors.blueGrey)),
-            Text('${val.toInt()} mm', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isEnabled ? Colors.black87 : Colors.grey)),
+            Text('${safeVal.toInt()} mm', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isEnabled ? Colors.black87 : Colors.grey)),
           ],
         ),
         SliderTheme(
@@ -1805,9 +1807,9 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
           ),
           child: Slider(
-            value: val.clamp(minVal, maxVal),
+            value: safeVal,
             min: minVal,
-            max: maxVal,
+            max: safeMax,
             onChangeStart: isEnabled ? (v) => _saveToHistory() : null,
             onChanged: isEnabled ? onChanged : null,
           ),
