@@ -150,13 +150,16 @@ const ModelsPage: React.FC = () => {
   };
 
   const fetchGlobalDesigns = useCallback(async () => {
+    setLoading(true);
     try {
       const skip = (designsPage - 1) * itemsPerPage;
       const res = await modelCutFilesApi.getAll(undefined, searchTerm, skip, itemsPerPage);
-      setAllDesigns(res.items);
-      setDesignsTotal(res.total);
+      setAllDesigns(res.items || []);
+      setDesignsTotal(res.total || 0);
     } catch (error) {
       console.error('Error fetching global designs:', error);
+    } finally {
+      setLoading(false);
     }
   }, [designsPage, searchTerm, itemsPerPage]);
 
@@ -731,43 +734,49 @@ const ModelsPage: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {allDesigns.map((design) => (
-                          <tr key={design.id} className="hover:bg-slate-50/50 transition-colors group">
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400">
-                                  <Smartphone className="w-5 h-5" />
+                        {loading ? (
+                          <tr><td colSpan={10} className="p-10 text-center"><RefreshCw className="w-6 h-6 animate-spin mx-auto text-slate-300" /></td></tr>
+                        ) : allDesigns.length === 0 ? (
+                          <tr><td colSpan={10} className="p-10 text-center text-slate-400">No items found.</td></tr>
+                        ) : (
+                          allDesigns.map((design) => (
+                            <tr key={design.id} className="hover:bg-slate-50/50 transition-colors group">
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-4">
+                                  <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400">
+                                    <Smartphone className="w-5 h-5" />
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-slate-900">{design.model?.name}</p>
+                                    <p className="text-xs text-slate-500">{design.model?.brand?.name}</p>
+                                  </div>
                                 </div>
-                                <div>
-                                  <p className="font-bold text-slate-900">{design.model?.name}</p>
-                                  <p className="text-xs text-slate-500">{design.model?.brand?.name}</p>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold">
+                                  {design.model?.category?.name}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-2 text-indigo-600 font-bold">
+                                  <Scissors className="w-3 h-3" />
+                                  {design.cutPattern?.name}
                                 </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold">
-                                {design.model?.category?.name}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-2 text-indigo-600 font-bold">
-                                <Scissors className="w-3 h-3" />
-                                {design.cutPattern?.name}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="px-2 py-0.5 bg-slate-100 text-slate-400 rounded text-[10px] font-bold">
-                                {design.cutPattern?.sortOrder || 0}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 font-mono text-xs text-slate-400">
-                              {design.legacyId}
-                            </td>
-                            <td className="px-6 py-4 text-slate-500">
-                              {new Date(design.createdAt).toLocaleDateString()}
-                            </td>
-                          </tr>
-                        ))}
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="px-2 py-0.5 bg-slate-100 text-slate-400 rounded text-[10px] font-bold">
+                                  {design.cutPattern?.sortOrder || 0}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 font-mono text-xs text-slate-400">
+                                {design.legacyId}
+                              </td>
+                              <td className="px-6 py-4 text-slate-500">
+                                {new Date(design.createdAt).toLocaleDateString()}
+                              </td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
