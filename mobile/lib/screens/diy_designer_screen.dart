@@ -995,10 +995,10 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         id: id,
         name: name,
         imageUrl: url,
-        x: (_baseWidth - 100.0) / 2,
-        y: (_baseHeight - 100.0) / 2,
-        width: 100.0,
-        height: 100.0,
+        x: 0.0,
+        y: 0.0,
+        width: _baseWidth,
+        height: _baseHeight,
       );
       _decals.add(newDecal);
       _selectedDecal = newDecal;
@@ -1395,24 +1395,28 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                       canvasLeft: _canvasLeft,
                                       canvasTop: _canvasTop,
                                     ),
-                                    child: Stack(
-                                      children: _decals.map((decal) {
-                                        final double dLeft = _canvasLeft + decal.x * _scale;
-                                        final double dTop = _canvasTop + decal.y * _scale;
-                                        final double dW = decal.width * _scale;
-                                        final double dH = decal.height * _scale;
-                                        return Positioned(
-                                          left: dLeft,
-                                          top: dTop,
-                                          width: dW,
-                                          height: dH,
-                                          child: Image.network(
-                                            decal.imageUrl,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (ctx, err, stack) => Container(color: Colors.blueGrey[100]),
-                                          ),
-                                        );
-                                      }).toList(),
+                                    child: SizedBox(
+                                      width: constraints.maxWidth,
+                                      height: constraints.maxHeight,
+                                      child: Stack(
+                                        children: _decals.map((decal) {
+                                          final double dLeft = _canvasLeft + decal.x * _scale;
+                                          final double dTop = _canvasTop + decal.y * _scale;
+                                          final double dW = decal.width * _scale;
+                                          final double dH = decal.height * _scale;
+                                          return Positioned(
+                                            left: dLeft,
+                                            top: dTop,
+                                            width: dW,
+                                            height: dH,
+                                            child: Image.network(
+                                              decal.imageUrl,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (ctx, err, stack) => Container(color: Colors.blueGrey[100]),
+                                            ),
+                                          );
+                                        }).toList(),
+                                      ),
                                     ),
                                   ),
 
