@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { mobileHomeApi } from '../lib/api';
 import { 
   Smartphone, Plus, Edit2, Trash2, X,
-  LayoutGrid, Image, FileText, CheckCircle2, AlertCircle, Sparkles
+  LayoutGrid, Image, FileText, CheckCircle2, AlertCircle, Sparkles, RotateCcw
 } from 'lucide-react';
 
 const MobileHomeManager: React.FC = () => {
@@ -148,13 +148,18 @@ const MobileHomeManager: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={handleOpenAdd}
-          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[var(--color-primary)] text-white font-semibold rounded-xl shadow-lg hover:shadow-xl hover:bg-[var(--color-primary-dark)] transition-all cursor-pointer"
-        >
-          <Plus className="w-5 h-5" />
-          Add New Element
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={fetchData} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm" title="Refresh">
+            <RotateCcw className={`w-5 h-5 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={handleOpenAdd}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[var(--color-primary)] text-white font-semibold rounded-xl shadow-lg hover:shadow-xl hover:bg-[var(--color-primary-dark)] transition-all cursor-pointer"
+          >
+            <Plus className="w-5 h-5" />
+            Add New Element
+          </button>
+        </div>
       </div>
 
       {/* Success/Error Alerts */}

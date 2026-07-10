@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, TrendingUp, Key, Cpu, Layers, Loader2, Search, Calendar, ChevronLeft, ChevronRight, FileSpreadsheet } from 'lucide-react';
+import { BarChart3, TrendingUp, Key, Cpu, Layers, Loader2, Search, Calendar, ChevronLeft, ChevronRight, FileSpreadsheet, RotateCcw } from 'lucide-react';
 import { licensesApi } from '../lib/api';
 
 const Card = ({ title, value, change, icon: Icon, colorClass, shadowClass }: any) => (
@@ -26,6 +26,7 @@ const Card = ({ title, value, change, icon: Icon, colorClass, shadowClass }: any
 
 const ReportsPage = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'modelReport' | 'dealerPerformance' | 'plotterAnalytics'>('overview');
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   
   // Overview Tab Stats
   const [range, setRange] = useState<number>(6);
@@ -522,6 +523,9 @@ const ReportsPage = () => {
             <p className="text-slate-500 text-sm mt-0.5">Monitor platform metrics, cutting analytics, and software distribution.</p>
           </div>
         </div>
+        <button onClick={() => setRefreshTrigger(p => p + 1)} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm self-end sm:self-center" title="Refresh">
+          <RotateCcw className="w-4 h-4 text-slate-500" />
+        </button>
       </div>
 
       {/* Side-by-side modern split container */}
@@ -549,7 +553,7 @@ const ReportsPage = () => {
         </div>
 
         {/* Dynamic Content Panel */}
-        <div className="flex-1 bg-white min-w-0 p-6">
+        <div className="flex-1 bg-white min-w-0 p-6" key={activeTab + '_' + refreshTrigger}>
           {activeTab === 'overview' ? (
         <>
           {loading && !data ? (

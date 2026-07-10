@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ShieldCheck, Plus, Search, Edit2, Trash2, Loader2, AlertCircle, Check } from 'lucide-react';
+import { ShieldCheck, Plus, Search, Edit2, Trash2, Loader2, AlertCircle, Check, RotateCcw } from 'lucide-react';
 import { rolesApi, permissionsApi } from '../lib/api';
 import { HasPermission } from '../components/HasPermission';
 import { useAuth } from '../contexts/AuthContext';
@@ -194,11 +194,16 @@ const RolesPage = () => {
           <h1 className="text-2xl font-bold text-slate-900">Roles & Access</h1>
           <p className="text-slate-500 text-sm mt-1">Manage system roles and organization-level permissions</p>
         </div>
-        <HasPermission permission="roles:write">
-          <button onClick={() => setModal('new')} className="btn-primary flex items-center gap-2">
-            <Plus className="w-4 h-4" /> New Role
+        <div className="flex items-center gap-2">
+          <button onClick={fetchRoles} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm" title="Refresh">
+            <RotateCcw className={`w-4 h-4 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
           </button>
-        </HasPermission>
+          <HasPermission permission="roles:write">
+            <button onClick={() => setModal('new')} className="btn-primary flex items-center gap-2">
+              <Plus className="w-4 h-4" /> New Role
+            </button>
+          </HasPermission>
+        </div>
       </div>
 
       <div className="card bg-white">

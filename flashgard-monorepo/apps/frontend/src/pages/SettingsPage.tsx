@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import {
   Bell, ShieldCheck, Database, Globe,
   Plus, Edit2, Trash2, Loader2, Users, Search, Key, Check, List, X, Shield, RotateCcw, Building, ScrollText,
-  ChevronLeft, ChevronRight, ChevronDown, Cpu
+  ChevronLeft, ChevronRight, ChevronDown, Cpu, CreditCard
 } from 'lucide-react';
-import { rolesApi, usersApi, permissionsApi, auditLogsApi, orgsApi, organizationTypesApi, productTypesApi, materialCategoriesApi, filmCategoriesApi, materialsApi, plottersApi, plotterDevicesApi } from '../lib/api';
+import { rolesApi, usersApi, permissionsApi, auditLogsApi, orgsApi, organizationTypesApi, productTypesApi, materialCategoriesApi, filmCategoriesApi, materialsApi, plottersApi, plotterDevicesApi, paymentGatewayApi } from '../lib/api';
 import { HasPermission, usePermissions } from '../components/HasPermission';
 import { useAuth } from '../contexts/AuthContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -191,6 +191,151 @@ const GeneralTab = () => {
           ))}
         </div>
       </div>
+    </div>
+  );
+};
+
+
+// ─── Payment Gateway Tab ───────────────────────────
+const PaymentGatewayTab = () => {
+  const [razorpayKeyId, setRazorpayKeyId] = useState('');
+  const [razorpayKeySecret, setRazorpayKeySecret] = useState('');
+  const [distributorId, setDistributorId] = useState('');
+  const [orgs, setOrgs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setError('');
+        const [settings, allOrgs] = await Promise.all([
+          paymentGatewayApi.getSettings(),
+          orgsApi.getAll()
+        ]);
+        setRazorpayKeyId(settings.razorpayKeyId);
+        setRazorpayKeySecret(settings.razorpayKeySecret);
+        setDistributorId(settings.rechargeDistributorId);
+        setOrgs(allOrgs || []);
+      } catch (err: any) {
+        console.error(err);
+        setError('Failed to load settings: ' + err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!razorpayKeyId || !razorpayKeySecret || !distributorId) {
+      setError('All fields are required');
+      return;
+    }
+
+    try {
+      setError('');
+      setSuccess(false);
+      setSaving(true);
+      await paymentGatewayApi.saveSettings({
+        razorpayKeyId,
+        razorpayKeySecret,
+        rechargeDistributorId: distributorId
+      });
+      setSuccess(true);
+    } catch (err: any) {
+      console.error(err);
+      setError('Failed to save settings: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-20">
+        <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 space-y-6 max-w-2xl">
+      <div>
+        <h3 className="text-lg font-bold text-slate-800">Payment Gateway & Distributor Settings</h3>
+        <p className="text-xs text-slate-400 mt-1">
+          Configure API credentials for Razorpay payments and define the default parent organization from which customer recharge credits are assigned.
+        </p>
+      </div>
+
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium">
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs rounded-xl font-medium">
+          Settings saved successfully!
+        </div>
+      )}
+
+      <form onSubmit={handleSave} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
+        <div className="space-y-1.5">
+          <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Razorpay Key ID</label>
+          <input
+            type="text"
+            className="input-field w-full px-4 py-2.5 text-sm"
+            placeholder="rzp_test_..."
+            value={razorpayKeyId}
+            onChange={(e) => setRazorpayKeyId(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Razorpay Key Secret</label>
+          <input
+            type="password"
+            className="input-field w-full px-4 py-2.5 text-sm font-mono"
+            placeholder="••••••••••••••••"
+            value={razorpayKeySecret}
+            onChange={(e) => setRazorpayKeySecret(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Assigned From Organization</label>
+          <select
+            className="input-field w-full px-4 py-2.5 text-sm bg-white"
+            value={distributorId}
+            onChange={(e) => setDistributorId(e.target.value)}
+          >
+            <option value="">Select Organization</option>
+            {orgs.map((org) => (
+              <option key={org.id} value={org.id}>
+                {org.name}
+              </option>
+            ))}
+          </select>
+          <p className="text-[10px] text-slate-400 mt-1">
+            This organization acts as the primary source when generating "CutCredit" history logs on user wallet balance top-ups.
+          </p>
+        </div>
+
+        <div className="flex justify-end pt-3">
+          <button
+            type="submit"
+            disabled={saving}
+            className="btn-primary px-6 py-2 flex items-center gap-2"
+          >
+            {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+            Save Settings
+          </button>
+        </div>
+      </form>
     </div>
   );
 };
@@ -2498,7 +2643,7 @@ const PlotterModal = ({ plotter, onClose, onSave }: any) => {
     isActive: true, isDelete: false, plotterType: '', searchKeyword: '',
     languageType: '', driverType: '', endPoint: '',
     basePenUp: '', basePenDown: '', targetPenUp: '', targetPenDown: '',
-    baseXYSeparator: '', xySeparator: '', startString: '', endString: '',
+    baseXYSeparator: '',
     isAndroid: false
   };
 
@@ -2510,6 +2655,12 @@ const PlotterModal = ({ plotter, onClose, onSave }: any) => {
     maxSpeed: '',
     maxForce: '',
     status: 'ACTIVE',
+    splitCommands: false,
+    startString: '',
+    endString: '',
+    xySeparator: '',
+    mirrorX: false,
+    mirrorY: false,
     legacySettings: defaultLegacySettings
   });
 
@@ -2527,6 +2678,12 @@ const PlotterModal = ({ plotter, onClose, onSave }: any) => {
         maxSpeed: plotter.maxSpeed ?? '',
         maxForce: plotter.maxForce ?? '',
         status: plotter.status || 'ACTIVE',
+        splitCommands: !!plotter.splitCommands,
+        startString: plotter.startString || '',
+        endString: plotter.endString || '',
+        xySeparator: plotter.xySeparator || '',
+        mirrorX: !!plotter.mirrorX,
+        mirrorY: !!plotter.mirrorY,
         legacySettings: {
           ...defaultLegacySettings,
           ...(plotter.legacySettings || {})
@@ -2657,6 +2814,18 @@ const PlotterModal = ({ plotter, onClose, onSave }: any) => {
                     <input type="checkbox" checked={form.legacySettings.isAndroid} onChange={e => handleLegacyChange('isAndroid', e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
                     <span className="text-xs font-semibold text-slate-700">Is Android App Compatible</span>
                   </label>
+                   <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={form.splitCommands} onChange={e => setForm({ ...form, splitCommands: e.target.checked })} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                    <span className="text-xs font-semibold text-slate-700">Split PU/PD Commands</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={form.mirrorX} onChange={e => setForm({ ...form, mirrorX: e.target.checked })} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                    <span className="text-xs font-semibold text-slate-700">Mirror Coordinates (X-Axis)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={form.mirrorY} onChange={e => setForm({ ...form, mirrorY: e.target.checked })} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                    <span className="text-xs font-semibold text-slate-700">Mirror Coordinates (Y-Axis)</span>
+                  </label>
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input type="checkbox" checked={form.legacySettings.isActive} onChange={e => handleLegacyChange('isActive', e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
                     <span className="text-xs font-semibold text-slate-700">Is Legacy Active</span>
@@ -2730,15 +2899,15 @@ const PlotterModal = ({ plotter, onClose, onSave }: any) => {
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">XY Sep</label>
-                  <input className="input-field" value={form.legacySettings.xySeparator} onChange={e => handleLegacyChange('xySeparator', e.target.value)} placeholder="e.g. ," />
+                  <input className="input-field" value={form.xySeparator} onChange={e => setForm({ ...form, xySeparator: e.target.value })} placeholder="e.g. ," />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Start Command</label>
-                  <input className="input-field" value={form.legacySettings.startString} onChange={e => handleLegacyChange('startString', e.target.value)} placeholder="e.g. IN;" />
+                  <input className="input-field" value={form.startString} onChange={e => setForm({ ...form, startString: e.target.value })} placeholder="e.g. IN;" />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">End Command</label>
-                  <input className="input-field" value={form.legacySettings.endString} onChange={e => handleLegacyChange('endString', e.target.value)} placeholder="e.g. PU0,0;" />
+                  <input className="input-field" value={form.endString} onChange={e => setForm({ ...form, endString: e.target.value })} placeholder="e.g. PU0,0;" />
                 </div>
               </div>
 
@@ -3277,6 +3446,7 @@ const SettingsPage = () => {
   const { hasPermission } = usePermissions();
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('general');
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const tabs = [
     { id: 'general', label: t('generalSettings'), icon: Globe },
@@ -3300,7 +3470,8 @@ const SettingsPage = () => {
   if (user?.isSuperAdmin) {
     tabs.push(
       { id: 'orgTypes', label: t('orgTypes'), icon: Building },
-      { id: 'materials', label: t('materialsSettings'), icon: ScrollText }
+      { id: 'materials', label: t('materialsSettings'), icon: ScrollText },
+      { id: 'paymentGateway', label: 'Payment Gateway', icon: CreditCard }
     );
   }
   tabs.push({ id: 'Audit Logs', label: t('systemAuditLogs'), icon: List });
@@ -3318,6 +3489,9 @@ const SettingsPage = () => {
             <p className="text-slate-500 text-sm mt-0.5">{t('settingsDesc')}</p>
           </div>
         </div>
+        <button onClick={() => setRefreshTrigger(p => p + 1)} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm self-end sm:self-center" title="Refresh">
+          <RotateCcw className="w-4 h-4 text-slate-500" />
+        </button>
       </div>
 
       {/* Side-by-side modern split container */}
@@ -3346,20 +3520,25 @@ const SettingsPage = () => {
 
         {/* Dynamic Settings Content Panel */}
         <div className="flex-1 bg-white min-w-0">
-          {activeTab === 'general' && <GeneralTab />}
-          {activeTab === 'users' && <UsersTab />}
-          {activeTab === 'roles' && <RolesTabSettings />}
-          {activeTab === 'permissions' && <RolePermissionsTab />}
+          {activeTab === 'general' && <GeneralTab key={'general_' + refreshTrigger} />}
+          {activeTab === 'users' && <UsersTab key={'users_' + refreshTrigger} />}
+          {activeTab === 'roles' && <RolesTabSettings key={'roles_' + refreshTrigger} />}
+          {activeTab === 'permissions' && <RolePermissionsTab key={'permissions_' + refreshTrigger} />}
           {activeTab === 'plotters' && (
             <HasPermission permission="settings:read" fallback={<div className="p-12 text-center text-slate-500 font-medium">You don't have permission to view plotters.</div>}>
-              <PlottersTabSettings />
+              <PlottersTabSettings key={'plotters_' + refreshTrigger} />
             </HasPermission>
           )}
-          {activeTab === 'orgTypes' && <OrganizationTypesTab />}
-          {activeTab === 'materials' && <MaterialsTab />}
+          {activeTab === 'orgTypes' && <OrganizationTypesTab key={'orgTypes_' + refreshTrigger} />}
+          {activeTab === 'materials' && <MaterialsTab key={'materials_' + refreshTrigger} />}
+          {activeTab === 'paymentGateway' && (
+            <HasPermission permission="settings:read" fallback={<div className="p-12 text-center text-slate-500 font-medium">You don't have permission to view gateway settings.</div>}>
+              <PaymentGatewayTab key={'paymentGateway_' + refreshTrigger} />
+            </HasPermission>
+          )}
           {activeTab === 'Audit Logs' && (
             <HasPermission permission="audit_logs:read" fallback={<div className="p-12 text-center text-slate-500 font-medium">You don't have permission to view audit logs.</div>}>
-              <AuditLogsTab />
+              <AuditLogsTab key={'audit_' + refreshTrigger} />
             </HasPermission>
           )}
         </div>

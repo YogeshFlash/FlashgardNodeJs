@@ -3,7 +3,7 @@ import { orgsApi, contactsApi, usersApi, addressesApi, licensesApi, cutCreditsAp
 import {
   Building2, Plus, Search, Edit2, Trash2, Loader2,
   Users, MapPin, Phone, Ticket, Key,
-  ChevronRight, ChevronLeft, Star, Check, ChevronDown, X, Gift
+  ChevronRight, ChevronLeft, Star, Check, ChevronDown, X, Gift, RotateCcw
 } from 'lucide-react';
 import { HasPermission } from '../components/HasPermission';
 import { useAuth } from '../contexts/AuthContext';
@@ -1267,6 +1267,9 @@ const Organizations = () => {
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
+            <button onClick={() => fetchOrgs(true)} className="w-7 h-7 shrink-0 rounded-lg border border-slate-200 text-slate-500 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm" title="Refresh">
+              <RotateCcw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
             <HasPermission permission="orgs:write">
               <button onClick={() => setOrgModal('new')} className="w-7 h-7 shrink-0 rounded-lg bg-[var(--color-accent)] text-white flex items-center justify-center hover:bg-[var(--color-accent-dark)] transition-colors shadow-sm" title="New Organization">
                 <Plus className="w-4 h-4" />

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Plus, Search, Edit2, Trash2, Loader2, AlertCircle, X, Shield, ChevronLeft, ChevronRight, ChevronDown, Key } from 'lucide-react';
+import { Users, Plus, Search, Edit2, Trash2, Loader2, AlertCircle, X, Shield, ChevronLeft, ChevronRight, ChevronDown, Key, RotateCcw } from 'lucide-react';
 import { usersApi, rolesApi, orgsApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -376,9 +376,14 @@ const UsersPage = () => {
           <h1 className="text-2xl font-bold text-slate-900">Users</h1>
           <p className="text-slate-500 text-sm mt-1">Manage all system and organization users</p>
         </div>
-        <button onClick={() => setModal('new')} className="btn-primary flex items-center gap-2">
-          <Plus className="w-4 h-4" /> New User
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={fetchUsers} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm" title="Refresh">
+            <RotateCcw className={`w-4 h-4 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button onClick={() => setModal('new')} className="btn-primary flex items-center gap-2">
+            <Plus className="w-4 h-4" /> New User
+          </button>
+        </div>
       </div>
 
       <div className="card bg-white">

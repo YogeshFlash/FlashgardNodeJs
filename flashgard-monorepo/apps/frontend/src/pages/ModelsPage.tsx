@@ -18,7 +18,8 @@ import {
   Image,
   Wand2,
   Loader2,
-  Check
+  Check,
+  RotateCcw
 } from 'lucide-react';
 import { 
   modelsApi, 
@@ -70,6 +71,8 @@ const ModelsPage: React.FC = () => {
   const [confirm, setConfirm] = useState<any>({ isOpen: false });
   const [normalizingId, setNormalizingId] = useState<string | null>(null);
   const [normalizedId, setNormalizedId] = useState<string | null>(null);
+  const [loadingActionId, setLoadingActionId] = useState<string | null>(null);
+  const [successActionId, setSuccessActionId] = useState<string | null>(null);
 
   const S3_CATALOG_BASE = 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog';
 
@@ -95,9 +98,12 @@ const ModelsPage: React.FC = () => {
         brandsApi.getAll(),
         cutPatternsApi.getAll()
       ]);
-      setCategories(ca || []);
-      setBrands(br || []);
-      setCutPatterns(cp || []);
+      const sortedCa = (ca || []).sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+      const sortedBr = (br || []).sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+      const sortedCp = (cp || []).sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+      setCategories(sortedCa);
+      setBrands(sortedBr);
+      setCutPatterns(sortedCp);
 
       try {
         const ac = await modelsApi.getActiveCombinations();
@@ -181,6 +187,17 @@ const ModelsPage: React.FC = () => {
     setCurrentPage(1);
   }, [activeTab, searchTerm, selectedBrandId, selectedCategoryId]);
 
+  const handleRefresh = async () => {
+    setLoading(true);
+    await fetchMasterData();
+    if (activeTab === 'catalog') {
+      await fetchModels();
+    } else if (activeTab === 'designs') {
+      await fetchGlobalDesigns();
+    }
+    setLoading(false);
+  };
+
   const handleDelete = (title: string, message: string, onConfirm: () => Promise<void>) => {
     setConfirm({
       isOpen: true,
@@ -204,8 +221,11 @@ const ModelsPage: React.FC = () => {
 
   const handleGenerateModelPreview = async (modelId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    setLoadingActionId(`gen-model-${modelId}`);
     try {
       await migrationApi.generateDesignImagesForModel(modelId);
+      setSuccessActionId(`gen-model-${modelId}`);
+      setTimeout(() => setSuccessActionId(null), 3000);
       if (selected && selected.id === modelId) {
         fetchModelDetails(modelId);
       }
@@ -214,6 +234,81 @@ const ModelsPage: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to generate preview for model', err);
+    } finally {
+      setLoadingActionId(null);
+    }
+  };
+
+  const handleGenerateCategoryPreview = async (categoryId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoadingActionId(`gen-cat-${categoryId}`);
+    try {
+      await migrationApi.generateDesignImagesForCategory(categoryId);
+      setSuccessActionId(`gen-cat-${categoryId}`);
+      setTimeout(() => setSuccessActionId(null), 3000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingActionId(null);
+    }
+  };
+
+  const handleNormalizeCategory = async (categoryId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoadingActionId(`norm-cat-${categoryId}`);
+    try {
+      await migrationApi.normalizeCategory(categoryId);
+      setSuccessActionId(`norm-cat-${categoryId}`);
+      setTimeout(() => setSuccessActionId(null), 3000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingActionId(null);
+    }
+  };
+
+  const handleGenerateBrandPreview = async (brandId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoadingActionId(`gen-brand-${brandId}`);
+    try {
+      await migrationApi.generateDesignImagesForBrand(brandId);
+      setSuccessActionId(`gen-brand-${brandId}`);
+      setTimeout(() => setSuccessActionId(null), 3000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingActionId(null);
+    }
+  };
+
+  const handleNormalizeBrand = async (brandId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoadingActionId(`norm-brand-${brandId}`);
+    try {
+      await migrationApi.normalizeBrand(brandId);
+      setSuccessActionId(`norm-brand-${brandId}`);
+      setTimeout(() => setSuccessActionId(null), 3000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingActionId(null);
+    }
+  };
+
+  const handleNormalizeModel = async (modelId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoadingActionId(`norm-model-${modelId}`);
+    try {
+      await migrationApi.normalizeModel(modelId);
+      setSuccessActionId(`norm-model-${modelId}`);
+      setTimeout(() => setSuccessActionId(null), 3000);
+      if (activeTab === 'catalog') {
+        fetchModels();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingActionId(null);
     }
   };
 
@@ -448,6 +543,9 @@ const ModelsPage: React.FC = () => {
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
+                <button onClick={handleRefresh} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm" title="Refresh">
+                  <RotateCcw className={`w-3.5 h-3.5 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
+                </button>
                 {activeTab !== 'designs' && (
                   <HasPermission permission="catalog:write">
                     <button 
@@ -778,25 +876,135 @@ const ModelsPage: React.FC = () => {
                                 </td>
                               )}
                               <td className="px-6 py-4">
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-bold status-text-contrast">
-                                  <span className={`w-1.5 h-1.5 rounded-full ${
-                                    item.isActive === false 
-                                      ? 'bg-rose-500' 
-                                      : 'bg-emerald-500'
-                                  }`} />
+                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                  item.isActive === false 
+                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400' 
+                                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                }`}>
                                   {item.isActive === false ? 'Inactive' : 'Active'}
                                 </span>
                               </td>
                               <td className="px-6 py-4 text-right">
                                 <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {activeTab === 'categories' && (
+                                    <>
+                                      <button 
+                                        onClick={(e) => handleGenerateCategoryPreview(item.id, e)} 
+                                        title="Generate Previews"
+                                        disabled={loadingActionId !== null}
+                                        className={`p-1.5 transition-colors ${
+                                          successActionId === `gen-cat-${item.id}`
+                                            ? 'text-emerald-600'
+                                            : 'text-slate-400 hover:text-indigo-600'
+                                        }`}
+                                      >
+                                        {loadingActionId === `gen-cat-${item.id}` ? (
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : successActionId === `gen-cat-${item.id}` ? (
+                                          <Check className="w-4 h-4" />
+                                        ) : (
+                                          <Image className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                      <button 
+                                        onClick={(e) => handleNormalizeCategory(item.id, e)} 
+                                        title="Correct PLT (Normalize)"
+                                        disabled={loadingActionId !== null}
+                                        className={`p-1.5 transition-colors ${
+                                          successActionId === `norm-cat-${item.id}`
+                                            ? 'text-emerald-600'
+                                            : 'text-slate-400 hover:text-amber-600'
+                                        }`}
+                                      >
+                                        {loadingActionId === `norm-cat-${item.id}` ? (
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : successActionId === `norm-cat-${item.id}` ? (
+                                          <Check className="w-4 h-4" />
+                                        ) : (
+                                          <Wand2 className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                    </>
+                                  )}
+                                  {activeTab === 'brands' && (
+                                    <>
+                                      <button 
+                                        onClick={(e) => handleGenerateBrandPreview(item.id, e)} 
+                                        title="Generate Previews"
+                                        disabled={loadingActionId !== null}
+                                        className={`p-1.5 transition-colors ${
+                                          successActionId === `gen-brand-${item.id}`
+                                            ? 'text-emerald-600'
+                                            : 'text-slate-400 hover:text-indigo-600'
+                                        }`}
+                                      >
+                                        {loadingActionId === `gen-brand-${item.id}` ? (
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : successActionId === `gen-brand-${item.id}` ? (
+                                          <Check className="w-4 h-4" />
+                                        ) : (
+                                          <Image className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                      <button 
+                                        onClick={(e) => handleNormalizeBrand(item.id, e)} 
+                                        title="Correct PLT (Normalize)"
+                                        disabled={loadingActionId !== null}
+                                        className={`p-1.5 transition-colors ${
+                                          successActionId === `norm-brand-${item.id}`
+                                            ? 'text-emerald-600'
+                                            : 'text-slate-400 hover:text-amber-600'
+                                        }`}
+                                      >
+                                        {loadingActionId === `norm-brand-${item.id}` ? (
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : successActionId === `norm-brand-${item.id}` ? (
+                                          <Check className="w-4 h-4" />
+                                        ) : (
+                                          <Wand2 className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                    </>
+                                  )}
                                   {activeTab === 'catalog' && (
-                                    <button 
-                                      onClick={(e) => handleGenerateModelPreview(item.id, e)} 
-                                      title="Generate Previews"
-                                      className="p-1.5 text-slate-400 hover:text-indigo-600"
-                                    >
-                                      <Image className="w-4 h-4" />
-                                    </button>
+                                    <>
+                                      <button 
+                                        onClick={(e) => handleGenerateModelPreview(item.id, e)} 
+                                        title="Generate Previews"
+                                        disabled={loadingActionId !== null}
+                                        className={`p-1.5 transition-colors ${
+                                          successActionId === `gen-model-${item.id}`
+                                            ? 'text-emerald-600'
+                                            : 'text-slate-400 hover:text-indigo-600'
+                                        }`}
+                                      >
+                                        {loadingActionId === `gen-model-${item.id}` ? (
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : successActionId === `gen-model-${item.id}` ? (
+                                          <Check className="w-4 h-4" />
+                                        ) : (
+                                          <Image className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                      <button 
+                                        onClick={(e) => handleNormalizeModel(item.id, e)} 
+                                        title="Correct PLT (Normalize)"
+                                        disabled={loadingActionId !== null}
+                                        className={`p-1.5 transition-colors ${
+                                          successActionId === `norm-model-${item.id}`
+                                            ? 'text-emerald-600'
+                                            : 'text-slate-400 hover:text-amber-600'
+                                        }`}
+                                      >
+                                        {loadingActionId === `norm-model-${item.id}` ? (
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : successActionId === `norm-model-${item.id}` ? (
+                                          <Check className="w-4 h-4" />
+                                        ) : (
+                                          <Wand2 className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                    </>
                                   )}
                                   <button onClick={() => setModal({ type: activeTab, data: item })} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
                                   <button onClick={() => handleDelete('Delete', 'Are you sure?', async () => { 
