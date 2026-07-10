@@ -1103,6 +1103,7 @@ const Organizations = () => {
   const [orgs, setOrgs] = useState<any[]>([]);
   const [selected, setSelected] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('Details');
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -1364,6 +1365,9 @@ const Organizations = () => {
               </span>
             </div>
             <div className="flex items-center gap-2">
+              <button onClick={() => setRefreshTrigger(p => p + 1)} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm" title="Refresh Tab">
+                <RotateCcw className="w-4 h-4 text-slate-500" />
+              </button>
               <HasPermission permission="orgs:write">
                 <button onClick={() => setOrgModal(selected)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
                   <Edit2 className="w-3.5 h-3.5" /> Edit
@@ -1381,7 +1385,7 @@ const Organizations = () => {
           <TabBar tabs={TABS} active={activeTab} onChange={setActiveTab} />
 
           {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto" key={activeTab + '_' + refreshTrigger}>
             {activeTab === 'Details' && <DetailsTab org={selected} orgs={orgs} onEdit={() => setOrgModal(selected)} />}
             {activeTab === 'Contacts' && <ContactsTab orgId={selected.id} />}
             {activeTab === 'Users' && <UsersTab orgId={selected.id} />}
