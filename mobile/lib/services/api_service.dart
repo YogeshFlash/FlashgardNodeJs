@@ -386,4 +386,56 @@ class ApiService {
     }
     return [];
   }
+
+  static Future<Map<String, List<dynamic>>> getDecalsCategoryWise() async {
+    try {
+      final categories = await getModelCategories();
+      final parentCat = categories.firstWhere(
+        (c) => c['name'].toString().toLowerCase().contains('mobile decals') || 
+               c['name'].toString().toLowerCase() == 'decals',
+        orElse: () => null,
+      );
+      if (parentCat == null) return {};
+
+      final parentId = parentCat['id'];
+      final subCategories = await getModelCategories(parentId: parentId);
+      final Map<String, List<dynamic>> result = {};
+      
+      for (final subCat in subCategories) {
+        final subCatId = subCat['id'];
+        final subCatName = subCat['name'] as String;
+        
+        final response = await http.get(
+          Uri.parse('$baseUrl/models?categoryId=$subCatId&take=100'),
+          headers: await _getHeaders(),
+        );
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final items = decoded is Map ? (decoded['items'] ?? []) : decoded;
+          if (items.isNotEmpty) {
+            result[subCatName] = List<dynamic>.from(items);
+          }
+        }
+      }
+      
+      if (result.isEmpty) {
+        final response = await http.get(
+          Uri.parse('$baseUrl/models?categoryId=$parentId&take=100'),
+          headers: await _getHeaders(),
+        );
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final items = decoded is Map ? (decoded['items'] ?? []) : decoded;
+          if (items.isNotEmpty) {
+            result['Decals'] = List<dynamic>.from(items);
+          }
+        }
+      }
+      
+      return result;
+    } catch (e) {
+      print('Error fetching category-wise decals: $e');
+    }
+    return {};
+  }
 }
