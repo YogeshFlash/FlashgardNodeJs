@@ -1214,6 +1214,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.indigo,
                             foregroundColor: Colors.white,
+                            minimumSize: const Size(0, 36),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                         ),
@@ -1507,6 +1508,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.grey[100],
         foregroundColor: Colors.black87,
+        minimumSize: const Size(0, 36),
         elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
