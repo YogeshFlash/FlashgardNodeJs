@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Building2, Users, ShieldCheck, 
-  Activity, Clock
+  Activity, Clock, RotateCcw
 } from 'lucide-react';
 import { dashboardApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -87,17 +87,25 @@ const DashboardOverview = () => {
   const { user } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
+  const loadData = () => {
+    setRefreshing(true);
     dashboardApi.getStats()
       .then(res => {
         setData(res);
-        setLoading(false);
       })
       .catch(err => {
         console.error('Failed to load dashboard statistics:', err);
+      })
+      .finally(() => {
         setLoading(false);
+        setRefreshing(false);
       });
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
 
   if (loading) {
@@ -159,9 +167,14 @@ const DashboardOverview = () => {
             Welcome back, <span className="font-bold text-slate-700">{user?.email || 'User'}</span>. Here's a quick summary of your platform's activity.
           </p>
         </div>
-        <div className="text-xs font-semibold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200/50 flex items-center gap-1.5 self-start sm:self-auto">
-          <Clock className="w-3.5 h-3.5" />
-          {new Date().toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button onClick={loadData} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm" title="Refresh">
+            <RotateCcw className={`w-3.5 h-3.5 text-slate-500 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
+          <div className="text-xs font-semibold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200/50 flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5" />
+            {new Date().toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+          </div>
         </div>
       </div>
 
