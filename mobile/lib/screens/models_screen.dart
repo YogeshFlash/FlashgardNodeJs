@@ -4,6 +4,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'cut_selection_screen.dart';
 import 'diy_designer_screen.dart';
 import '../services/api_service.dart';
+import '../widgets/plotter_status_action.dart';
 
 class ModelsScreen extends StatefulWidget {
   final String title;
@@ -210,6 +211,15 @@ class _ModelsScreenState extends State<ModelsScreen> {
         if (mainModel != null) {
           final subResponse = await ApiService.getModelCategories(parentId: mainModel['id']);
           data = subResponse.where((cat) => cat['parentId'] == mainModel['id']).toList();
+          
+          // Add Mobile Decals if it exists as a parallel root category
+          final decalRoot = roots.firstWhere(
+            (cat) => cat['name'].toString().toLowerCase().contains('decal'),
+            orElse: () => null,
+          );
+          if (decalRoot != null && !data.any((cat) => cat['id'] == decalRoot['id'])) {
+            data.add(decalRoot);
+          }
         } else {
           data = roots;
         }
@@ -225,6 +235,51 @@ class _ModelsScreenState extends State<ModelsScreen> {
       } else if (widget.brandId != null) {
         // Find models for this brand AND the category we came from
         data = await ApiService.getModels(widget.brandId!, categoryId: widget.parentCategoryId);
+      }
+      
+      try {
+        final List<dynamic> sortedData = List.from(data);
+        sortedData.sort((a, b) {
+          if (a is! Map || b is! Map) return 0;
+          
+          final sortOrderAVal = a['sortOrder'];
+          final sortOrderBVal = b['sortOrder'];
+          
+          final hasSortOrderA = sortOrderAVal != null && sortOrderAVal.toString().trim().isNotEmpty;
+          final hasSortOrderB = sortOrderBVal != null && sortOrderBVal.toString().trim().isNotEmpty;
+          
+          if (hasSortOrderA && hasSortOrderB) {
+            final int orderA = int.tryParse(sortOrderAVal.toString()) ?? 0;
+            final int orderB = int.tryParse(sortOrderBVal.toString()) ?? 0;
+            if (orderA != orderB) {
+              return orderA.compareTo(orderB);
+            }
+          } else if (hasSortOrderA) {
+            return -1;
+          } else if (hasSortOrderB) {
+            return 1;
+          }
+          
+          final dateStrA = a['createdAt']?.toString() ?? a['created_at']?.toString() ?? '';
+          final dateStrB = b['createdAt']?.toString() ?? b['created_at']?.toString() ?? '';
+          
+          if (dateStrA.isNotEmpty && dateStrB.isNotEmpty) {
+            try {
+              final dateA = DateTime.parse(dateStrA);
+              final dateB = DateTime.parse(dateStrB);
+              return dateB.compareTo(dateA); // Descending (newer first)
+            } catch (_) {}
+          } else if (dateStrA.isNotEmpty) {
+            return -1;
+          } else if (dateStrB.isNotEmpty) {
+            return 1;
+          }
+          
+          return 0;
+        });
+        data = sortedData;
+      } catch (sortError) {
+        print('Error sorting catalog data: $sortError');
       }
     } catch (e) {
       print('Error loading data: $e');
@@ -285,26 +340,35 @@ class _ModelsScreenState extends State<ModelsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     final bgGradient = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [
-        const Color(0xFFF8FAFC),
-        const Color(0xFFF1F5F9),
-      ],
+      colors: isDark
+          ? [const Color(0xFF0F172A), const Color(0xFF1E293B)]
+          : [const Color(0xFFF8FAFC), const Color(0xFFF1F5F9)],
     );
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: Text(
           widget.title, 
-          style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF0F172A), letterSpacing: 0.5),
+          style: TextStyle(
+            fontWeight: FontWeight.w900, 
+            color: theme.colorScheme.onSurface, 
+            letterSpacing: 0.5,
+          ),
         ),
         elevation: 0,
         backgroundColor: Colors.transparent,
-        foregroundColor: const Color(0xFF0F172A),
-        iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
+        foregroundColor: theme.colorScheme.onSurface,
+        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
+        actions: const [
+          PlotterStatusAction(),
+        ],
         leading: !widget.isRoot ? IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, size: 18),
           onPressed: () => Navigator.pop(context),
@@ -322,12 +386,12 @@ class _ModelsScreenState extends State<ModelsScreen> {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: widget.breadcrumbs.length,
-              separatorBuilder: (context, index) => const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
+              separatorBuilder: (context, index) => Icon(Icons.chevron_right, size: 16, color: theme.colorScheme.onSurface.withOpacity(0.4)),
               itemBuilder: (context, index) => Text(
                 widget.breadcrumbs[index],
                 style: TextStyle(
                   fontSize: 12,
-                  color: index == widget.breadcrumbs.length - 1 ? Theme.of(context).colorScheme.primary : Colors.grey,
+                  color: index == widget.breadcrumbs.length - 1 ? theme.colorScheme.primary : theme.colorScheme.onSurface.withOpacity(0.5),
                   fontWeight: index == widget.breadcrumbs.length - 1 ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
@@ -339,39 +403,47 @@ class _ModelsScreenState extends State<ModelsScreen> {
             child: TextField(
               controller: _searchController,
               onChanged: _onSearch,
+              style: TextStyle(color: theme.colorScheme.onSurface),
               decoration: InputDecoration(
                 hintText: 'Search in ${widget.title}...',
-                prefixIcon: const Icon(Icons.search, size: 20),
+                hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4)),
+                prefixIcon: Icon(Icons.search, size: 20, color: theme.colorScheme.onSurface.withOpacity(0.5)),
                 suffixIcon: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (_searchController.text.isNotEmpty)
                       IconButton(
-                        icon: const Icon(Icons.clear, size: 18, color: Colors.grey),
+                        icon: Icon(Icons.clear, size: 18, color: theme.colorScheme.onSurface.withOpacity(0.5)),
                         onPressed: () {
                           _searchController.clear();
                           _onSearch('');
                         },
                       ),
                     IconButton(
-                      icon: const Icon(Icons.mic, size: 20, color: Colors.grey),
+                      icon: Icon(Icons.mic, size: 20, color: theme.colorScheme.onSurface.withOpacity(0.5)),
                       onPressed: _startVoiceSearch,
                     ),
                   ],
                 ),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: isDark ? const Color(0xFF1E293B) : Colors.white,
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(color: const Color(0xFF0F172A).withOpacity(0.05), width: 1.5),
+                  borderSide: BorderSide(
+                    color: isDark ? const Color(0xFF334155) : const Color(0xFF0F172A).withOpacity(0.05),
+                    width: 1.5,
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: Color(0xFFCE1D19), width: 1.5),
+                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
                 ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(color: const Color(0xFF0F172A).withOpacity(0.05), width: 1.5),
+                  borderSide: BorderSide(
+                    color: isDark ? const Color(0xFF334155) : const Color(0xFF0F172A).withOpacity(0.05),
+                    width: 1.5,
+                  ),
                 ),
                 contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
               ),
@@ -383,7 +455,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
                 ? _buildSearchResults()
                 : RefreshIndicator(
                     color: const Color(0xFFCE1D19),
-                    backgroundColor: Colors.white,
+                    backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
                     onRefresh: _fetchData,
                     child: _isLoading
                         ? ListView(
@@ -400,26 +472,26 @@ class _ModelsScreenState extends State<ModelsScreen> {
                                     child: Column(
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
-                                        Icon(Icons.search_off_outlined, size: 48, color: Colors.grey[300]),
+                                        Icon(Icons.search_off_outlined, size: 48, color: theme.colorScheme.onSurface.withOpacity(0.2)),
                                         const SizedBox(height: 16),
-                                        Text('No results found', style: TextStyle(color: Colors.grey[500])),
+                                        Text('No results found', style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5))),
                                       ],
                                     ),
                                   ),
                                 ],
                               )
                             : GridView.builder(
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                                   crossAxisCount: 3,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                  childAspectRatio: 0.8,
+                                  crossAxisSpacing: 16,
+                                  mainAxisSpacing: 16,
+                                  childAspectRatio: 0.80,
                                 ),
                                 itemCount: _filteredItems.length,
                                 itemBuilder: (context, index) {
                                   final item = _filteredItems[index];
-                                  return _buildGridItem(item);
+                                  return _buildGridItem(item, index);
                                 },
                               ),
                   ),
@@ -430,7 +502,22 @@ class _ModelsScreenState extends State<ModelsScreen> {
   );
   }
 
-  Widget _buildGridItem(dynamic item) {
+  final List<Color> _pastelColors = [
+    const Color(0xFFFFEEEC), // Soft Pink
+    const Color(0xFFE8F5E9), // Soft Green
+    const Color(0xFFFFF8E1), // Soft Amber
+    const Color(0xFFE3F2FD), // Soft Blue
+    const Color(0xFFF3E5F5), // Soft Purple
+    const Color(0xFFE0F7FA), // Soft Cyan
+  ];
+
+  Widget _buildGridItem(dynamic item, int index) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final pastelColor = isDark
+        ? _pastelColors[index % _pastelColors.length].withOpacity(0.15)
+        : _pastelColors[index % _pastelColors.length];
+
     return GestureDetector(
       onTap: () async {
         final List<String> nextBreadcrumbs = [...widget.breadcrumbs, item['name']];
@@ -476,48 +563,63 @@ class _ModelsScreenState extends State<ModelsScreen> {
           );
         }
       },
-      child: Column(
-        children: [
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFF0F172A).withOpacity(0.05), width: 1.5),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.02),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  )
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Image.network(
-                  _getImageUrl(item),
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Icon(
-                      _getIconForItem(item['name'], item['iconUrl']),
-                      color: const Color(0xFFCE1D19),
-                      size: 32,
-                    );
-                  },
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isDark ? const Color(0xFF334155) : const Color(0xFF0F172A).withOpacity(0.04),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDark ? 0.2 : 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+                decoration: BoxDecoration(
+                  color: pastelColor,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                padding: const EdgeInsets.all(12),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    _getImageUrl(item),
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(
+                        _getIconForItem(item['name'], item['iconUrl']),
+                        color: const Color(0xFFCE1D19),
+                        size: 32,
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            item['name'],
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11, color: Color(0xFF0F172A)),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 10),
+              child: Text(
+                item['name'],
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -613,12 +715,15 @@ class _ModelsScreenState extends State<ModelsScreen> {
   }
 
   Widget _buildSearchRowItem(dynamic item, String type) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     final hasImage = item['imageUrl'] != null && item['imageUrl'].toString().isNotEmpty;
     final imageUrl = hasImage
-        ? (item['imageUrl'].toString().startsWith('http')
-            ? item['imageUrl'].toString()
-            : '${ApiService.baseUrl.replaceFirst('/api', '')}${item['imageUrl']}')
-        : null;
+         ? (item['imageUrl'].toString().startsWith('http')
+             ? item['imageUrl'].toString()
+             : '${ApiService.baseUrl.replaceFirst('/api', '')}${item['imageUrl'].toString().startsWith('/') ? '' : '/'}${item['imageUrl']}')
+         : null;
 
     IconData fallbackIcon = Icons.devices_other;
     if (type == 'category') {
@@ -632,9 +737,10 @@ class _ModelsScreenState extends State<ModelsScreen> {
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 8),
+      color: theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey[200]!),
+        side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey[200]!),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -642,30 +748,33 @@ class _ModelsScreenState extends State<ModelsScreen> {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: Colors.grey[50],
+            color: isDark ? const Color(0xFF0F172A) : Colors.grey[50],
             borderRadius: BorderRadius.circular(8),
-            image: imageUrl != null
-                ? DecorationImage(
-                    image: NetworkImage(imageUrl),
-                    fit: BoxFit.contain,
-                  )
-                : null,
           ),
-          child: imageUrl == null
-              ? Icon(fallbackIcon, color: Theme.of(context).colorScheme.primary.withOpacity(0.8), size: 24)
-              : null,
+          child: imageUrl != null
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(fallbackIcon, color: theme.colorScheme.primary.withOpacity(0.8), size: 24);
+                    },
+                  ),
+                )
+              : Icon(fallbackIcon, color: theme.colorScheme.primary.withOpacity(0.8), size: 24),
         ),
         title: Text(
           item['name'],
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: theme.colorScheme.onSurface),
         ),
         subtitle: Text(
           type == 'model'
               ? '${item['brand']?['name'] ?? 'Model'} in ${item['category']?['name'] ?? ''}'
               : type[0].toUpperCase() + type.substring(1),
-          style: TextStyle(color: Colors.grey[500], fontSize: 12),
+          style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 12),
         ),
-        trailing: const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+        trailing: Icon(Icons.chevron_right, size: 18, color: theme.colorScheme.onSurface.withOpacity(0.5)),
         onTap: () {
           final List<String> nextBreadcrumbs = [...widget.breadcrumbs, item['name']];
           if (type == 'category') {
