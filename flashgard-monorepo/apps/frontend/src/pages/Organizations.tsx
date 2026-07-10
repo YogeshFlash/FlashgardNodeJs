@@ -1299,7 +1299,7 @@ const Organizations = () => {
                       ? 'bg-indigo-50 text-[var(--color-accent)]' 
                       : 'hover:bg-white text-slate-600'
                   } ${isSidebarCollapsed ? 'justify-center' : ''}`}
-                  title={isSidebarCollapsed ? org.name : ''}
+                  title={org.name}
                 >
                   <div className="relative flex items-center justify-center w-4 h-4 shrink-0" onClick={(e) => hasChildren ? toggleExpand(org.id, e) : undefined}>
                     {hasChildren ? (
