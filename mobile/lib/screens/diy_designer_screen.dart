@@ -794,14 +794,17 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           _selectedCutout = _cutouts[idx];
         }
       } else if (_activeDragType == 'resize-decal' && _selectedDecal != null) {
+        final double ratio = _dragStartWidth / _dragStartHeight;
         double newW = _snap(_dragStartWidth + dxMm).clamp(5.0, _baseWidth);
-        double newH = _snap(_dragStartHeight + dyMm).clamp(5.0, _baseHeight);
+        double newH = _snap(newW / ratio).clamp(5.0, _baseHeight);
 
         if (_selectedDecal!.x + newW > _baseWidth) {
           newW = _baseWidth - _selectedDecal!.x;
+          newH = _snap(newW / ratio);
         }
         if (_selectedDecal!.y + newH > _baseHeight) {
           newH = _baseHeight - _selectedDecal!.y;
+          newW = _snap(newH * ratio);
         }
 
         final idx = _decals.indexWhere((d) => d.id == _selectedDecal!.id);
@@ -1707,10 +1710,26 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                 _baseWidth,
                 (val) {
                   setState(() {
-                    final double newW = _snap(val);
+                    final double ratio = d.width / d.height;
+                    double newW = _snap(val);
+                    double newH = _snap(newW / ratio);
+                    
+                    if (newH > _baseHeight) {
+                      newH = _baseHeight;
+                      newW = _snap(newH * ratio);
+                    }
+                    if (d.x + newW > _baseWidth) {
+                      newW = _baseWidth - d.x;
+                      newH = _snap(newW / ratio);
+                    }
+                    if (d.y + newH > _baseHeight) {
+                      newH = _baseHeight - d.y;
+                      newW = _snap(newH * ratio);
+                    }
+
                     final idx = _decals.indexWhere((item) => item.id == d.id);
                     if (idx != -1) {
-                      _decals[idx] = d.copyWith(width: newW);
+                      _decals[idx] = d.copyWith(width: newW, height: newH);
                       _selectedDecal = _decals[idx];
                     }
                   });
@@ -1726,10 +1745,26 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                 _baseHeight,
                 (val) {
                   setState(() {
-                    final double newH = _snap(val);
+                    final double ratio = d.width / d.height;
+                    double newH = _snap(val);
+                    double newW = _snap(newH * ratio);
+
+                    if (newW > _baseWidth) {
+                      newW = _baseWidth;
+                      newH = _snap(newW / ratio);
+                    }
+                    if (d.x + newW > _baseWidth) {
+                      newW = _baseWidth - d.x;
+                      newH = _snap(newW / ratio);
+                    }
+                    if (d.y + newH > _baseHeight) {
+                      newH = _baseHeight - d.y;
+                      newW = _snap(newH * ratio);
+                    }
+
                     final idx = _decals.indexWhere((item) => item.id == d.id);
                     if (idx != -1) {
-                      _decals[idx] = d.copyWith(height: newH);
+                      _decals[idx] = d.copyWith(width: newW, height: newH);
                       _selectedDecal = _decals[idx];
                     }
                   });
