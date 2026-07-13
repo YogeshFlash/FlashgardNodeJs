@@ -2,12 +2,9 @@ import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:async';
-import 'dart:io';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import '../services/api_service.dart';
 import '../services/plotter_service.dart';
 import '../providers/auth_provider.dart';
@@ -61,6 +58,7 @@ class DecalElement {
   final String id;
   final String imageUrl;
   final String name;
+  final String? modelId;
   double x; // X position relative to top-left of base shape in mm
   double y; // Y position relative to top-left of base shape in mm
   double width; // in mm
@@ -70,6 +68,7 @@ class DecalElement {
     required this.id,
     required this.imageUrl,
     required this.name,
+    this.modelId,
     required this.x,
     required this.y,
     required this.width,
@@ -86,6 +85,7 @@ class DecalElement {
       id: id,
       imageUrl: imageUrl,
       name: name,
+      modelId: modelId,
       x: x ?? this.x,
       y: y ?? this.y,
       width: width ?? this.width,
@@ -207,6 +207,9 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
   Map<String, List<dynamic>> _categoryWiseDecals = {};
   String? _selectedSubCategoryName;
   bool _isLoadingDbDecals = false;
+
+  // In-memory secured PLT content (never written to disk)
+  String? _savedPltContent;
 
   Future<void> _loadDbDecals() async {
     setState(() => _isLoadingDbDecals = true);
@@ -882,7 +885,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                           return GestureDetector(
                             onTap: () {
                               Navigator.pop(context);
-                              _addDecal(name, imgUrl);
+                              _addDecal(name, imgUrl, model['id']?.toString());
                             },
                             child: Container(
                               margin: const EdgeInsets.only(right: 12),
@@ -966,7 +969,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     );
   }
 
-  void _addDecal(String name, String url) {
+  void _addDecal(String name, String url, [String? modelId]) {
     _saveToHistory();
     setState(() {
       final id = 'decal_${DateTime.now().millisecondsSinceEpoch}';
@@ -974,6 +977,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         id: id,
         name: name,
         imageUrl: url,
+        modelId: modelId,
         x: 0.0,
         y: 0.0,
         width: _baseWidth,
@@ -1105,7 +1109,10 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         }
       });
 
-      final contentToCut = _getMergedPltContent();
+      // Use already-saved in-memory PLT if available; otherwise rebuild it now
+      final contentToCut = _savedPltContent?.isNotEmpty == true
+          ? _savedPltContent!
+          : await _getMergedPltContent();
       if (contentToCut.isEmpty) {
         throw Exception('Invalid vector cut data.');
       }
@@ -1380,7 +1387,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                 final imgUrl = _getImageUrl(model);
 
                                 return GestureDetector(
-                                  onTap: () => _addDecal(name, imgUrl),
+                                  onTap: () => _addDecal(name, imgUrl, model['id']?.toString()),
                                   child: Container(
                                     margin: const EdgeInsets.only(right: 12),
                                     width: 70,
@@ -1963,7 +1970,42 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     return '';
   }
 
-  String _getMergedPltContent() {
+  Future<String?> _fetchDecalPltContent(String modelId) async {
+    try {
+      final cutFiles = await ApiService.getModelCutFiles(modelId);
+      if (cutFiles.isEmpty) return null;
+      final firstFileId = cutFiles.first['id']?.toString();
+      if (firstFileId == null) return null;
+
+      final details = await ApiService.getCutFileDetails(firstFileId);
+      if (details == null || details['encryptedPltData'] == null) return null;
+
+      List<int> encryptedBytes = [];
+      final rawData = details['encryptedPltData'];
+      if (rawData is String) {
+        encryptedBytes = base64Decode(rawData);
+      } else if (rawData is Map && rawData['data'] != null) {
+        encryptedBytes = List<int>.from(rawData['data']);
+      } else if (rawData is List) {
+        encryptedBytes = List<int>.from(rawData);
+      }
+
+      if (encryptedBytes.length < 16) return null;
+
+      final key = encrypt.Key.fromUtf8('flashgard-secure-plt-data-key-32');
+      final iv = encrypt.IV(Uint8List.fromList(encryptedBytes.sublist(0, 16)));
+      final ciphertext = encryptedBytes.sublist(16);
+      
+      final encrypter = encrypt.Encrypter(encrypt.AES(key, mode: encrypt.AESMode.cbc));
+      final decrypted = encrypter.decryptBytes(encrypt.Encrypted(Uint8List.fromList(ciphertext)), iv: iv);
+      return utf8.decode(decrypted);
+    } catch (e) {
+      print('Error fetching/decrypting decal PLT: $e');
+      return null;
+    }
+  }
+
+  Future<String> _getMergedPltContent() async {
     String mergedPlt = _originalPltContent ?? '';
     if (mergedPlt.isEmpty) return '';
 
@@ -1982,50 +2024,100 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       final topPlt = (topMm * 40.0).round();
       final bottomPlt = (bottomMm * 40.0).round();
 
-      // Use only PU and PD with comma separators. Avoid PA commands to support all plotter modes (HP-GL & GP-GL).
-      mergedPlt += 'PU$leftPlt,$bottomPlt;PD$rightPlt,$bottomPlt;PD$rightPlt,$topPlt;PD$leftPlt,$topPlt;PD$leftPlt,$bottomPlt;PU;';
+      if (d.modelId == null) {
+        // Fallback to rectangular outline
+        mergedPlt += 'PU$leftPlt,$bottomPlt;PD$rightPlt,$bottomPlt;PD$rightPlt,$topPlt;PD$leftPlt,$topPlt;PD$leftPlt,$bottomPlt;PU;';
+        continue;
+      }
+
+      final decalPlt = await _fetchDecalPltContent(d.modelId!);
+      if (decalPlt == null || decalPlt.trim().isEmpty) {
+        // Fallback to rectangular outline if PLT fetch fails
+        mergedPlt += 'PU$leftPlt,$bottomPlt;PD$rightPlt,$bottomPlt;PD$rightPlt,$topPlt;PD$leftPlt,$topPlt;PD$leftPlt,$bottomPlt;PU;';
+        continue;
+      }
+
+      final regex = RegExp(r'(PU|PD|PA)\s*(-?\d+\.?\d*)[\s,]+\s*(-?\d+\.?\d*)');
+      final matches = regex.allMatches(decalPlt);
+
+      double decalMinX = double.infinity;
+      double decalMinY = double.infinity;
+      double decalMaxX = -double.infinity;
+      double decalMaxY = -double.infinity;
+
+      for (final match in matches) {
+        final double x = double.tryParse(match.group(2) ?? '0') ?? 0.0;
+        final double y = double.tryParse(match.group(3) ?? '0') ?? 0.0;
+        if (x < decalMinX) decalMinX = x;
+        if (x > decalMaxX) decalMaxX = x;
+        if (y < decalMinY) decalMinY = y;
+        if (y > decalMaxY) decalMaxY = y;
+      }
+
+      if (decalMinX == double.infinity || decalMaxX == decalMinX || decalMaxY == decalMinY) {
+        // Fallback to rectangular outline
+        mergedPlt += 'PU$leftPlt,$bottomPlt;PD$rightPlt,$bottomPlt;PD$rightPlt,$topPlt;PD$leftPlt,$topPlt;PD$leftPlt,$bottomPlt;PU;';
+        continue;
+      }
+
+      final double decalW = decalMaxX - decalMinX;
+      final double decalH = decalMaxY - decalMinY;
+
+      final double targetLeftSteps = leftMm * 40.0;
+      final double targetBottomSteps = bottomMm * 40.0;
+
+      final double scaleX = (d.width * 40.0) / decalW;
+      final double scaleY = (d.height * 40.0) / decalH;
+
+      for (final match in matches) {
+        final cmd = match.group(1);
+        final double x = double.tryParse(match.group(2) ?? '0') ?? 0.0;
+        final double y = double.tryParse(match.group(3) ?? '0') ?? 0.0;
+
+        final normX = x - decalMinX;
+        final normY = y - decalMinY;
+
+        final finalX = (targetLeftSteps + normX * scaleX).round();
+        final finalY = (targetBottomSteps + normY * scaleY).round();
+
+        // Convert command to PU or PD to guarantee device compatibility
+        final finalCmd = (cmd == 'PU' || cmd == 'M') ? 'PU' : 'PD';
+        mergedPlt += '$finalCmd$finalX,$finalY;';
+      }
     }
     return mergedPlt;
   }
 
   Future<void> _handleSaveDesign() async {
-    final mergedPlt = _getMergedPltContent();
-    if (mergedPlt.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No design content to save.')),
-      );
-      return;
-    }
-
     setState(() {
       _isLoading = true;
     });
 
     try {
-      Directory? saveDir;
-      if (Platform.isAndroid) {
-        saveDir = Directory('/storage/emulated/0/Download');
-        if (!await saveDir.exists()) {
-          saveDir = await getExternalStorageDirectory();
+      final mergedPlt = await _getMergedPltContent();
+      if (mergedPlt.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No design content to save.')),
+          );
         }
-      } else {
-        saveDir = await getApplicationDocumentsDirectory();
+        return;
       }
 
-      if (saveDir == null) {
-        throw Exception('Storage directory not available');
-      }
-
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileName = 'merged_design_$timestamp.plt';
-      final file = File('${saveDir.path}/$fileName');
-      await file.writeAsString(mergedPlt);
+      // Store securely in memory — never written to disk
+      _savedPltContent = mergedPlt;
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Design saved successfully to ${saveDir.path == '/storage/emulated/0/Download' ? 'Downloads folder' : 'Documents folder'}: $fileName'),
-            backgroundColor: Colors.green,
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Design saved in memory (${_decals.length} decal${_decals.length != 1 ? 's' : ''} merged). Ready to send to plotter.')),
+              ],
+            ),
+            backgroundColor: Colors.green[700],
             duration: const Duration(seconds: 4),
           ),
         );
@@ -2034,7 +2126,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to save design: $e'),
+            content: Text('Failed to prepare design: $e'),
             backgroundColor: Colors.red,
           ),
         );
