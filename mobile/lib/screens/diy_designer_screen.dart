@@ -137,8 +137,9 @@ class DesignerStateHistory {
 
 class DiyDesignerScreen extends StatefulWidget {
   final String? initialCutFileId;
+  final String? modelId;
 
-  const DiyDesignerScreen({super.key, this.initialCutFileId});
+  const DiyDesignerScreen({super.key, this.initialCutFileId, this.modelId});
 
   @override
   State<DiyDesignerScreen> createState() => _DiyDesignerScreenState();
@@ -895,10 +896,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                         itemBuilder: (ctx, idx) {
                           final model = dbDecals[idx];
                           final name = model['name'] ?? 'Decal';
-                          final imgPath = model['imageUrl']?.toString() ?? '';
-                          final imgUrl = imgPath.startsWith('http')
-                              ? imgPath
-                              : '${ApiService.baseUrl.replaceFirst('/api', '')}/${imgPath.startsWith('/') ? imgPath.substring(1) : imgPath}';
+                          final imgUrl = _getImageUrl(model);
 
                           return GestureDetector(
                             onTap: () {
@@ -1102,7 +1100,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       final validation = await ApiService.validateCut(
         licenseKey: authProvider.licenseKey,
         organizationId: authProvider.organizationId,
-        modelId: '', // Blank since we can dynamically cut
+        modelId: widget.modelId ?? '',
       );
 
       if (validation == null || validation['valid'] != true || validation['cutToken'] == null) {
@@ -1293,10 +1291,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                             itemBuilder: (ctx, idx) {
                               final model = _categoryWiseDecals[_selectedSubCategoryName]![idx];
                               final name = model['name'] ?? 'Decal';
-                              final imgPath = model['imageUrl']?.toString() ?? '';
-                              final imgUrl = imgPath.startsWith('http')
-                                  ? imgPath
-                                  : '${ApiService.baseUrl.replaceFirst('/api', '')}/${imgPath.startsWith('/') ? imgPath.substring(1) : imgPath}';
+                              final imgUrl = _getImageUrl(model);
 
                               return GestureDetector(
                                 onTap: () => _addDecal(name, imgUrl),
@@ -1820,6 +1815,21 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         ),
       ],
     );
+  }
+
+  static const _s3CatalogBaseUrl = 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog';
+
+  String _getImageUrl(dynamic item) {
+    final path = item['imageUrl']?.toString() ?? '';
+    if (path.isNotEmpty) {
+      if (path.startsWith('http')) return path;
+      if (!path.contains('/')) {
+        return '$_s3CatalogBaseUrl/$path';
+      }
+      final cleanPath = path.startsWith('/') ? path.substring(1) : path;
+      return '${ApiService.baseUrl.replaceFirst('/api', '')}/$cleanPath';
+    }
+    return '';
   }
 }
 

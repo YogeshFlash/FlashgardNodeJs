@@ -258,6 +258,7 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
             MaterialPageRoute(
               builder: (context) => DiyDesignerScreen(
                 initialCutFileId: design['id'],
+                modelId: widget.item['id']?.toString(),
               ),
             ),
           );
