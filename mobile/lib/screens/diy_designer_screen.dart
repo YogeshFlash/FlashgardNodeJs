@@ -368,8 +368,8 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     final params = await _plotterService.getMachineParameters();
     if (params != null && mounted) {
       setState(() {
-        _selectedSpeed = params['speed'] ?? 300;
-        _selectedForce = params['pressure'] ?? 300;
+        _selectedSpeed = (params['speed'] ?? 300).clamp(10, 1000);
+        _selectedForce = (params['pressure'] ?? 300).clamp(10, 1000);
       });
     }
   }
@@ -1035,7 +1035,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
               const SizedBox(height: 16),
               const Text('Cutting Speed', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               Slider(
-                value: _selectedSpeed.toDouble(),
+                value: _selectedSpeed.toDouble().clamp(10.0, 1000.0),
                 min: 10,
                 max: 1000,
                 divisions: 99,
@@ -1045,7 +1045,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
               const SizedBox(height: 8),
               const Text('Cutting Force / Pressure', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               Slider(
-                value: _selectedForce.toDouble(),
+                value: _selectedForce.toDouble().clamp(10.0, 1000.0),
                 min: 10,
                 max: 1000,
                 divisions: 99,
