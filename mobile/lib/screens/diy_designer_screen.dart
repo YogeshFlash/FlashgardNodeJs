@@ -1982,7 +1982,8 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       final topPlt = (topMm * 40.0).round();
       final bottomPlt = (bottomMm * 40.0).round();
 
-      mergedPlt += 'PU$leftPlt,$bottomPlt;PD;PA$rightPlt,$bottomPlt;PA$rightPlt,$topPlt;PA$leftPlt,$topPlt;PA$leftPlt,$bottomPlt;PU;';
+      // Use only PU and PD with comma separators. Avoid PA commands to support all plotter modes (HP-GL & GP-GL).
+      mergedPlt += 'PU$leftPlt,$bottomPlt;PD$rightPlt,$bottomPlt;PD$rightPlt,$topPlt;PD$leftPlt,$topPlt;PD$leftPlt,$bottomPlt;PU;';
     }
     return mergedPlt;
   }
@@ -2001,18 +2002,31 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     });
 
     try {
-      final tempDir = await getTemporaryDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final file = File('${tempDir.path}/merged_design_$timestamp.plt');
-      await file.writeAsString(mergedPlt);
+      Directory? saveDir;
+      if (Platform.isAndroid) {
+        saveDir = Directory('/storage/emulated/0/Download');
+        if (!await saveDir.exists()) {
+          saveDir = await getExternalStorageDirectory();
+        }
+      } else {
+        saveDir = await getApplicationDocumentsDirectory();
+      }
 
-      await Share.shareXFiles([XFile(file.path)], text: 'Merged PLT design cut file');
+      if (saveDir == null) {
+        throw Exception('Storage directory not available');
+      }
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'merged_design_$timestamp.plt';
+      final file = File('${saveDir.path}/$fileName');
+      await file.writeAsString(mergedPlt);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Design saved and shared successfully!'),
+          SnackBar(
+            content: Text('Design saved successfully to ${saveDir.path == '/storage/emulated/0/Download' ? 'Downloads folder' : 'Documents folder'}: $fileName'),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
