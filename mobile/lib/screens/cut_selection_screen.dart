@@ -253,12 +253,14 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
       ),
       child: InkWell(
         onTap: () {
+          final String title = "${widget.item['brand']?['name'] ?? ''} > ${widget.item['name'] ?? ''} > ${design['cutPattern']?['name'] ?? ''}";
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => DiyDesignerScreen(
                 initialCutFileId: design['id'],
                 modelId: widget.item['id']?.toString(),
+                title: title,
               ),
             ),
           );

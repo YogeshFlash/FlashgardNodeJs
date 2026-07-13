@@ -2,9 +2,12 @@ import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:async';
+import 'dart:io';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../services/api_service.dart';
 import '../services/plotter_service.dart';
 import '../providers/auth_provider.dart';
@@ -138,8 +141,9 @@ class DesignerStateHistory {
 class DiyDesignerScreen extends StatefulWidget {
   final String? initialCutFileId;
   final String? modelId;
+  final String? title;
 
-  const DiyDesignerScreen({super.key, this.initialCutFileId, this.modelId});
+  const DiyDesignerScreen({super.key, this.initialCutFileId, this.modelId, this.title});
 
   @override
   State<DiyDesignerScreen> createState() => _DiyDesignerScreenState();
@@ -148,6 +152,12 @@ class DiyDesignerScreen extends StatefulWidget {
 class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
   final PlotterService _plotterService = PlotterService();
   String? _originalPltContent;
+  bool _diyModeEnabled = false;
+
+  // PLT coordinate tracking for merging back to plotter
+  double _originMinX = 0.0;
+  double _originMinY = 0.0;
+  double _originGlobalMaxY = 0.0;
   
   // Base dimensions in mm
   double _baseWidth = 300.0;
@@ -517,6 +527,10 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       _normalizedCutoutPaths = normalizedCutoutPaths;
       _baseWidth = computedBaseWidth;
       _baseHeight = computedBaseHeight;
+      
+      _originMinX = minX;
+      _originMinY = minY;
+      _originGlobalMaxY = globalMaxY;
       
       _cutouts.clear();
       _isBaseSelected = true;
@@ -1091,8 +1105,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         }
       });
 
-      // Use decoded original PLT content or custom exported
-      final contentToCut = _originalPltContent ?? '';
+      final contentToCut = _getMergedPltContent();
       if (contentToCut.isEmpty) {
         throw Exception('Invalid vector cut data.');
       }
@@ -1156,11 +1169,16 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text('Skin & Decal Canvas Editor', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Text(
+          widget.title ?? 'Skin & Decal Canvas',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
-        actions: [
+        actions: _diyModeEnabled ? [
           IconButton(
             icon: const Icon(Icons.undo),
             onPressed: _undoStack.isNotEmpty ? _undo : null,
@@ -1178,304 +1196,419 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                 : (_selectedDecal != null ? _deleteSelectedDecal : null),
             tooltip: 'Delete Selected',
           ),
-        ],
+        ] : null,
       ),
       body: Stack(
         children: [
-          Column(
-            children: [
-              // Tool Drawer (Add items)
-              Container(
-                color: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          if (!_diyModeEnabled)
+            Column(
+              children: [
+                Expanded(
+                  child: Center(
+                    child: Container(
+                      margin: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 8)),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(16),
+                      child: _isLoading
+                          ? const Center(child: CircularProgressIndicator())
+                          : LayoutBuilder(
+                              builder: (context, constraints) {
+                                final double requiredW = _baseWidth + 40.0;
+                                final double requiredH = _baseHeight + 40.0;
+                                final double scaleW = constraints.maxWidth / requiredW;
+                                final double scaleH = constraints.maxHeight / requiredH;
+                                final double previewScale = min(scaleW, scaleH);
+
+                                final double previewLeft = (constraints.maxWidth - _baseWidth * previewScale) / 2;
+                                final double previewTop = (constraints.maxHeight - _baseHeight * previewScale) / 2;
+
+                                return CustomPaint(
+                                  size: Size(constraints.maxWidth, constraints.maxHeight),
+                                  painter: CanvasGridPainter(
+                                    baseWidth: _baseWidth,
+                                    baseHeight: _baseHeight,
+                                    baseCornerRadius: _baseCornerRadius,
+                                    customBaseOutline: _customBaseOutline,
+                                    normalizedCutoutPaths: _normalizedCutoutPaths,
+                                    isBaseSelected: false,
+                                    scale: previewScale,
+                                    canvasLeft: previewLeft,
+                                    canvasTop: previewTop,
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -2)),
+                    ],
+                  ),
+                  child: SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
-                          'Decal Canvas Actions',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey),
-                        ),
-                        TextButton.icon(
-                          onPressed: _showPresetDecalsSheet,
-                          icon: const Icon(Icons.brush, size: 14, color: Colors.indigo),
-                          label: const Text(
-                            'Insert Mobile Decals',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: _isLoading ? null : _startCutting,
+                            icon: const Icon(Icons.bolt, size: 20),
+                            label: const Text('CUT DESIGN', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFCE1D19),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
                           ),
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _isLoading ? null : () {
+                              setState(() {
+                                _diyModeEnabled = true;
+                              });
+                            },
+                            icon: const Icon(Icons.palette_outlined, size: 20),
+                            label: const Text('ADD DECALS (DIY)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.indigo,
+                              side: const BorderSide(color: Colors.indigo, width: 2),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    if (_isLoadingDbDecals) ...[
-                      const SizedBox(height: 12),
-                      const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
-                    ] else if (_categoryWiseDecals.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: _categoryWiseDecals.keys.map((subCat) {
-                            final isSelected = _selectedSubCategoryName == subCat;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: ChoiceChip(
-                                label: Text(
-                                  subCat, 
-                                  style: TextStyle(
-                                    fontSize: 9, 
-                                    fontWeight: FontWeight.bold, 
-                                    color: isSelected ? Colors.white : Colors.black87
-                                  )
-                                ),
-                                selected: isSelected,
-                                selectedColor: Colors.indigo,
-                                backgroundColor: Colors.grey[100],
-                                visualDensity: VisualDensity.compact,
-                                onSelected: (val) {
-                                  setState(() {
-                                    _selectedSubCategoryName = subCat;
-                                  });
-                                },
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      if (_selectedSubCategoryName != null && _categoryWiseDecals[_selectedSubCategoryName] != null)
-                        SizedBox(
-                          height: 80,
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: _categoryWiseDecals[_selectedSubCategoryName]!.length,
-                            itemBuilder: (ctx, idx) {
-                              final model = _categoryWiseDecals[_selectedSubCategoryName]![idx];
-                              final name = model['name'] ?? 'Decal';
-                              final imgUrl = _getImageUrl(model);
-
-                              return GestureDetector(
-                                onTap: () => _addDecal(name, imgUrl),
-                                child: Container(
-                                  margin: const EdgeInsets.only(right: 12),
-                                  width: 70,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.grey[200]!),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Expanded(
-                                        child: ClipRRect(
-                                          borderRadius: const BorderRadius.vertical(top: Radius.circular(7)),
-                                          child: Image.network(
-                                            imgUrl,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (ctx, err, stack) => const Icon(Icons.broken_image, size: 20, color: Colors.grey),
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.all(3),
-                                        color: Colors.grey[50],
-                                        width: double.infinity,
-                                        child: Text(
-                                          name, 
-                                          style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold), 
-                                          textAlign: TextAlign.center,
-                                          maxLines: 1, 
-                                          overflow: TextOverflow.ellipsis
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                    ],
-                  ],
-                ),
-              ),
-
-              // Canvas Frame
-              Expanded(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : LayoutBuilder(
-                        builder: (context, constraints) {
-                          final double requiredW = _baseWidth + 40.0;
-                          final double requiredH = _baseHeight + 40.0;
-
-                          final double scaleW = constraints.maxWidth / requiredW;
-                          final double scaleH = constraints.maxHeight / requiredH;
-                          _scale = min(scaleW, scaleH);
-
-                          _canvasLeft = (constraints.maxWidth - _baseWidth * _scale) / 2;
-                          _canvasTop = (constraints.maxHeight - _baseHeight * _scale) / 2;
-
-                          return GestureDetector(
-                            onPanDown: (details) => _handlePointerDown(details.localPosition),
-                            onPanUpdate: (details) => _handlePointerMove(details.localPosition),
-                            onPanEnd: (_) => _handlePointerUp(),
-                            child: Container(
-                              color: Colors.grey[200],
-                              child: Stack(
-                                children: [
-                                  // Grid & Base Canvas Lines
-                                  CustomPaint(
-                                    size: Size(constraints.maxWidth, constraints.maxHeight),
-                                    painter: CanvasGridPainter(
-                                      baseWidth: _baseWidth,
-                                      baseHeight: _baseHeight,
-                                      baseCornerRadius: _baseCornerRadius,
-                                      customBaseOutline: _customBaseOutline,
-                                      normalizedCutoutPaths: _normalizedCutoutPaths,
-                                      isBaseSelected: _isBaseSelected,
-                                      scale: _scale,
-                                      canvasLeft: _canvasLeft,
-                                      canvasTop: _canvasTop,
-                                    ),
-                                  ),
-
-                                  // Clipped Decals Overlay
-                                  ClipPath(
-                                    clipper: BaseOutlineClipper(
-                                      outline: _customBaseOutline,
-                                      baseWidth: _baseWidth,
-                                      baseHeight: _baseHeight,
-                                      baseCornerRadius: _baseCornerRadius,
-                                      scale: _scale,
-                                      canvasLeft: _canvasLeft,
-                                      canvasTop: _canvasTop,
-                                    ),
-                                    child: SizedBox(
-                                      width: constraints.maxWidth,
-                                      height: constraints.maxHeight,
-                                      child: Stack(
-                                        children: _decals.map((decal) {
-                                          final double dLeft = _canvasLeft + decal.x * _scale;
-                                          final double dTop = _canvasTop + decal.y * _scale;
-                                          final double dW = decal.width * _scale;
-                                          final double dH = decal.height * _scale;
-                                          return Positioned(
-                                            left: dLeft,
-                                            top: dTop,
-                                            width: dW,
-                                            height: dH,
-                                            child: Image.network(
-                                              decal.imageUrl,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (ctx, err, stack) => Container(color: Colors.blueGrey[100]),
-                                            ),
-                                          );
-                                        }).toList(),
-                                      ),
-                                    ),
-                                  ),
-
-                                  // Interactive Highlight Boundaries (Visuals only, no tap block)
-                                  if (_selectedDecal != null) ...[
-                                    (() {
-                                      final double dLeft = _canvasLeft + _selectedDecal!.x * _scale;
-                                      final double dTop = _canvasTop + _selectedDecal!.y * _scale;
-                                      final double dW = _selectedDecal!.width * _scale;
-                                      final double dH = _selectedDecal!.height * _scale;
-                                      return Positioned(
-                                        left: dLeft - 2,
-                                        top: dTop - 2,
-                                        width: dW + 4,
-                                        height: dH + 4,
-                                        child: IgnorePointer(
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              border: Border.all(color: Colors.indigo, width: 2.0),
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    })(),
-                                    (() {
-                                      final double dRight = _canvasLeft + (_selectedDecal!.x + _selectedDecal!.width) * _scale;
-                                      final double dBottom = _canvasTop + (_selectedDecal!.y + _selectedDecal!.height) * _scale;
-                                      return Positioned(
-                                        left: dRight - 8,
-                                        top: dBottom - 8,
-                                        width: 16,
-                                        height: 16,
-                                        child: IgnorePointer(
-                                          child: Container(
-                                            decoration: const BoxDecoration(
-                                              color: Colors.indigo,
-                                              shape: BoxShape.circle,
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    })(),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-
-              // Inspector Panel
-              if (!_isLoading)
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -2)),
-                    ],
                   ),
-                  child: SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                ),
+              ],
+            )
+          else
+            Column(
+              children: [
+                // Tool Drawer (Add items)
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                  child: Column(
+                    key: const ValueKey('decal_editor_drawer'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          _selectedDecal != null
-                              ? _buildDecalInspector()
-                              : const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 12),
-                                  child: Text(
-                                    'Select a decal to adjust its size and placement',
-                                    style: TextStyle(fontSize: 11, color: Colors.blueGrey, fontStyle: FontStyle.italic),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: _startCutting,
-                              icon: const Icon(Icons.bolt, size: 18),
-                              label: const Text('SEND FINAL DECAL TO PLOTTER', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFFCE1D19),
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
+                          const Text(
+                            'Decal Canvas Actions',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey),
+                          ),
+                          TextButton.icon(
+                            onPressed: _showPresetDecalsSheet,
+                            icon: const Icon(Icons.brush, size: 14, color: Colors.indigo),
+                            label: const Text(
+                              'Insert Mobile Decals',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo),
+                            ),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
                           ),
                         ],
                       ),
-                    ),
+                      if (_isLoadingDbDecals) ...[
+                        const SizedBox(height: 12),
+                        const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
+                      ] else if (_categoryWiseDecals.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: _categoryWiseDecals.keys.map((subCat) {
+                              final isSelected = _selectedSubCategoryName == subCat;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: ChoiceChip(
+                                  label: Text(
+                                    subCat,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: isSelected ? Colors.white : Colors.black87,
+                                    ),
+                                  ),
+                                  selected: isSelected,
+                                  selectedColor: Colors.indigo,
+                                  backgroundColor: Colors.grey[100],
+                                  visualDensity: VisualDensity.compact,
+                                  onSelected: (val) {
+                                    setState(() {
+                                      _selectedSubCategoryName = subCat;
+                                    });
+                                  },
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        if (_selectedSubCategoryName != null && _categoryWiseDecals[_selectedSubCategoryName] != null)
+                          SizedBox(
+                            height: 80,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: _categoryWiseDecals[_selectedSubCategoryName]!.length,
+                              itemBuilder: (ctx, idx) {
+                                final model = _categoryWiseDecals[_selectedSubCategoryName]![idx];
+                                final name = model['name'] ?? 'Decal';
+                                final imgUrl = _getImageUrl(model);
+
+                                return GestureDetector(
+                                  onTap: () => _addDecal(name, imgUrl),
+                                  child: Container(
+                                    margin: const EdgeInsets.only(right: 12),
+                                    width: 70,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.grey[200]!),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Expanded(
+                                          child: ClipRRect(
+                                            borderRadius: const BorderRadius.vertical(top: Radius.circular(7)),
+                                            child: Image.network(
+                                              imgUrl,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (ctx, err, stack) => const Icon(Icons.broken_image, size: 20, color: Colors.grey),
+                                            ),
+                                          ),
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                                          child: Text(
+                                            name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    ],
                   ),
                 ),
-            ],
-          ),
+
+                // Canvas Frame
+                Expanded(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : LayoutBuilder(
+                          builder: (context, constraints) {
+                            final double requiredW = _baseWidth + 40.0;
+                            final double requiredH = _baseHeight + 40.0;
+
+                            final double scaleW = constraints.maxWidth / requiredW;
+                            final double scaleH = constraints.maxHeight / requiredH;
+                            _scale = min(scaleW, scaleH);
+
+                            _canvasLeft = (constraints.maxWidth - _baseWidth * _scale) / 2;
+                            _canvasTop = (constraints.maxHeight - _baseHeight * _scale) / 2;
+
+                            return GestureDetector(
+                              onPanDown: (details) => _handlePointerDown(details.localPosition),
+                              onPanUpdate: (details) => _handlePointerMove(details.localPosition),
+                              onPanEnd: (_) => _handlePointerUp(),
+                              child: Container(
+                                color: Colors.grey[200],
+                                child: Stack(
+                                  children: [
+                                    // Grid & Base Canvas Lines
+                                    CustomPaint(
+                                      size: Size(constraints.maxWidth, constraints.maxHeight),
+                                      painter: CanvasGridPainter(
+                                        baseWidth: _baseWidth,
+                                        baseHeight: _baseHeight,
+                                        baseCornerRadius: _baseCornerRadius,
+                                        customBaseOutline: _customBaseOutline,
+                                        normalizedCutoutPaths: _normalizedCutoutPaths,
+                                        isBaseSelected: _isBaseSelected,
+                                        scale: _scale,
+                                        canvasLeft: _canvasLeft,
+                                        canvasTop: _canvasTop,
+                                      ),
+                                    ),
+
+                                    // Clipped Decals Overlay
+                                    ClipPath(
+                                      clipper: BaseOutlineClipper(
+                                        outline: _customBaseOutline,
+                                        baseWidth: _baseWidth,
+                                        baseHeight: _baseHeight,
+                                        baseCornerRadius: _baseCornerRadius,
+                                        scale: _scale,
+                                        canvasLeft: _canvasLeft,
+                                        canvasTop: _canvasTop,
+                                      ),
+                                      child: SizedBox(
+                                        width: constraints.maxWidth,
+                                        height: constraints.maxHeight,
+                                        child: Stack(
+                                          children: _decals.map((decal) {
+                                            final double dLeft = _canvasLeft + decal.x * _scale;
+                                            final double dTop = _canvasTop + decal.y * _scale;
+                                            final double dW = decal.width * _scale;
+                                            final double dH = decal.height * _scale;
+                                            return Positioned(
+                                              left: dLeft,
+                                              top: dTop,
+                                              width: dW,
+                                              height: dH,
+                                              child: Image.network(
+                                                decal.imageUrl,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (ctx, err, stack) => Container(color: Colors.blueGrey[100]),
+                                              ),
+                                            );
+                                          }).toList(),
+                                        ),
+                                      ),
+                                    ),
+
+                                    // Interactive Highlight Boundaries (Visuals only, no tap block)
+                                    if (_selectedDecal != null) ...[
+                                      (() {
+                                        final double dLeft = _canvasLeft + _selectedDecal!.x * _scale;
+                                        final double dTop = _canvasTop + _selectedDecal!.y * _scale;
+                                        final double dW = _selectedDecal!.width * _scale;
+                                        final double dH = _selectedDecal!.height * _scale;
+                                        return Positioned(
+                                          left: dLeft - 2,
+                                          top: dTop - 2,
+                                          width: dW + 4,
+                                          height: dH + 4,
+                                          child: IgnorePointer(
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                border: Border.all(color: Colors.indigo, width: 2.0),
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      })(),
+                                      (() {
+                                        final double dRight = _canvasLeft + (_selectedDecal!.x + _selectedDecal!.width) * _scale;
+                                        final double dBottom = _canvasTop + (_selectedDecal!.y + _selectedDecal!.height) * _scale;
+                                        return Positioned(
+                                          left: dRight - 8,
+                                          top: dBottom - 8,
+                                          width: 16,
+                                          height: 16,
+                                          child: IgnorePointer(
+                                            child: Container(
+                                              decoration: const BoxDecoration(
+                                                color: Colors.indigo,
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      })(),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+
+                // Inspector Panel
+                if (!_isLoading)
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -2)),
+                      ],
+                    ),
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _selectedDecal != null
+                                ? _buildDecalInspector()
+                                : const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 12),
+                                    child: Text(
+                                      'Select a decal to adjust its size and placement',
+                                      style: TextStyle(fontSize: 11, color: Colors.blueGrey, fontStyle: FontStyle.italic),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: _isLoading ? null : _handleSaveDesign,
+                                    icon: const Icon(Icons.save_alt, size: 18),
+                                    label: const Text('SAVE DESIGN', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.indigo,
+                                      side: const BorderSide(color: Colors.indigo, width: 1.5),
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: _isLoading ? null : _startCutting,
+                                    icon: const Icon(Icons.bolt, size: 18),
+                                    label: const Text('SEND TO PLOTTER', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFFCE1D19),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
 
           // Cutting Overlay
           if (_isCutting)
@@ -1828,6 +1961,77 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       return '${ApiService.baseUrl.replaceFirst('/api', '')}/$cleanPath';
     }
     return '';
+  }
+
+  String _getMergedPltContent() {
+    String mergedPlt = _originalPltContent ?? '';
+    if (mergedPlt.isEmpty) return '';
+
+    if (!mergedPlt.endsWith(';')) {
+      mergedPlt += ';';
+    }
+
+    for (final d in _decals) {
+      final leftMm = d.x + _originMinX;
+      final rightMm = d.x + d.width + _originMinX;
+      final topMm = _originGlobalMaxY - _originMinY - d.y;
+      final bottomMm = _originGlobalMaxY - _originMinY - (d.y + d.height);
+
+      final leftPlt = (leftMm * 40.0).round();
+      final rightPlt = (rightMm * 40.0).round();
+      final topPlt = (topMm * 40.0).round();
+      final bottomPlt = (bottomMm * 40.0).round();
+
+      mergedPlt += 'PU$leftPlt,$bottomPlt;PD;PA$rightPlt,$bottomPlt;PA$rightPlt,$topPlt;PA$leftPlt,$topPlt;PA$leftPlt,$bottomPlt;PU;';
+    }
+    return mergedPlt;
+  }
+
+  Future<void> _handleSaveDesign() async {
+    final mergedPlt = _getMergedPltContent();
+    if (mergedPlt.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No design content to save.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final file = File('${tempDir.path}/merged_design_$timestamp.plt');
+      await file.writeAsString(mergedPlt);
+
+      await Share.shareXFiles([XFile(file.path)], text: 'Merged PLT design cut file');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Design saved and shared successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save design: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 }
 
