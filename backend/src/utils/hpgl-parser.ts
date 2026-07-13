@@ -73,13 +73,22 @@ export function hpglToSvg(hpgl: string): string {
 
   const width = maxX - minX;
   const height = maxY - minY;
-  const padding = 0; // Removed 5% padding to prevent shrinking sensation
+  const marginMm = 4;
+  const marginPlt = marginMm * 40; // 4mm margin in PLT steps (40 steps per mm)
+
+  const svgWidthMm = (width / 40) + (marginMm * 2);
+  const svgHeightMm = (height / 40) + (marginMm * 2);
+
+  const viewBoxX = minX - marginPlt;
+  const viewBoxY = -maxY - marginPlt;
+  const viewBoxW = width + (marginPlt * 2);
+  const viewBoxH = height + (marginPlt * 2);
 
   // HPGL Y increases upwards, SVG Y increases downwards.
   // We flip it by scaling and adjusting the viewBox.
   const svg = `
-    <svg width="${width / 40}mm" height="${height / 40}mm" 
-         viewBox="${minX} ${-maxY} ${width} ${height}" 
+    <svg width="${svgWidthMm}mm" height="${svgHeightMm}mm" 
+         viewBox="${viewBoxX} ${viewBoxY} ${viewBoxW} ${viewBoxH}" 
          xmlns="http://www.w3.org/2000/svg">
       <g transform="scale(1, -1)">
         <path d="${paths.join(' ')}" fill="none" stroke="#2563eb" stroke-width="${Math.max(width, height) / 200}" stroke-linecap="round" stroke-linejoin="round" />
