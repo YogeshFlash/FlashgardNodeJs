@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
-import { decryptLicenseKey } from '../utils/encryption';
+import { decryptLicenseKey, encryptLicenseKey } from '../utils/encryption';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
@@ -19,9 +19,9 @@ export class MachineCutsService {
     // 1. Verify License
     let license = null;
     if (licenseKey) {
-      // Assuming licenseKey is stored encrypted or we find it directly if stored in plain/hash
+      const encryptedKey = encryptLicenseKey(licenseKey);
       license = await this.prisma.orgLicense.findUnique({
-        where: { key: licenseKey },
+        where: { key: encryptedKey },
         include: { tenant: true }
       });
       if (!license) throw new BadRequestException('Invalid license key');
