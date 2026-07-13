@@ -1917,6 +1917,8 @@ class CanvasGridPainter extends CustomPainter {
     final basePaint = Paint()
       ..color = Colors.black87
       ..strokeWidth = 2.0
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
     final baseOutlinePath = Path();
@@ -1941,6 +1943,8 @@ class CanvasGridPainter extends CustomPainter {
       final selectPaint = Paint()
         ..color = Colors.blue.withOpacity(0.3)
         ..strokeWidth = 3.0
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round
         ..style = PaintingStyle.stroke;
 
       if (customBaseOutline.isNotEmpty) {
@@ -1965,6 +1969,8 @@ class CanvasGridPainter extends CustomPainter {
     final cutoutPaint = Paint()
       ..color = Colors.red
       ..strokeWidth = 1.5
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
     for (final c in cutouts) {
