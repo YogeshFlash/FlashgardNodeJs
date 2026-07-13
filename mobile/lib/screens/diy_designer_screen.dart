@@ -156,6 +156,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
 
   // Custom outline points parsed from PLT
   List<Offset> _customBaseOutline = [];
+  List<List<Offset>> _normalizedCutoutPaths = [];
 
   // Cutouts and Decals layers
   final List<CutoutShape> _cutouts = [];
@@ -504,57 +505,20 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     final double computedBaseWidth = (maxX - minX).clamp(40.0, 500.0);
     final double computedBaseHeight = (maxY - minY).clamp(40.0, 350.0);
 
-    final List<CutoutShape> importedCutouts = [];
+    final List<List<Offset>> normalizedCutoutPaths = [];
     for (final path in rawPaths) {
       if (path == baseRawPath) continue;
-
-      double cMinX = double.infinity;
-      double cMinY = double.infinity;
-      double cMaxX = -double.infinity;
-      double cMaxY = -double.infinity;
-
-      for (final pt in path) {
-        if (pt.dx < cMinX) cMinX = pt.dx;
-        if (pt.dy < cMinY) cMinY = pt.dy;
-        if (pt.dx > cMaxX) cMaxX = pt.dx;
-        if (pt.dy > cMaxY) cMaxY = pt.dy;
-      }
-
-      final double cW = cMaxX - cMinX;
-      final double cH = cMaxY - cMinY;
-
-      if (cW < 1.0 || cH < 1.0) continue;
-
-      final double relativeX = cMinX - minX;
-      final double relativeY = cMinY - minY;
-
-      CutoutType detectedType = CutoutType.rect;
-      if ((cW - cH).abs() < 2.0 && cW < 15.0) {
-        detectedType = CutoutType.circle;
-      } else if (cH < 3.0 || cW < 3.0) {
-        detectedType = CutoutType.slit;
-      } else if (cW > cH * 1.5 && cH < 10.0) {
-        detectedType = CutoutType.pill;
-      }
-
-      importedCutouts.add(CutoutShape(
-        id: 'imported_${DateTime.now().millisecondsSinceEpoch}_${cMinX.toInt()}_${cMinY.toInt()}',
-        type: detectedType,
-        x: _snap(relativeX).clamp(0.0, computedBaseWidth - cW),
-        y: _snap(relativeY).clamp(0.0, computedBaseHeight - cH),
-        width: _snap(cW),
-        height: _snap(cH),
-      ));
+      final List<Offset> normalizedPath = path.map((pt) => Offset(pt.dx - minX, pt.dy - minY)).toList();
+      normalizedCutoutPaths.add(normalizedPath);
     }
 
     setState(() {
       _customBaseOutline = normalizedBaseOutline;
+      _normalizedCutoutPaths = normalizedCutoutPaths;
       _baseWidth = computedBaseWidth;
       _baseHeight = computedBaseHeight;
       
       _cutouts.clear();
-      _cutouts.addAll(importedCutouts);
-      
       _isBaseSelected = true;
       _selectedCutout = null;
       _selectedDecal = null;
@@ -1373,8 +1337,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                       baseHeight: _baseHeight,
                                       baseCornerRadius: _baseCornerRadius,
                                       customBaseOutline: _customBaseOutline,
-                                      cutouts: _cutouts,
-                                      selectedCutout: _selectedCutout,
+                                      normalizedCutoutPaths: _normalizedCutoutPaths,
                                       isBaseSelected: _isBaseSelected,
                                       scale: _scale,
                                       canvasLeft: _canvasLeft,
@@ -1873,8 +1836,7 @@ class CanvasGridPainter extends CustomPainter {
   final double baseHeight;
   final double baseCornerRadius;
   final List<Offset> customBaseOutline;
-  final List<CutoutShape> cutouts;
-  final CutoutShape? selectedCutout;
+  final List<List<Offset>> normalizedCutoutPaths;
   final bool isBaseSelected;
   final double scale;
   final double canvasLeft;
@@ -1885,8 +1847,7 @@ class CanvasGridPainter extends CustomPainter {
     required this.baseHeight,
     required this.baseCornerRadius,
     required this.customBaseOutline,
-    required this.cutouts,
-    required this.selectedCutout,
+    required this.normalizedCutoutPaths,
     required this.isBaseSelected,
     required this.scale,
     required this.canvasLeft,
@@ -1965,7 +1926,7 @@ class CanvasGridPainter extends CustomPainter {
       }
     }
 
-    // 3. Draw Cutouts
+    // 3. Draw Cutouts using exact vector lines
     final cutoutPaint = Paint()
       ..color = Colors.red
       ..strokeWidth = 1.5
@@ -1973,40 +1934,18 @@ class CanvasGridPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    for (final c in cutouts) {
-      final double cLeft = canvasLeft + c.x * scale;
-      final double cTop = canvasTop + c.y * scale;
-      final double cW = c.width * scale;
-      final double cH = c.height * scale;
-
-      final isSelected = selectedCutout?.id == c.id;
-
-      if (c.type == CutoutType.circle) {
-        canvas.drawCircle(Offset(cLeft + cW / 2, cTop + cH / 2), cW / 2, cutoutPaint);
-      } else if (c.type == CutoutType.rect) {
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(Rect.fromLTWH(cLeft, cTop, cW, cH), Radius.circular(c.cornerRadius * scale)),
-          cutoutPaint,
-        );
-      } else if (c.type == CutoutType.slit || c.type == CutoutType.pill) {
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(Rect.fromLTWH(cLeft, cTop, cW, cH), Radius.circular(cH / 2)),
-          cutoutPaint,
-        );
+    for (final path in normalizedCutoutPaths) {
+      if (path.isEmpty) continue;
+      final cutoutPath = Path();
+      final start = path.first;
+      cutoutPath.moveTo(canvasLeft + start.dx * scale, canvasTop + start.dy * scale);
+      for (int i = 1; i < path.length; i++) {
+        final pt = path[i];
+        cutoutPath.lineTo(canvasLeft + pt.dx * scale, canvasTop + pt.dy * scale);
       }
-
-      if (isSelected) {
-        final highlightPaint = Paint()
-          ..color = Colors.blue.withOpacity(0.2)
-          ..strokeWidth = 1.5
-          ..style = PaintingStyle.stroke;
-        canvas.drawRect(Rect.fromLTWH(cLeft - 2, cTop - 2, cW + 4, cH + 4), highlightPaint);
-
-        final handlePaint = Paint()
-          ..color = Colors.indigo
-          ..style = PaintingStyle.fill;
-        canvas.drawCircle(Offset(cLeft + cW, cTop + cH), 6, handlePaint);
-      }
+      // Note: We close the path since these represent closed cuts
+      cutoutPath.close();
+      canvas.drawPath(cutoutPath, cutoutPaint);
     }
   }
 
