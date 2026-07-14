@@ -2075,7 +2075,10 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         final double y = double.tryParse(match.group(3) ?? '0') ?? 0.0;
 
         final normX = x - decalMinX;
-        final normY = y - decalMinY;
+        // Decal PLT uses screen-space Y (Y-down). Base PLT uses Y-up.
+        // Flip Y so decalMinY (visual top in screen space) maps to targetTopSteps,
+        // and decalMaxY (visual bottom) maps to targetBottomSteps.
+        final normY = decalH - (y - decalMinY);
 
         final finalX = (targetLeftSteps + normX * scaleX).round();
         final finalY = (targetBottomSteps + normY * scaleY).round();
