@@ -973,15 +973,20 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     _saveToHistory();
     setState(() {
       final id = 'decal_${DateTime.now().millisecondsSinceEpoch}';
+      // Default to 40% of canvas width, maintain 1:1 aspect ratio, centred
+      final double defaultW = (_baseWidth * 0.40).clamp(20.0, _baseWidth);
+      final double defaultH = defaultW.clamp(20.0, _baseHeight);
+      final double defaultX = ((_baseWidth - defaultW) / 2);
+      final double defaultY = ((_baseHeight - defaultH) / 2);
       final newDecal = DecalElement(
         id: id,
         name: name,
         imageUrl: url,
         modelId: modelId,
-        x: 0.0,
-        y: 0.0,
-        width: _baseWidth,
-        height: _baseHeight,
+        x: defaultX,
+        y: defaultY,
+        width: defaultW,
+        height: defaultH,
       );
       _decals.add(newDecal);
       _selectedDecal = newDecal;
@@ -1493,10 +1498,16 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                               top: dTop,
                                               width: dW,
                                               height: dH,
-                                              child: Image.network(
-                                                decal.imageUrl,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (ctx, err, stack) => Container(color: Colors.blueGrey[100]),
+                                              // White background prevents transparent-PNG decals from
+                                              // showing the base cut design lines behind them.
+                                              child: Container(
+                                                color: Colors.white,
+                                                child: Image.network(
+                                                  decal.imageUrl,
+                                                  fit: BoxFit.contain,
+                                                  errorBuilder: (ctx, err, stack) =>
+                                                      Container(color: Colors.blueGrey[100]),
+                                                ),
                                               ),
                                             );
                                           }).toList(),
