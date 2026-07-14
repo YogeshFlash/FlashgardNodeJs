@@ -2025,15 +2025,19 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     }
 
     for (final d in _decals) {
-      final leftMm = d.x + _originMinX;
-      final rightMm = d.x + d.width + _originMinX;
-      final topMm = _originGlobalMaxY - _originMinY - d.y;
-      final bottomMm = _originGlobalMaxY - _originMinY - (d.y + d.height);
+      // Canvas Y is screen-space (Y-down). Convert to PLT Y-up steps.
+      // _originGlobalMaxY and _originMinY are in mm (post-divide-by-40 in _importPltData).
+      final double leftMm   = d.x + _originMinX;
+      final double rightMm  = d.x + d.width + _originMinX;
+      // Distance from PLT bottom (Y-up): full height minus how far from canvas top the decal sits
+      final double bottomMm = (_originGlobalMaxY - _originMinY) - (d.y + d.height);
+      final double topMm    = (_originGlobalMaxY - _originMinY) - d.y;
 
-      final leftPlt = (leftMm * 40.0).round();
-      final rightPlt = (rightMm * 40.0).round();
-      final topPlt = (topMm * 40.0).round();
-      final bottomPlt = (bottomMm * 40.0).round();
+      // Absolute PLT step coordinates (add _originMinY back to anchor to PLT origin)
+      final leftPlt   = (leftMm   * 40.0).round();
+      final rightPlt  = (rightMm  * 40.0).round();
+      final bottomPlt = (bottomMm * 40.0 + _originMinY * 40.0).round();
+      final topPlt    = (topMm    * 40.0 + _originMinY * 40.0).round();
 
       if (d.modelId == null) {
         // Fallback to rectangular outline
@@ -2074,10 +2078,14 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       final double decalW = decalMaxX - decalMinX;
       final double decalH = decalMaxY - decalMinY;
 
-      final double targetLeftSteps = leftMm * 40.0;
-      final double targetBottomSteps = bottomMm * 40.0;
+      // Target region in base PLT coordinate steps.
+      // targetLeftSteps: leftMm includes _originMinX so leftMm*40 = absolute X PLT steps
+      // targetBottomSteps: bottomMm is relative to skin height, so we add _originMinY*40 to anchor to PLT Y origin
+      final double targetLeftSteps   = leftMm   * 40.0;
+      final double targetBottomSteps = bottomMm * 40.0 + _originMinY * 40.0;
 
-      final double scaleX = (d.width * 40.0) / decalW;
+      // Scale: how many base-PLT steps correspond to one decal-PLT step
+      final double scaleX = (d.width  * 40.0) / decalW;
       final double scaleY = (d.height * 40.0) / decalH;
 
       for (final match in matches) {
@@ -2085,14 +2093,14 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         final double x = double.tryParse(match.group(2) ?? '0') ?? 0.0;
         final double y = double.tryParse(match.group(3) ?? '0') ?? 0.0;
 
-        final normX = x - decalMinX;
-        // Decal PLT uses screen-space Y (Y-down). Base PLT uses Y-up.
-        // Flip Y so decalMinY (visual top in screen space) maps to targetTopSteps,
-        // and decalMaxY (visual bottom) maps to targetBottomSteps.
-        final normY = decalH - (y - decalMinY);
+        // Normalise to [0 .. decalW/decalH]
+        final double normX = x - decalMinX;
+        // Both the decal PLT and the base PLT use the same Y-UP convention,
+        // so a simple normalisation (no flip) is correct.
+        final double normY = y - decalMinY;
 
-        final finalX = (targetLeftSteps + normX * scaleX).round();
-        final finalY = (targetBottomSteps + normY * scaleY).round();
+        final int finalX = (targetLeftSteps   + normX * scaleX).round();
+        final int finalY = (targetBottomSteps + normY * scaleY).round();
 
         // Convert command to PU or PD to guarantee device compatibility
         final finalCmd = (cmd == 'PU' || cmd == 'M') ? 'PU' : 'PD';
