@@ -8,7 +8,6 @@ import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../services/plotter_service.dart';
 import '../providers/auth_provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 enum CutoutType {
   circle,
@@ -1423,17 +1422,36 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
   }
 
   TextStyle _getFontStyle(TextElement decalText) {
-    final baseStyle = TextStyle(
+    // Map font family names to standard system fonts to prevent network blocking/hangs on the UI thread
+    String family;
+    switch (decalText.fontFamily) {
+      case 'Pacifico':
+      case 'Lobster':
+        family = 'cursive';
+        break;
+      case 'Courier Prime':
+        family = 'monospace';
+        break;
+      case 'Playfair Display':
+        family = 'serif';
+        break;
+      case 'Oswald':
+        family = 'sans-serif-condensed';
+        break;
+      case 'Montserrat':
+      case 'Roboto':
+      default:
+        family = 'sans-serif';
+        break;
+    }
+
+    return TextStyle(
+      fontFamily: family,
       fontWeight: decalText.isBold ? FontWeight.bold : FontWeight.normal,
       fontStyle: decalText.isItalic ? FontStyle.italic : FontStyle.normal,
       decoration: decalText.isUnderline ? TextDecoration.underline : TextDecoration.none,
       color: Colors.black,
     );
-    try {
-      return GoogleFonts.getFont(decalText.fontFamily, textStyle: baseStyle);
-    } catch (e) {
-      return baseStyle.copyWith(fontFamily: decalText.fontFamily);
-    }
   }
 
   @override
