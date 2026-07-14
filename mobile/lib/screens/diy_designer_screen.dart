@@ -2614,7 +2614,11 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       final double charW = t.width / chars.length;
       final double charH = t.height;
 
-      final alphabetModels = _categoryWiseDecals['Alphabets'] ?? [];
+      final alphabetKey = _categoryWiseDecals.keys.firstWhere(
+        (k) => k.toLowerCase().contains('alphabet'),
+        orElse: () => '',
+      );
+      final alphabetModels = alphabetKey.isNotEmpty ? (_categoryWiseDecals[alphabetKey] ?? []) : [];
 
       for (int i = 0; i < chars.length; i++) {
         final char = chars[i];
@@ -2633,9 +2637,16 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         final bottomPlt = (bottomMm * 40.0).round();
         final topPlt    = (topMm    * 40.0).round();
 
-        // Search for matching decal model in the loaded Alphabets category
+        // Search for matching decal model in the loaded Alphabets category (fuzzy & variations support)
         final charModel = alphabetModels.firstWhere(
-          (m) => m['name']?.toString().toUpperCase() == char,
+          (m) {
+            final name = m['name']?.toString().trim().toUpperCase() ?? '';
+            return name == char || 
+                   name == 'ALPHABET $char' || 
+                   name == 'LETTER $char' || 
+                   name == 'DECAL $char' || 
+                   name.endsWith(' $char');
+          },
           orElse: () => null,
         );
 
