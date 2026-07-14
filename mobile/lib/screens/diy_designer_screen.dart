@@ -1500,11 +1500,19 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                               height: dH,
                                               child: Container(
                                                 color: Colors.transparent,
-                                                child: Image.network(
-                                                  decal.imageUrl,
-                                                  fit: BoxFit.contain,
-                                                  errorBuilder: (ctx, err, stack) =>
-                                                      Container(color: Colors.blueGrey[100]),
+                                                child: ColorFiltered(
+                                                  colorFilter: const ColorFilter.matrix(<double>[
+                                                    1, 0, 0, 0, 0,
+                                                    0, 1, 0, 0, 0,
+                                                    0, 0, 1, 0, 0,
+                                                    -0.333, -0.333, -0.333, 1, 0,
+                                                  ]),
+                                                  child: Image.network(
+                                                    decal.imageUrl,
+                                                    fit: BoxFit.contain,
+                                                    errorBuilder: (ctx, err, stack) =>
+                                                        Container(color: Colors.blueGrey[100]),
+                                                  ),
                                                 ),
                                               ),
                                             );
