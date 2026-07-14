@@ -101,10 +101,6 @@ class TextElement {
   double y; // Y position relative to top-left of base shape in mm
   double width; // in mm
   double height; // in mm
-  final String fontFamily;
-  final bool isBold;
-  final bool isItalic;
-  final bool isUnderline;
 
   TextElement({
     required this.id,
@@ -113,10 +109,6 @@ class TextElement {
     required this.y,
     required this.width,
     required this.height,
-    this.fontFamily = 'Roboto',
-    this.isBold = false,
-    this.isItalic = false,
-    this.isUnderline = false,
   });
 
   TextElement copyWith({
@@ -125,10 +117,6 @@ class TextElement {
     double? y,
     double? width,
     double? height,
-    String? fontFamily,
-    bool? isBold,
-    bool? isItalic,
-    bool? isUnderline,
   }) {
     return TextElement(
       id: id,
@@ -137,10 +125,6 @@ class TextElement {
       y: y ?? this.y,
       width: width ?? this.width,
       height: height ?? this.height,
-      fontFamily: fontFamily ?? this.fontFamily,
-      isBold: isBold ?? this.isBold,
-      isItalic: isItalic ?? this.isItalic,
-      isUnderline: isUnderline ?? this.isUnderline,
     );
   }
 }
@@ -629,12 +613,9 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       _originGlobalMaxY = globalMaxY;
       
       _cutouts.clear();
-      _decals.clear();
-      _texts.clear();
       _isBaseSelected = true;
       _selectedCutout = null;
       _selectedDecal = null;
-      _selectedText = null;
     });
   }
 
@@ -1421,39 +1402,6 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     }
   }
 
-  TextStyle _getFontStyle(TextElement decalText) {
-    // Map font family names to standard system fonts to prevent network blocking/hangs on the UI thread
-    String family;
-    switch (decalText.fontFamily) {
-      case 'Pacifico':
-      case 'Lobster':
-        family = 'cursive';
-        break;
-      case 'Courier Prime':
-        family = 'monospace';
-        break;
-      case 'Playfair Display':
-        family = 'serif';
-        break;
-      case 'Oswald':
-        family = 'sans-serif-condensed';
-        break;
-      case 'Montserrat':
-      case 'Roboto':
-      default:
-        family = 'sans-serif';
-        break;
-    }
-
-    return TextStyle(
-      fontFamily: family,
-      fontWeight: decalText.isBold ? FontWeight.bold : FontWeight.normal,
-      fontStyle: decalText.isItalic ? FontStyle.italic : FontStyle.normal,
-      decoration: decalText.isUnderline ? TextDecoration.underline : TextDecoration.none,
-      color: Colors.black,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1609,37 +1557,18 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                             'Decal Canvas Actions',
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey),
                           ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              TextButton.icon(
-                                onPressed: _showAddTextDialog,
-                                icon: const Icon(Icons.title, size: 14, color: Colors.indigo),
-                                label: const Text(
-                                  'Add Text',
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo),
-                                ),
-                                style: TextButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              TextButton.icon(
-                                onPressed: _showPresetDecalsSheet,
-                                icon: const Icon(Icons.brush, size: 14, color: Colors.indigo),
-                                label: const Text(
-                                  'Insert Mobile Decals',
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo),
-                                ),
-                                style: TextButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                              ),
-                            ],
+                          TextButton.icon(
+                            onPressed: _showAddTextDialog,
+                            icon: const Icon(Icons.title, size: 14, color: Colors.indigo),
+                            label: const Text(
+                              'Add Text',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo),
+                            ),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
                           ),
                         ],
                       ),
@@ -1832,7 +1761,11 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                                     fit: BoxFit.contain,
                                                     child: Text(
                                                       decalText.text,
-                                                      style: _getFontStyle(decalText),
+                                                      style: const TextStyle(
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.black,
+                                                        fontFamily: 'Roboto',
+                                                      ),
                                                     ),
                                                   ),
                                                 ),
@@ -2314,9 +2247,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(
-              child: Text('Text: ${t.text}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey), maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
+            Text('Text: ${t.text}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -2372,97 +2303,6 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
             ),
           ],
         ),
-        // Styling options Row
-        Row(
-          children: [
-            // Font Family selector dropdown
-            Expanded(
-              child: DropdownButtonHideUnderline(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey[300]!),
-                  ),
-                  child: DropdownButton<String>(
-                    value: t.fontFamily,
-                    isExpanded: true,
-                    style: const TextStyle(fontSize: 11, color: Colors.black87, fontWeight: FontWeight.bold),
-                    onChanged: (String? val) {
-                      if (val != null) {
-                        _saveToHistory();
-                        setState(() {
-                          final idx = _texts.indexWhere((item) => item.id == t.id);
-                          if (idx != -1) {
-                            _texts[idx] = t.copyWith(fontFamily: val);
-                            _selectedText = _texts[idx];
-                          }
-                        });
-                      }
-                    },
-                    items: const [
-                      DropdownMenuItem(value: 'Roboto', child: Text('Roboto (Clean)')),
-                      DropdownMenuItem(value: 'Pacifico', child: Text('Pacifico (Script)')),
-                      DropdownMenuItem(value: 'Montserrat', child: Text('Montserrat (Slab)')),
-                      DropdownMenuItem(value: 'Lobster', child: Text('Lobster (Bold Script)')),
-                      DropdownMenuItem(value: 'Oswald', child: Text('Oswald (Condensed)')),
-                      DropdownMenuItem(value: 'Playfair Display', child: Text('Playfair (Elegant)')),
-                      DropdownMenuItem(value: 'Courier Prime', child: Text('Courier (Mono)')),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            // Bold Toggle
-            IconButton(
-              icon: Icon(Icons.format_bold, color: t.isBold ? Colors.indigo : Colors.grey, size: 20),
-              style: IconButton.styleFrom(backgroundColor: t.isBold ? Colors.indigo.withOpacity(0.1) : Colors.transparent),
-              onPressed: () {
-                _saveToHistory();
-                setState(() {
-                  final idx = _texts.indexWhere((item) => item.id == t.id);
-                  if (idx != -1) {
-                    _texts[idx] = t.copyWith(isBold: !t.isBold);
-                    _selectedText = _texts[idx];
-                  }
-                });
-              },
-            ),
-            // Italic Toggle
-            IconButton(
-              icon: Icon(Icons.format_italic, color: t.isItalic ? Colors.indigo : Colors.grey, size: 20),
-              style: IconButton.styleFrom(backgroundColor: t.isItalic ? Colors.indigo.withOpacity(0.1) : Colors.transparent),
-              onPressed: () {
-                _saveToHistory();
-                setState(() {
-                  final idx = _texts.indexWhere((item) => item.id == t.id);
-                  if (idx != -1) {
-                    _texts[idx] = t.copyWith(isItalic: !t.isItalic);
-                    _selectedText = _texts[idx];
-                  }
-                });
-              },
-            ),
-            // Underline Toggle
-            IconButton(
-              icon: Icon(Icons.format_underlined, color: t.isUnderline ? Colors.indigo : Colors.grey, size: 20),
-              style: IconButton.styleFrom(backgroundColor: t.isUnderline ? Colors.indigo.withOpacity(0.1) : Colors.transparent),
-              onPressed: () {
-                _saveToHistory();
-                setState(() {
-                  final idx = _texts.indexWhere((item) => item.id == t.id);
-                  if (idx != -1) {
-                    _texts[idx] = t.copyWith(isUnderline: !t.isUnderline);
-                    _selectedText = _texts[idx];
-                  }
-                });
-              },
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
@@ -2859,25 +2699,12 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           final double normX = x - decalMinX;
           final double normY = y - decalMinY;
 
-          // Shear X coordinate forward based on Y height to create slant (Italic)
-          final double shearedNormX = t.isItalic ? (normX + normY * 0.17) : normX;
-
-          final int finalX = (targetLeftSteps + fitOffsetX + shearedNormX * scale).round();
+          final int finalX = (targetLeftSteps + fitOffsetX + normX * scale).round();
           final int finalY = (targetBottomSteps + fitOffsetY + normY * scale).round();
 
           final finalCmd = (cmd == 'PU' || cmd == 'M') ? 'PU' : 'PD';
           mergedPlt += '$finalCmd$finalX,$finalY;';
         }
-      }
-      
-      if (t.isUnderline) {
-        // Position underline 1.5mm below the text bottom boundary
-        final double underlineYMm = (_originGlobalMaxY - _originMinY) - (t.y + t.height + 1.5);
-        final int underlineYSteps = (underlineYMm * 40.0).round();
-        final int startX = ((t.x + _originMinX) * 40.0).round();
-        final int endX = ((t.x + t.width + _originMinX) * 40.0).round();
-        
-        mergedPlt += 'PU$startX,$underlineYSteps;PD$endX,$underlineYSteps;PU;';
       }
     }
     return mergedPlt;
