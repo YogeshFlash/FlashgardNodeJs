@@ -2614,11 +2614,17 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       final double charW = t.width / chars.length;
       final double charH = t.height;
 
+      print('DEBUG TEXT CUT: _categoryWiseDecals keys = ${_categoryWiseDecals.keys.toList()}');
       final alphabetKey = _categoryWiseDecals.keys.firstWhere(
         (k) => k.toLowerCase().contains('alphabet'),
         orElse: () => '',
       );
+      print('DEBUG TEXT CUT: resolved alphabetKey = "$alphabetKey"');
       final alphabetModels = alphabetKey.isNotEmpty ? (_categoryWiseDecals[alphabetKey] ?? []) : [];
+      print('DEBUG TEXT CUT: alphabetModels count = ${alphabetModels.length}');
+      if (alphabetModels.isNotEmpty) {
+        print('DEBUG TEXT CUT: alphabetModels names = ${alphabetModels.map((m) => m['name']).toList()}');
+      }
 
       for (int i = 0; i < chars.length; i++) {
         final char = chars[i];
@@ -2649,6 +2655,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           },
           orElse: () => null,
         );
+        print('DEBUG TEXT CUT: char = "$char", matched charModel = ${charModel != null ? charModel['name'] : 'NULL'}');
 
         if (charModel == null) {
           // Fallback to rectangular outline if letter not found in database
