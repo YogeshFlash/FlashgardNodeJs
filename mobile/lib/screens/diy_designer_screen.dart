@@ -2455,6 +2455,45 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     );
   }
 
+  static const Map<String, String> _localAlphabetPlt = {
+    'A': 'PU0,0;PD500,1000;PD1000,0;PU250,500;PD750,500;',
+    'B': 'PU0,0;PD0,1000;PD500,1000;PD700,750;PD500,500;PD0,500;PU500,500;PD700,250;PD500,0;PD0,0;',
+    'C': 'PU1000,1000;PD0,1000;PD0,0;PD1000,0;',
+    'D': 'PU0,0;PD0,1000;PD500,1000;PD1000,500;PD500,0;PD0,0;',
+    'E': 'PU0,0;PD0,1000;PD1000,1000;PU0,500;PD750,500;PU0,0;PD1000,0;',
+    'F': 'PU0,0;PD0,1000;PD1000,1000;PU0,500;PD750,500;',
+    'G': 'PU1000,1000;PD0,1000;PD0,0;PD1000,0;PD1000,500;PD500,500;',
+    'H': 'PU0,0;PD0,1000;PU1000,0;PD1000,1000;PU0,500;PD1000,500;',
+    'I': 'PU500,0;PD500,1000;PU250,1000;PD750,1000;PU250,0;PD750,0;',
+    'J': 'PU500,1000;PD500,250;PD250,0;PD0,250;PU250,1000;PD750,1000;',
+    'K': 'PU0,0;PD0,1000;PU1000,1000;PD0,500;PD1000,0;',
+    'L': 'PU0,1000;PD0,0;PD1000,0;',
+    'M': 'PU0,0;PD0,1000;PD500,500;PD1000,1000;PD1000,0;',
+    'N': 'PU0,0;PD0,1000;PD1000,0;PD1000,1000;',
+    'O': 'PU0,0;PD0,1000;PD1000,1000;PD1000,0;PD0,0;',
+    'P': 'PU0,0;PD0,1000;PD1000,1000;PD1000,500;PD0,500;',
+    'Q': 'PU0,0;PD0,1000;PD1000,1000;PD1000,0;PD0,0;PU750,250;PD1000,0;',
+    'R': 'PU0,0;PD0,1000;PD1000,1000;PD1000,500;PD0,500;PU500,500;PD1000,0;',
+    'S': 'PU1000,1000;PD0,1000;PD0,500;PD1000,500;PD1000,0;PD0,0;',
+    'T': 'PU0,1000;PD1000,1000;PU500,1000;PD500,0;',
+    'U': 'PU0,1000;PD0,0;PD1000,0;PD1000,1000;',
+    'V': 'PU0,1000;PD500,0;PD1000,1000;',
+    'W': 'PU0,1000;PD250,0;PD500,500;PD750,0;PD1000,1000;',
+    'X': 'PU0,1000;PD1000,0;PU1000,1000;PD0,0;',
+    'Y': 'PU0,1000;PD500,500;PU1000,1000;PD500,500;PD500,0;',
+    'Z': 'PU0,1000;PD1000,1000;PD0,0;PD1000,0;',
+    '0': 'PU0,0;PD0,1000;PD1000,1000;PD1000,0;PD0,0;PU0,0;PD1000,1000;',
+    '1': 'PU500,0;PD500,1000;PU250,750;PD500,1000;',
+    '2': 'PU0,1000;PD1000,1000;PD1000,500;PD0,500;PD0,0;PD1000,0;',
+    '3': 'PU0,1000;PD1000,1000;PD1000,0;PD0,0;PU0,500;PD1000,500;',
+    '4': 'PU0,1000;PD0,500;PD1000,500;PU1000,1000;PD1000,0;',
+    '5': 'PU1000,1000;PD0,1000;PD0,500;PD1000,500;PD1000,0;PD0,0;',
+    '6': 'PU1000,1000;PD0,1000;PD0,0;PD1000,0;PD1000,500;PD0,500;',
+    '7': 'PU0,1000;PD1000,1000;PD500,0;',
+    '8': 'PU0,1000;PD1000,1000;PD1000,0;PD0,0;PD0,1000;PU0,500;PD1000,500;',
+    '9': 'PU0,0;PD1000,0;PD1000,1000;PD0,1000;PD0,500;PD1000,500;'
+  };
+
   static const _s3CatalogBaseUrl = 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog';
 
   String _getImageUrl(dynamic item) {
@@ -2657,15 +2696,19 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         );
         print('DEBUG TEXT CUT: char = "$char", matched charModel = ${charModel != null ? charModel['name'] : 'NULL'}');
 
-        if (charModel == null) {
-          // Fallback to rectangular outline if letter not found in database
-          mergedPlt += 'PU$leftPlt,$bottomPlt;PD$rightPlt,$bottomPlt;PD$rightPlt,$topPlt;PD$leftPlt,$topPlt;PD$leftPlt,$bottomPlt;PU;';
-          continue;
+        String? decalPlt;
+        if (charModel != null) {
+          decalPlt = await _fetchDecalPltContent(charModel['id'].toString());
         }
 
-        final decalPlt = await _fetchDecalPltContent(charModel['id'].toString());
         if (decalPlt == null || decalPlt.trim().isEmpty) {
-          // Fallback to rectangular outline if fetch fails
+          print('DEBUG TEXT CUT: PLT empty/null for "$char". Falling back to local vector.');
+          decalPlt = _localAlphabetPlt[char];
+        }
+
+        if (decalPlt == null || decalPlt.trim().isEmpty) {
+          print('DEBUG TEXT CUT: Local vector fallback also failed for "$char". Falling back to box.');
+          // Fallback to rectangular outline if everything fails
           mergedPlt += 'PU$leftPlt,$bottomPlt;PD$rightPlt,$bottomPlt;PD$rightPlt,$topPlt;PD$leftPlt,$topPlt;PD$leftPlt,$bottomPlt;PU;';
           continue;
         }
