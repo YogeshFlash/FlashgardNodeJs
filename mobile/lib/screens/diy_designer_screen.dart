@@ -2084,9 +2084,19 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       final double targetLeftSteps   = leftMm   * 40.0;
       final double targetBottomSteps = bottomMm * 40.0 + _originMinY * 40.0;
 
-      // Scale: how many base-PLT steps correspond to one decal-PLT step
-      final double scaleX = (d.width  * 40.0) / decalW;
-      final double scaleY = (d.height * 40.0) / decalH;
+      // Target region dimensions in base PLT coordinate steps.
+      final double targetW = d.width * 40.0;
+      final double targetH = d.height * 40.0;
+
+      // BoxFit.contain: scale down/up while preserving the aspect ratio
+      final double scale = min(targetW / decalW, targetH / decalH);
+
+      final double scaledW = decalW * scale;
+      final double scaledH = decalH * scale;
+
+      // Centering offset inside the target box
+      final double fitOffsetX = (targetW - scaledW) / 2.0;
+      final double fitOffsetY = (targetH - scaledH) / 2.0;
 
       for (final match in matches) {
         final cmd = match.group(1);
@@ -2099,8 +2109,8 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         // so a simple normalisation (no flip) is correct.
         final double normY = y - decalMinY;
 
-        final int finalX = (targetLeftSteps   + normX * scaleX).round();
-        final int finalY = (targetBottomSteps + normY * scaleY).round();
+        final int finalX = (targetLeftSteps + fitOffsetX + normX * scale).round();
+        final int finalY = (targetBottomSteps + fitOffsetY + normY * scale).round();
 
         // Convert command to PU or PD to guarantee device compatibility
         final finalCmd = (cmd == 'PU' || cmd == 'M') ? 'PU' : 'PD';
