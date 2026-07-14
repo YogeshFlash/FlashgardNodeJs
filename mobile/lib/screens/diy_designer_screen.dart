@@ -2033,11 +2033,11 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       final double bottomMm = (_originGlobalMaxY - _originMinY) - (d.y + d.height);
       final double topMm    = (_originGlobalMaxY - _originMinY) - d.y;
 
-      // Absolute PLT step coordinates (add _originMinY back to anchor to PLT origin)
+      // Absolute PLT step coordinates
       final leftPlt   = (leftMm   * 40.0).round();
       final rightPlt  = (rightMm  * 40.0).round();
-      final bottomPlt = (bottomMm * 40.0 + _originMinY * 40.0).round();
-      final topPlt    = (topMm    * 40.0 + _originMinY * 40.0).round();
+      final bottomPlt = (bottomMm * 40.0).round();
+      final topPlt    = (topMm    * 40.0).round();
 
       if (d.modelId == null) {
         // Fallback to rectangular outline
@@ -2080,9 +2080,9 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
 
       // Target region in base PLT coordinate steps.
       // targetLeftSteps: leftMm includes _originMinX so leftMm*40 = absolute X PLT steps
-      // targetBottomSteps: bottomMm is relative to skin height, so we add _originMinY*40 to anchor to PLT Y origin
+      // targetBottomSteps: bottomMm includes absolute Y steps relative to top, representing absolute bottom Y PLT steps
       final double targetLeftSteps   = leftMm   * 40.0;
-      final double targetBottomSteps = bottomMm * 40.0 + _originMinY * 40.0;
+      final double targetBottomSteps = bottomMm * 40.0;
 
       // Target region dimensions in base PLT coordinate steps.
       final double targetW = d.width * 40.0;
