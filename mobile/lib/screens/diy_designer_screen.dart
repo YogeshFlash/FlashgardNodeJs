@@ -94,6 +94,41 @@ class DecalElement {
   }
 }
 
+class TextElement {
+  final String id;
+  final String text;
+  double x; // X position relative to top-left of base shape in mm
+  double y; // Y position relative to top-left of base shape in mm
+  double width; // in mm
+  double height; // in mm
+
+  TextElement({
+    required this.id,
+    required this.text,
+    required this.x,
+    required this.y,
+    required this.width,
+    required this.height,
+  });
+
+  TextElement copyWith({
+    String? text,
+    double? x,
+    double? y,
+    double? width,
+    double? height,
+  }) {
+    return TextElement(
+      id: id,
+      text: text ?? this.text,
+      x: x ?? this.x,
+      y: y ?? this.y,
+      width: width ?? this.width,
+      height: height ?? this.height,
+    );
+  }
+}
+
 class DesignerStateHistory {
   final double baseWidth;
   final double baseHeight;
@@ -101,8 +136,10 @@ class DesignerStateHistory {
   final List<Offset> customBaseOutline;
   final List<CutoutShape> cutouts;
   final List<DecalElement> decals;
+  final List<TextElement> texts;
   final String? selectedCutoutId;
   final String? selectedDecalId;
+  final String? selectedTextId;
   final bool isBaseSelected;
 
   DesignerStateHistory({
@@ -112,8 +149,10 @@ class DesignerStateHistory {
     required this.customBaseOutline,
     required this.cutouts,
     required this.decals,
+    required this.texts,
     required this.selectedCutoutId,
     required this.selectedDecalId,
+    required this.selectedTextId,
     required this.isBaseSelected,
   });
 
@@ -124,8 +163,10 @@ class DesignerStateHistory {
     required List<Offset> customBaseOutline,
     required List<CutoutShape> cutouts,
     required List<DecalElement> decals,
+    required List<TextElement> texts,
     required String? selectedCutoutId,
     required String? selectedDecalId,
+    required String? selectedTextId,
     required bool isBaseSelected,
   })  : baseWidth = baseWidth,
         baseHeight = baseHeight,
@@ -133,8 +174,10 @@ class DesignerStateHistory {
         customBaseOutline = List<Offset>.from(customBaseOutline),
         cutouts = cutouts.map((c) => c.copyWith()).toList(),
         decals = decals.map((d) => d.copyWith()).toList(),
+        texts = texts.map((t) => t.copyWith()).toList(),
         selectedCutoutId = selectedCutoutId,
         selectedDecalId = selectedDecalId,
+        selectedTextId = selectedTextId,
         isBaseSelected = isBaseSelected;
 }
 
@@ -168,16 +211,18 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
   List<Offset> _customBaseOutline = [];
   List<List<Offset>> _normalizedCutoutPaths = [];
 
-  // Cutouts and Decals layers
+  // Cutouts, Decals and Text layers
   final List<CutoutShape> _cutouts = [];
   final List<DecalElement> _decals = [];
+  final List<TextElement> _texts = [];
   
   CutoutShape? _selectedCutout;
   DecalElement? _selectedDecal;
+  TextElement? _selectedText;
   bool _isBaseSelected = true;
 
   // Drag interaction states
-  String? _activeDragType; // 'move', 'resize-base-w', 'resize-base-h', 'resize-cutout', 'move-decal', 'resize-decal'
+  String? _activeDragType; // 'move', 'resize-base-w', 'resize-base-h', 'resize-cutout', 'move-decal', 'resize-decal', 'move-text', 'resize-text'
   Offset _dragStartOffset = Offset.zero;
   double _dragStartValX = 0.0;
   double _dragStartValY = 0.0;
@@ -241,8 +286,10 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         customBaseOutline: _customBaseOutline,
         cutouts: _cutouts,
         decals: _decals,
+        texts: _texts,
         selectedCutoutId: _selectedCutout?.id,
         selectedDecalId: _selectedDecal?.id,
+        selectedTextId: _selectedText?.id,
         isBaseSelected: _isBaseSelected,
       ),
     );
@@ -260,8 +307,10 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           customBaseOutline: _customBaseOutline,
           cutouts: _cutouts,
           decals: _decals,
+          texts: _texts,
           selectedCutoutId: _selectedCutout?.id,
           selectedDecalId: _selectedDecal?.id,
+          selectedTextId: _selectedText?.id,
           isBaseSelected: _isBaseSelected,
         ),
       );
@@ -277,6 +326,9 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       
       _decals.clear();
       _decals.addAll(previous.decals);
+
+      _texts.clear();
+      _texts.addAll(previous.texts);
       
       _isBaseSelected = previous.isBaseSelected;
       
@@ -286,15 +338,25 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           orElse: () => _cutouts.first,
         );
         _selectedDecal = null;
+        _selectedText = null;
       } else if (previous.selectedDecalId != null) {
         _selectedDecal = _decals.firstWhere(
           (d) => d.id == previous.selectedDecalId,
           orElse: () => _decals.first,
         );
         _selectedCutout = null;
+        _selectedText = null;
+      } else if (previous.selectedTextId != null) {
+        _selectedText = _texts.firstWhere(
+          (t) => t.id == previous.selectedTextId,
+          orElse: () => _texts.first,
+        );
+        _selectedCutout = null;
+        _selectedDecal = null;
       } else {
         _selectedCutout = null;
         _selectedDecal = null;
+        _selectedText = null;
       }
     });
   }
@@ -310,8 +372,10 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           customBaseOutline: _customBaseOutline,
           cutouts: _cutouts,
           decals: _decals,
+          texts: _texts,
           selectedCutoutId: _selectedCutout?.id,
           selectedDecalId: _selectedDecal?.id,
+          selectedTextId: _selectedText?.id,
           isBaseSelected: _isBaseSelected,
         ),
       );
@@ -328,6 +392,9 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       _decals.clear();
       _decals.addAll(next.decals);
 
+      _texts.clear();
+      _texts.addAll(next.texts);
+
       _isBaseSelected = next.isBaseSelected;
 
       if (next.selectedCutoutId != null) {
@@ -336,15 +403,25 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           orElse: () => _cutouts.first,
         );
         _selectedDecal = null;
+        _selectedText = null;
       } else if (next.selectedDecalId != null) {
         _selectedDecal = _decals.firstWhere(
           (d) => d.id == next.selectedDecalId,
           orElse: () => _decals.first,
         );
         _selectedCutout = null;
+        _selectedText = null;
+      } else if (next.selectedTextId != null) {
+        _selectedText = _texts.firstWhere(
+          (t) => t.id == next.selectedTextId,
+          orElse: () => _texts.first,
+        );
+        _selectedCutout = null;
+        _selectedDecal = null;
       } else {
         _selectedCutout = null;
         _selectedDecal = null;
+        _selectedText = null;
       }
     });
   }
@@ -648,6 +725,22 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       }
     }
 
+    // 3.5. Check if clicked selected text's resize handle
+    if (_selectedText != null) {
+      final double textRight = _canvasLeft + (_selectedText!.x + _selectedText!.width) * _scale;
+      final double textBottom = _canvasTop + (_selectedText!.y + _selectedText!.height) * _scale;
+      final textHandle = Offset(textRight, textBottom);
+
+      if ((localPosition - textHandle).distance < 20) {
+        _saveToHistory();
+        _activeDragType = 'resize-text';
+        _dragStartOffset = localPosition;
+        _dragStartWidth = _selectedText!.width;
+        _dragStartHeight = _selectedText!.height;
+        return;
+      }
+    }
+
     // 4. Clicked inside a cutout shape
     for (int i = _cutouts.length - 1; i >= 0; i--) {
       final cutout = _cutouts[i];
@@ -664,6 +757,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         setState(() {
           _selectedCutout = cutout;
           _selectedDecal = null;
+          _selectedText = null;
           _isBaseSelected = false;
         });
 
@@ -691,6 +785,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         setState(() {
           _selectedDecal = decal;
           _selectedCutout = null;
+          _selectedText = null;
           _isBaseSelected = false;
         });
 
@@ -698,6 +793,34 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         _dragStartOffset = localPosition;
         _dragStartValX = decal.x;
         _dragStartValY = decal.y;
+        return;
+      }
+    }
+
+    // 5.5. Clicked inside a text element
+    for (int i = _texts.length - 1; i >= 0; i--) {
+      final txt = _texts[i];
+      final double tLeft = _canvasLeft + txt.x * _scale;
+      final double tTop = _canvasTop + txt.y * _scale;
+      final double tRight = tLeft + txt.width * _scale;
+      final double tBottom = tTop + txt.height * _scale;
+
+      if (localPosition.dx >= tLeft &&
+          localPosition.dx <= tRight &&
+          localPosition.dy >= tTop &&
+          localPosition.dy <= tBottom) {
+        _saveToHistory();
+        setState(() {
+          _selectedText = txt;
+          _selectedCutout = null;
+          _selectedDecal = null;
+          _isBaseSelected = false;
+        });
+
+        _activeDragType = 'move-text';
+        _dragStartOffset = localPosition;
+        _dragStartValX = txt.x;
+        _dragStartValY = txt.y;
         return;
       }
     }
@@ -754,6 +877,18 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           _decals[idx] = _selectedDecal!.copyWith(x: newX, y: newY);
           _selectedDecal = _decals[idx];
         }
+      } else if (_activeDragType == 'move-text' && _selectedText != null) {
+        double newX = _snap(_dragStartValX + dxMm);
+        double newY = _snap(_dragStartValY + dyMm);
+
+        newX = newX.clamp(0.0, _baseWidth - _selectedText!.width);
+        newY = newY.clamp(0.0, _baseHeight - _selectedText!.height);
+
+        final idx = _texts.indexWhere((t) => t.id == _selectedText!.id);
+        if (idx != -1) {
+          _texts[idx] = _selectedText!.copyWith(x: newX, y: newY);
+          _selectedText = _texts[idx];
+        }
       } else if (_activeDragType == 'resize-base-w') {
         _baseWidth = _snap(_dragStartWidth + dxMm).clamp(40.0, 500.0);
       } else if (_activeDragType == 'resize-base-h') {
@@ -792,6 +927,25 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         if (idx != -1) {
           _decals[idx] = _selectedDecal!.copyWith(width: newW, height: newH);
           _selectedDecal = _decals[idx];
+        }
+      } else if (_activeDragType == 'resize-text' && _selectedText != null) {
+        final double ratio = _dragStartWidth / _dragStartHeight;
+        double newW = _snap(_dragStartWidth + dxMm).clamp(5.0, _baseWidth);
+        double newH = _snap(newW / ratio).clamp(5.0, _baseHeight);
+
+        if (_selectedText!.x + newW > _baseWidth) {
+          newW = _baseWidth - _selectedText!.x;
+          newH = _snap(newW / ratio);
+        }
+        if (_selectedText!.y + newH > _baseHeight) {
+          newH = _baseHeight - _selectedText!.y;
+          newW = _snap(newH * ratio);
+        }
+
+        final idx = _texts.indexWhere((t) => t.id == _selectedText!.id);
+        if (idx != -1) {
+          _texts[idx] = _selectedText!.copyWith(width: newW, height: newH);
+          _selectedText = _texts[idx];
         }
       }
     });
@@ -1006,6 +1160,78 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     }
   }
 
+  void _addText(String text) {
+    _saveToHistory();
+    setState(() {
+      final id = 'text_${DateTime.now().millisecondsSinceEpoch}';
+      // Calculate sensible bounding box based on length: approx 8mm per character, height 12mm
+      final double computedW = (text.length * 8.0).clamp(15.0, _baseWidth);
+      final double computedH = 12.0;
+      final double defaultX = ((_baseWidth - computedW) / 2);
+      final double defaultY = ((_baseHeight - computedH) / 2);
+
+      final newText = TextElement(
+        id: id,
+        text: text,
+        x: defaultX,
+        y: defaultY,
+        width: computedW,
+        height: computedH,
+      );
+      _texts.add(newText);
+      _selectedText = newText;
+      _selectedDecal = null;
+      _selectedCutout = null;
+      _isBaseSelected = false;
+    });
+  }
+
+  void _deleteSelectedText() {
+    if (_selectedText != null) {
+      _saveToHistory();
+      setState(() {
+        _texts.removeWhere((t) => t.id == _selectedText!.id);
+        _selectedText = null;
+        _isBaseSelected = true;
+      });
+    }
+  }
+
+  void _showAddTextDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Text Decal'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Enter text (e.g. NAME)',
+            border: OutlineInputBorder(),
+          ),
+          textCapitalization: TextCapitalization.characters,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final text = controller.text.trim();
+              if (text.isNotEmpty) {
+                _addText(text);
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('ADD'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Plotter Cutting Workflow
   Future<void> _startCutting() async {
     if (widget.initialCutFileId == null) {
@@ -1205,7 +1431,9 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
             icon: const Icon(Icons.delete_outline, color: Colors.red),
             onPressed: _selectedCutout != null
                 ? _deleteSelectedCutout
-                : (_selectedDecal != null ? _deleteSelectedDecal : null),
+                : (_selectedDecal != null
+                    ? _deleteSelectedDecal
+                    : (_selectedText != null ? _deleteSelectedText : null)),
             tooltip: 'Delete Selected',
           ),
         ] : null,
@@ -1329,18 +1557,37 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                             'Decal Canvas Actions',
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey),
                           ),
-                          TextButton.icon(
-                            onPressed: _showPresetDecalsSheet,
-                            icon: const Icon(Icons.brush, size: 14, color: Colors.indigo),
-                            label: const Text(
-                              'Insert Mobile Decals',
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo),
-                            ),
-                            style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              TextButton.icon(
+                                onPressed: _showAddTextDialog,
+                                icon: const Icon(Icons.title, size: 14, color: Colors.indigo),
+                                label: const Text(
+                                  'Add Text',
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo),
+                                ),
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              TextButton.icon(
+                                onPressed: _showPresetDecalsSheet,
+                                icon: const Icon(Icons.brush, size: 14, color: Colors.indigo),
+                                label: const Text(
+                                  'Insert Mobile Decals',
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo),
+                                ),
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -1473,7 +1720,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                       ),
                                     ),
 
-                                    // Clipped Decals Overlay
+                                    // Clipped Decals Overlay (including Text elements)
                                     ClipPath(
                                       clipper: BaseOutlineClipper(
                                         outline: _customBaseOutline,
@@ -1488,35 +1735,62 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                         width: constraints.maxWidth,
                                         height: constraints.maxHeight,
                                         child: Stack(
-                                          children: _decals.map((decal) {
-                                            final double dLeft = _canvasLeft + decal.x * _scale;
-                                            final double dTop = _canvasTop + decal.y * _scale;
-                                            final double dW = decal.width * _scale;
-                                            final double dH = decal.height * _scale;
-                                            return Positioned(
-                                              left: dLeft,
-                                              top: dTop,
-                                              width: dW,
-                                              height: dH,
-                                              child: Container(
-                                                color: Colors.transparent,
-                                                child: ColorFiltered(
-                                                  colorFilter: const ColorFilter.matrix(<double>[
-                                                    1, 0, 0, 0, 0,
-                                                    0, 1, 0, 0, 0,
-                                                    0, 0, 1, 0, 0,
-                                                    -0.333, -0.333, -0.333, 1, 0,
-                                                  ]),
-                                                  child: Image.network(
-                                                    decal.imageUrl,
-                                                    fit: BoxFit.contain,
-                                                    errorBuilder: (ctx, err, stack) =>
-                                                        Container(color: Colors.blueGrey[100]),
+                                          children: [
+                                            ..._decals.map((decal) {
+                                              final double dLeft = _canvasLeft + decal.x * _scale;
+                                              final double dTop = _canvasTop + decal.y * _scale;
+                                              final double dW = decal.width * _scale;
+                                              final double dH = decal.height * _scale;
+                                              return Positioned(
+                                                left: dLeft,
+                                                top: dTop,
+                                                width: dW,
+                                                height: dH,
+                                                child: Container(
+                                                  color: Colors.transparent,
+                                                  child: ColorFiltered(
+                                                    colorFilter: const ColorFilter.matrix(<double>[
+                                                      1, 0, 0, 0, 0,
+                                                      0, 1, 0, 0, 0,
+                                                      0, 0, 1, 0, 0,
+                                                      -0.333, -0.333, -0.333, 1, 0,
+                                                    ]),
+                                                    child: Image.network(
+                                                      decal.imageUrl,
+                                                      fit: BoxFit.contain,
+                                                      errorBuilder: (ctx, err, stack) =>
+                                                          Container(color: Colors.blueGrey[100]),
+                                                    ),
                                                   ),
                                                 ),
-                                              ),
-                                            );
-                                          }).toList(),
+                                              );
+                                            }),
+                                            ..._texts.map((decalText) {
+                                              final double dLeft = _canvasLeft + decalText.x * _scale;
+                                              final double dTop = _canvasTop + decalText.y * _scale;
+                                              final double dW = decalText.width * _scale;
+                                              final double dH = decalText.height * _scale;
+                                              return Positioned(
+                                                left: dLeft,
+                                                top: dTop,
+                                                width: dW,
+                                                height: dH,
+                                                child: Center(
+                                                  child: FittedBox(
+                                                    fit: BoxFit.contain,
+                                                    child: Text(
+                                                      decalText.text,
+                                                      style: const TextStyle(
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.black,
+                                                        fontFamily: 'Roboto',
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                            }),
+                                          ],
                                         ),
                                       ),
                                     ),
@@ -1561,6 +1835,46 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                         );
                                       })(),
                                     ],
+
+                                    if (_selectedText != null) ...[
+                                      (() {
+                                        final double dLeft = _canvasLeft + _selectedText!.x * _scale;
+                                        final double dTop = _canvasTop + _selectedText!.y * _scale;
+                                        final double dW = _selectedText!.width * _scale;
+                                        final double dH = _selectedText!.height * _scale;
+                                        return Positioned(
+                                          left: dLeft - 2,
+                                          top: dTop - 2,
+                                          width: dW + 4,
+                                          height: dH + 4,
+                                          child: IgnorePointer(
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                border: Border.all(color: Colors.indigo, width: 2.0),
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      })(),
+                                      (() {
+                                        final double dRight = _canvasLeft + (_selectedText!.x + _selectedText!.width) * _scale;
+                                        final double dBottom = _canvasTop + (_selectedText!.y + _selectedText!.height) * _scale;
+                                        return Positioned(
+                                          left: dRight - 8,
+                                          top: dBottom - 8,
+                                          width: 16,
+                                          height: 16,
+                                          child: IgnorePointer(
+                                            child: Container(
+                                              decoration: const BoxDecoration(
+                                                color: Colors.indigo,
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      })(),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -1586,14 +1900,16 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                           children: [
                             _selectedDecal != null
                                 ? _buildDecalInspector()
-                                : const Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 12),
-                                    child: Text(
-                                      'Select a decal to adjust its size and placement',
-                                      style: TextStyle(fontSize: 11, color: Colors.blueGrey, fontStyle: FontStyle.italic),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
+                                : (_selectedText != null
+                                    ? _buildTextInspector()
+                                    : const Padding(
+                                        padding: EdgeInsets.symmetric(vertical: 12),
+                                        child: Text(
+                                          'Select a decal or text to adjust its size and placement',
+                                          style: TextStyle(fontSize: 11, color: Colors.blueGrey, fontStyle: FontStyle.italic),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      )),
                             const SizedBox(height: 16),
                             Row(
                               children: [
@@ -1939,6 +2255,192 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     );
   }
 
+  Widget _buildTextInspector() {
+    final t = _selectedText;
+    if (t == null) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Text: ${t.text}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.edit, color: Colors.indigo, size: 18),
+                  onPressed: () {
+                    final controller = TextEditingController(text: t.text);
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Edit Text Decal'),
+                        content: TextField(
+                          controller: controller,
+                          autofocus: true,
+                          decoration: const InputDecoration(
+                            hintText: 'Enter text',
+                            border: OutlineInputBorder(),
+                          ),
+                          textCapitalization: TextCapitalization.characters,
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Cancel'),
+                          ),
+                          ElevatedButton(
+                            onPressed: () {
+                              final text = controller.text.trim();
+                              if (text.isNotEmpty) {
+                                _saveToHistory();
+                                setState(() {
+                                  final idx = _texts.indexWhere((item) => item.id == t.id);
+                                  if (idx != -1) {
+                                    _texts[idx] = t.copyWith(text: text);
+                                    _selectedText = _texts[idx];
+                                  }
+                                });
+                              }
+                              Navigator.pop(context);
+                            },
+                            child: const Text('SAVE'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red, size: 18),
+                  onPressed: _deleteSelectedText,
+                ),
+              ],
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: _buildInspectorSlider(
+                'Width (mm)',
+                t.width,
+                10.0,
+                _baseWidth,
+                (val) {
+                  setState(() {
+                    final double ratio = t.width / t.height;
+                    double newW = _snap(val);
+                    double newH = _snap(newW / ratio);
+                    
+                    if (newH > _baseHeight) {
+                      newH = _baseHeight;
+                      newW = _snap(newH * ratio);
+                    }
+                    if (t.x + newW > _baseWidth) {
+                      newW = _baseWidth - t.x;
+                      newH = _snap(newW / ratio);
+                    }
+                    if (t.y + newH > _baseHeight) {
+                      newH = _baseHeight - t.y;
+                      newW = _snap(newH * ratio);
+                    }
+
+                    final idx = _texts.indexWhere((item) => item.id == t.id);
+                    if (idx != -1) {
+                      _texts[idx] = t.copyWith(width: newW, height: newH);
+                      _selectedText = _texts[idx];
+                    }
+                  });
+                },
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildInspectorSlider(
+                'Height (mm)',
+                t.height,
+                5.0,
+                _baseHeight,
+                (val) {
+                  setState(() {
+                    final double ratio = t.width / t.height;
+                    double newH = _snap(val);
+                    double newW = _snap(newH * ratio);
+
+                    if (newW > _baseWidth) {
+                      newW = _baseWidth;
+                      newH = _snap(newW / ratio);
+                    }
+                    if (t.x + newW > _baseWidth) {
+                      newW = _baseWidth - t.x;
+                      newH = _snap(newW / ratio);
+                    }
+                    if (t.y + newH > _baseHeight) {
+                      newH = _baseHeight - t.y;
+                      newW = _snap(newH * ratio);
+                    }
+
+                    final idx = _texts.indexWhere((item) => item.id == t.id);
+                    if (idx != -1) {
+                      _texts[idx] = t.copyWith(width: newW, height: newH);
+                      _selectedText = _texts[idx];
+                    }
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildInspectorSlider(
+                'Position X (mm)',
+                t.x,
+                0.0,
+                _baseWidth - t.width,
+                (val) {
+                  setState(() {
+                    final double newX = _snap(val);
+                    final idx = _texts.indexWhere((item) => item.id == t.id);
+                    if (idx != -1) {
+                      _texts[idx] = t.copyWith(x: newX);
+                      _selectedText = _texts[idx];
+                    }
+                  });
+                },
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildInspectorSlider(
+                'Position Y (mm)',
+                t.y,
+                0.0,
+                _baseHeight - t.height,
+                (val) {
+                  setState(() {
+                    final double newY = _snap(val);
+                    final idx = _texts.indexWhere((item) => item.id == t.id);
+                    if (idx != -1) {
+                      _texts[idx] = t.copyWith(y: newY);
+                      _selectedText = _texts[idx];
+                    }
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildInspectorSlider(String label, double val, double minVal, double maxVal, ValueChanged<double>? onChanged) {
     final isEnabled = onChanged != null;
     final double safeMax = maxVal < minVal ? minVal + 1.0 : maxVal;
@@ -2121,6 +2623,107 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         // Convert command to PU or PD to guarantee device compatibility
         final finalCmd = (cmd == 'PU' || cmd == 'M') ? 'PU' : 'PD';
         mergedPlt += '$finalCmd$finalX,$finalY;';
+      }
+    }
+
+    for (final t in _texts) {
+      final chars = t.text.toUpperCase().split('');
+      if (chars.isEmpty) continue;
+
+      final double charW = t.width / chars.length;
+      final double charH = t.height;
+
+      final alphabetModels = _categoryWiseDecals['Alphabets'] ?? [];
+
+      for (int i = 0; i < chars.length; i++) {
+        final char = chars[i];
+        if (char.trim().isEmpty) continue; // Skip spaces
+
+        final double charX = t.x + i * charW;
+        final double charY = t.y;
+
+        final double leftMm   = charX + _originMinX;
+        final double rightMm  = charX + charW + _originMinX;
+        final double bottomMm = (_originGlobalMaxY - _originMinY) - (charY + charH);
+        final double topMm    = (_originGlobalMaxY - _originMinY) - charY;
+
+        final leftPlt   = (leftMm   * 40.0).round();
+        final rightPlt  = (rightMm  * 40.0).round();
+        final bottomPlt = (bottomMm * 40.0).round();
+        final topPlt    = (topMm    * 40.0).round();
+
+        // Search for matching decal model in the loaded Alphabets category
+        final charModel = alphabetModels.firstWhere(
+          (m) => m['name']?.toString().toUpperCase() == char,
+          orElse: () => null,
+        );
+
+        if (charModel == null) {
+          // Fallback to rectangular outline if letter not found in database
+          mergedPlt += 'PU$leftPlt,$bottomPlt;PD$rightPlt,$bottomPlt;PD$rightPlt,$topPlt;PD$leftPlt,$topPlt;PD$leftPlt,$bottomPlt;PU;';
+          continue;
+        }
+
+        final decalPlt = await _fetchDecalPltContent(charModel['id'].toString());
+        if (decalPlt == null || decalPlt.trim().isEmpty) {
+          // Fallback to rectangular outline if fetch fails
+          mergedPlt += 'PU$leftPlt,$bottomPlt;PD$rightPlt,$bottomPlt;PD$rightPlt,$topPlt;PD$leftPlt,$topPlt;PD$leftPlt,$bottomPlt;PU;';
+          continue;
+        }
+
+        final regex = RegExp(r'(PU|PD|PA)\s*(-?\d+\.?\d*)[\s,]+\s*(-?\d+\.?\d*)');
+        final matches = regex.allMatches(decalPlt);
+
+        double decalMinX = double.infinity;
+        double decalMinY = double.infinity;
+        double decalMaxX = -double.infinity;
+        double decalMaxY = -double.infinity;
+
+        for (final match in matches) {
+          final double x = double.tryParse(match.group(2) ?? '0') ?? 0.0;
+          final double y = double.tryParse(match.group(3) ?? '0') ?? 0.0;
+          if (x < decalMinX) decalMinX = x;
+          if (x > decalMaxX) decalMaxX = x;
+          if (y < decalMinY) decalMinY = y;
+          if (y > decalMaxY) decalMaxY = y;
+        }
+
+        if (decalMinX == double.infinity || decalMaxX == decalMinX || decalMaxY == decalMinY) {
+          mergedPlt += 'PU$leftPlt,$bottomPlt;PD$rightPlt,$bottomPlt;PD$rightPlt,$topPlt;PD$leftPlt,$topPlt;PD$leftPlt,$bottomPlt;PU;';
+          continue;
+        }
+
+        final double decalW = decalMaxX - decalMinX;
+        final double decalH = decalMaxY - decalMinY;
+
+        final double targetLeftSteps   = leftMm   * 40.0;
+        final double targetBottomSteps = bottomMm * 40.0;
+
+        final double targetW = charW * 40.0;
+        final double targetH = charH * 40.0;
+
+        // BoxFit.contain scaling
+        final double scale = min(targetW / decalW, targetH / decalH);
+        final double scaledW = decalW * scale;
+        final double scaledH = decalH * scale;
+
+        final double fitOffsetX = (targetW - scaledW) / 2.0;
+        final double fitOffsetY = (targetH - scaledH) / 2.0;
+
+        for (final match in matches) {
+          final cmd = match.group(1);
+          final double x = double.tryParse(match.group(2) ?? '0') ?? 0.0;
+          final double y = double.tryParse(match.group(3) ?? '0') ?? 0.0;
+
+          final double normX = x - decalMinX;
+          final double normY = y - decalMinY;
+
+          final int finalX = (targetLeftSteps + fitOffsetX + normX * scale).round();
+          final int finalY = (targetBottomSteps + fitOffsetY + normY * scale).round();
+
+          final finalCmd = (cmd == 'PU' || cmd == 'M') ? 'PU' : 'PD';
+          mergedPlt += '$finalCmd$finalX,$finalY;';
+        }
       }
     }
     return mergedPlt;
