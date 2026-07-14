@@ -1498,10 +1498,8 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                               top: dTop,
                                               width: dW,
                                               height: dH,
-                                              // White background prevents transparent-PNG decals from
-                                              // showing the base cut design lines behind them.
                                               child: Container(
-                                                color: Colors.white,
+                                                color: Colors.transparent,
                                                 child: Image.network(
                                                   decal.imageUrl,
                                                   fit: BoxFit.contain,
