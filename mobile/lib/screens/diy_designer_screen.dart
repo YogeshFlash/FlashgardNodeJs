@@ -630,9 +630,12 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       _originGlobalMaxY = globalMaxY;
       
       _cutouts.clear();
+      _decals.clear();
+      _texts.clear();
       _isBaseSelected = true;
       _selectedCutout = null;
       _selectedDecal = null;
+      _selectedText = null;
     });
   }
 
@@ -1419,6 +1422,20 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     }
   }
 
+  TextStyle _getFontStyle(TextElement decalText) {
+    final baseStyle = TextStyle(
+      fontWeight: decalText.isBold ? FontWeight.bold : FontWeight.normal,
+      fontStyle: decalText.isItalic ? FontStyle.italic : FontStyle.normal,
+      decoration: decalText.isUnderline ? TextDecoration.underline : TextDecoration.none,
+      color: Colors.black,
+    );
+    try {
+      return GoogleFonts.getFont(decalText.fontFamily, textStyle: baseStyle);
+    } catch (e) {
+      return baseStyle.copyWith(fontFamily: decalText.fontFamily);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1797,15 +1814,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                                     fit: BoxFit.contain,
                                                     child: Text(
                                                       decalText.text,
-                                                      style: GoogleFonts.getFont(
-                                                        decalText.fontFamily,
-                                                        textStyle: TextStyle(
-                                                          fontWeight: decalText.isBold ? FontWeight.bold : FontWeight.normal,
-                                                          fontStyle: decalText.isItalic ? FontStyle.italic : FontStyle.normal,
-                                                          decoration: decalText.isUnderline ? TextDecoration.underline : TextDecoration.none,
-                                                          color: Colors.black,
-                                                        ),
-                                                      ),
+                                                      style: _getFontStyle(decalText),
                                                     ),
                                                   ),
                                                 ),
