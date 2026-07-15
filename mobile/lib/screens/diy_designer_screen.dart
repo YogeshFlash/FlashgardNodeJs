@@ -275,17 +275,25 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
 
   Future<void> _loadTtfFont() async {
     try {
-      final reader = PMFontReader();
-      
+      ByteData padByteData(ByteData orig) {
+        final Uint8List origBytes = orig.buffer.asUint8List(orig.offsetInBytes, orig.lengthInBytes);
+        final padded = Uint8List(origBytes.length + 100);
+        padded.setRange(0, origBytes.length, origBytes);
+        return ByteData.view(padded.buffer);
+      }
+
       final robotoBytes = await rootBundle.load('assets/fonts/Roboto-Bold.ttf');
-      _loadedTtfFonts['Roboto'] = reader.parseTTFAsset(robotoBytes);
+      final reader1 = PMFontReader();
+      _loadedTtfFonts['Roboto'] = reader1.parseTTFAsset(padByteData(robotoBytes));
       _ttfFont = _loadedTtfFonts['Roboto'];
       
       final pacificoBytes = await rootBundle.load('assets/fonts/Pacifico.ttf');
-      _loadedTtfFonts['Pacifico'] = reader.parseTTFAsset(pacificoBytes);
+      final reader2 = PMFontReader();
+      _loadedTtfFonts['Pacifico'] = reader2.parseTTFAsset(padByteData(pacificoBytes));
       
       final montserratBytes = await rootBundle.load('assets/fonts/Montserrat-Bold.ttf');
-      _loadedTtfFonts['Montserrat'] = reader.parseTTFAsset(montserratBytes);
+      final reader3 = PMFontReader();
+      _loadedTtfFonts['Montserrat'] = reader3.parseTTFAsset(padByteData(montserratBytes));
       
       print("DEBUG TEXT CUT: All custom fonts loaded successfully via PMFontReader!");
     } catch (e, stack) {
