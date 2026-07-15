@@ -63,7 +63,6 @@ class DecalElement {
   double y; // Y position relative to top-left of base shape in mm
   double width; // in mm
   double height; // in mm
-  double rotation; // rotation in degrees (0 to 360)
 
   DecalElement({
     required this.id,
@@ -74,7 +73,6 @@ class DecalElement {
     required this.y,
     required this.width,
     required this.height,
-    this.rotation = 0.0,
   });
 
   DecalElement copyWith({
@@ -82,7 +80,6 @@ class DecalElement {
     double? y,
     double? width,
     double? height,
-    double? rotation,
   }) {
     return DecalElement(
       id: id,
@@ -93,7 +90,6 @@ class DecalElement {
       y: y ?? this.y,
       width: width ?? this.width,
       height: height ?? this.height,
-      rotation: rotation ?? this.rotation,
     );
   }
 }
@@ -105,7 +101,6 @@ class TextElement {
   double y; // Y position relative to top-left of base shape in mm
   double width; // in mm
   double height; // in mm
-  double rotation; // rotation in degrees (0 to 360)
 
   TextElement({
     required this.id,
@@ -114,7 +109,6 @@ class TextElement {
     required this.y,
     required this.width,
     required this.height,
-    this.rotation = 0.0,
   });
 
   TextElement copyWith({
@@ -123,7 +117,6 @@ class TextElement {
     double? y,
     double? width,
     double? height,
-    double? rotation,
   }) {
     return TextElement(
       id: id,
@@ -132,7 +125,6 @@ class TextElement {
       y: y ?? this.y,
       width: width ?? this.width,
       height: height ?? this.height,
-      rotation: rotation ?? this.rotation,
     );
   }
 }
@@ -1735,23 +1727,20 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                                 top: dTop,
                                                 width: dW,
                                                 height: dH,
-                                                child: Transform.rotate(
-                                                  angle: decal.rotation * pi / 180.0,
-                                                  child: Container(
-                                                    color: Colors.transparent,
-                                                    child: ColorFiltered(
-                                                      colorFilter: const ColorFilter.matrix(<double>[
-                                                        1, 0, 0, 0, 0,
-                                                        0, 1, 0, 0, 0,
-                                                        0, 0, 1, 0, 0,
-                                                        -0.333, -0.333, -0.333, 1, 0,
-                                                      ]),
-                                                      child: Image.network(
-                                                        decal.imageUrl,
-                                                        fit: BoxFit.contain,
-                                                        errorBuilder: (ctx, err, stack) =>
-                                                            Container(color: Colors.blueGrey[100]),
-                                                      ),
+                                                child: Container(
+                                                  color: Colors.transparent,
+                                                  child: ColorFiltered(
+                                                    colorFilter: const ColorFilter.matrix(<double>[
+                                                      1, 0, 0, 0, 0,
+                                                      0, 1, 0, 0, 0,
+                                                      0, 0, 1, 0, 0,
+                                                      -0.333, -0.333, -0.333, 1, 0,
+                                                    ]),
+                                                    child: Image.network(
+                                                      decal.imageUrl,
+                                                      fit: BoxFit.contain,
+                                                      errorBuilder: (ctx, err, stack) =>
+                                                          Container(color: Colors.blueGrey[100]),
                                                     ),
                                                   ),
                                                 ),
@@ -1767,18 +1756,15 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                                 top: dTop,
                                                 width: dW,
                                                 height: dH,
-                                                child: Transform.rotate(
-                                                  angle: decalText.rotation * pi / 180.0,
+                                                child: SizedBox.expand(
                                                   child: FittedBox(
                                                     fit: BoxFit.fill,
                                                     child: Text(
                                                       decalText.text,
-                                                      maxLines: 1,
                                                       style: const TextStyle(
                                                         fontWeight: FontWeight.bold,
                                                         color: Colors.black,
                                                         fontFamily: 'Roboto',
-                                                        fontSize: 100, // Large font size to force downscaling
                                                       ),
                                                     ),
                                                   ),
@@ -2246,23 +2232,6 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        _buildInspectorSlider(
-          'Rotation (degrees)',
-          d.rotation,
-          0.0,
-          360.0,
-          (val) {
-            setState(() {
-              final idx = _decals.indexWhere((item) => item.id == d.id);
-              if (idx != -1) {
-                _decals[idx] = d.copyWith(rotation: val);
-                _selectedDecal = _decals[idx];
-              }
-            });
-          },
-          unit: 'deg',
-        ),
       ],
     );
   }
@@ -2449,28 +2418,11 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        _buildInspectorSlider(
-          'Rotation (degrees)',
-          t.rotation,
-          0.0,
-          360.0,
-          (val) {
-            setState(() {
-              final idx = _texts.indexWhere((item) => item.id == t.id);
-              if (idx != -1) {
-                _texts[idx] = t.copyWith(rotation: val);
-                _selectedText = _texts[idx];
-              }
-            });
-          },
-          unit: 'deg',
-        ),
       ],
     );
   }
 
-  Widget _buildInspectorSlider(String label, double val, double minVal, double maxVal, ValueChanged<double>? onChanged, {String unit = 'mm'}) {
+  Widget _buildInspectorSlider(String label, double val, double minVal, double maxVal, ValueChanged<double>? onChanged) {
     final isEnabled = onChanged != null;
     final double safeMax = maxVal < minVal ? minVal + 1.0 : maxVal;
     final double safeVal = val.clamp(minVal, safeMax);
@@ -2482,7 +2434,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label, style: const TextStyle(fontSize: 10, color: Colors.blueGrey)),
-            Text('${safeVal.toInt()} $unit', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isEnabled ? Colors.black87 : Colors.grey)),
+            Text('${safeVal.toInt()} mm', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isEnabled ? Colors.black87 : Colors.grey)),
           ],
         ),
         SliderTheme(
@@ -2681,25 +2633,12 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
 
         // Normalise to [0 .. decalW/decalH]
         final double normX = x - decalMinX;
+        // Both the decal PLT and the base PLT use the same Y-UP convention,
+        // so a simple normalisation (no flip) is correct.
         final double normY = y - decalMinY;
 
-        final double rawX = targetLeftSteps + fitOffsetX + normX * scale;
-        final double rawY = targetBottomSteps + fitOffsetY + normY * scale;
-
-        double rotX = rawX;
-        double rotY = rawY;
-        final double theta = d.rotation * pi / 180.0;
-        if (theta != 0.0) {
-          final double cx = targetLeftSteps + (targetW / 2.0);
-          final double cy = targetBottomSteps + (targetH / 2.0);
-          final double dx = rawX - cx;
-          final double dy = rawY - cy;
-          rotX = cx + dx * cos(theta) - dy * sin(theta);
-          rotY = cy + dx * sin(theta) + dy * cos(theta);
-        }
-
-        final int finalX = rotX.round();
-        final int finalY = rotY.round();
+        final int finalX = (targetLeftSteps + fitOffsetX + normX * scale).round();
+        final int finalY = (targetBottomSteps + fitOffsetY + normY * scale).round();
 
         // Convert command to PU or PD to guarantee device compatibility
         final finalCmd = (cmd == 'PU' || cmd == 'M') ? 'PU' : 'PD';
@@ -2713,25 +2652,6 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
 
       final double charW = t.width / chars.length;
       final double charH = t.height;
-
-      final double textLeftMm = t.x + _originMinX;
-      final double textBottomMm = (_originGlobalMaxY - _originMinY) - (t.y + t.height);
-      final double textWidthSteps = t.width * 40.0;
-      final double textHeightSteps = t.height * 40.0;
-      final double textCx = (textLeftMm * 40.0) + (textWidthSteps / 2.0);
-      final double textCy = (textBottomMm * 40.0) + (textHeightSteps / 2.0);
-      final double textTheta = t.rotation * pi / 180.0;
-
-      String rotatePoint(double px, double py, String cmd) {
-        if (textTheta == 0.0) {
-          return '$cmd${px.round()},${py.round()};';
-        }
-        final double dx = px - textCx;
-        final double dy = py - textCy;
-        final double rx = textCx + dx * cos(textTheta) - dy * sin(textTheta);
-        final double ry = textCy + dx * sin(textTheta) + dy * cos(textTheta);
-        return '$cmd${rx.round()},${ry.round()};';
-      }
 
       print('DEBUG TEXT CUT: _categoryWiseDecals keys = ${_categoryWiseDecals.keys.toList()}');
       final alphabetKey = _categoryWiseDecals.keys.firstWhere(
@@ -2789,12 +2709,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         if (decalPlt == null || decalPlt.trim().isEmpty) {
           print('DEBUG TEXT CUT: Local vector fallback also failed for "$char". Falling back to box.');
           // Fallback to rectangular outline if everything fails
-          mergedPlt += rotatePoint(leftPlt.toDouble(), bottomPlt.toDouble(), 'PU') +
-                       rotatePoint(rightPlt.toDouble(), bottomPlt.toDouble(), 'PD') +
-                       rotatePoint(rightPlt.toDouble(), topPlt.toDouble(), 'PD') +
-                       rotatePoint(leftPlt.toDouble(), topPlt.toDouble(), 'PD') +
-                       rotatePoint(leftPlt.toDouble(), bottomPlt.toDouble(), 'PD') +
-                       'PU;';
+          mergedPlt += 'PU$leftPlt,$bottomPlt;PD$rightPlt,$bottomPlt;PD$rightPlt,$topPlt;PD$leftPlt,$topPlt;PD$leftPlt,$bottomPlt;PU;';
           continue;
         }
 
@@ -2816,12 +2731,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         }
 
         if (decalMinX == double.infinity || decalMaxX == decalMinX || decalMaxY == decalMinY) {
-          mergedPlt += rotatePoint(leftPlt.toDouble(), bottomPlt.toDouble(), 'PU') +
-                       rotatePoint(rightPlt.toDouble(), bottomPlt.toDouble(), 'PD') +
-                       rotatePoint(rightPlt.toDouble(), topPlt.toDouble(), 'PD') +
-                       rotatePoint(leftPlt.toDouble(), topPlt.toDouble(), 'PD') +
-                       rotatePoint(leftPlt.toDouble(), bottomPlt.toDouble(), 'PD') +
-                       'PU;';
+          mergedPlt += 'PU$leftPlt,$bottomPlt;PD$rightPlt,$bottomPlt;PD$rightPlt,$topPlt;PD$leftPlt,$topPlt;PD$leftPlt,$bottomPlt;PU;';
           continue;
         }
 
@@ -2850,11 +2760,11 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           final double normX = x - decalMinX;
           final double normY = y - decalMinY;
 
-          final double rawX = targetLeftSteps + fitOffsetX + normX * scale;
-          final double rawY = targetBottomSteps + fitOffsetY + normY * scale;
+          final int finalX = (targetLeftSteps + fitOffsetX + normX * scale).round();
+          final int finalY = (targetBottomSteps + fitOffsetY + normY * scale).round();
 
           final finalCmd = (cmd == 'PU' || cmd == 'M') ? 'PU' : 'PD';
-          mergedPlt += rotatePoint(rawX, rawY, finalCmd);
+          mergedPlt += '$finalCmd$finalX,$finalY;';
         }
       }
     }
