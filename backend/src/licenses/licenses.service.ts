@@ -230,7 +230,39 @@ export class LicensesService {
         geoCountry: data.geo?.country
       }
     });
+
+    if (updated.tenantId) {
+      await this.ensureEntityWallet(updated.tenantId);
+    }
+    if (updated.ownerId && updated.ownerId !== updated.tenantId) {
+      await this.ensureEntityWallet(updated.ownerId);
+    }
+
     return { ...updated, key: decryptLicenseKey(updated.key) };
+  }
+
+  private async ensureEntityWallet(orgId: string) {
+    if (!orgId) return;
+    const wallet = await this.prisma.entityWallet.findFirst({
+      where: {
+        OR: [
+          { orgId },
+          { tenantId: orgId }
+        ]
+      }
+    });
+
+    if (!wallet) {
+      await this.prisma.entityWallet.create({
+        data: {
+          orgId,
+          tenantId: orgId,
+          balance: 0,
+          totalCredits: 0,
+          usedCredits: 0
+        }
+      });
+    }
   }
 
   async getMyInventory(orgId: string, isSuperAdmin = false, skip?: number, take?: number, search?: string, batchId?: string, status?: string, hideUnavailable?: boolean) {

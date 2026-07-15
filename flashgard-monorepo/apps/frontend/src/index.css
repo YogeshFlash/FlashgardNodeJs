@@ -161,12 +161,4 @@ html.dark, .dark {
   scrollbar-color: #334155 #0f172a;
 }
 
-/* Specific status text contrast class */
-.status-text-contrast {
-  color: #0f172a !important; /* Dark Slate in Light Mode */
-}
-.dark .status-text-contrast {
-  color: #cbd5e1 !important; /* Muted White in Dark Mode */
-}
-
 

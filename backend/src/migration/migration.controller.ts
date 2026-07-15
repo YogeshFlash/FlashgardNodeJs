@@ -179,6 +179,36 @@ export class MigrationController {
     return this.migrationService.generateImageForModel(modelId);
   }
 
+  @Post('legacy/designs/generate-images/category/:categoryId')
+  @RequirePermissions('catalog:write')
+  generateImagesForCategory(@Param('categoryId') categoryId: string) {
+    return this.migrationService.generateImageForCategory(categoryId);
+  }
+
+  @Post('legacy/designs/generate-images/brand/:brandId')
+  @RequirePermissions('catalog:write')
+  generateImagesForBrand(@Param('brandId') brandId: string) {
+    return this.migrationService.generateImageForBrand(brandId);
+  }
+
+  @Post('legacy/designs/normalize/category/:categoryId')
+  @RequirePermissions('catalog:write')
+  normalizeCategory(@Param('categoryId') categoryId: string) {
+    return this.migrationService.normalizeCategory(categoryId);
+  }
+
+  @Post('legacy/designs/normalize/brand/:brandId')
+  @RequirePermissions('catalog:write')
+  normalizeBrand(@Param('brandId') brandId: string) {
+    return this.migrationService.normalizeBrand(brandId);
+  }
+
+  @Post('legacy/designs/normalize/model/:modelId')
+  @RequirePermissions('catalog:write')
+  normalizeModel(@Param('modelId') modelId: string) {
+    return this.migrationService.normalizeModel(modelId);
+  }
+
   @Post('legacy/designs/generate-images/cut-file/:cutFileId')
   @RequirePermissions('catalog:write')
   generateImageForCutFile(@Param('cutFileId') cutFileId: string) {

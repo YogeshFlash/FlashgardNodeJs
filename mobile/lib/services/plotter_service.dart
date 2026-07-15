@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'api_service.dart';
 
 class PlotterDevice {
   final String name;
@@ -26,7 +29,11 @@ class PlotterDevice {
   bool get isClassic => type == 'classic';
 }
 
-class PlotterService {
+class PlotterService extends ChangeNotifier {
+  static final PlotterService _instance = PlotterService._internal();
+  factory PlotterService() => _instance;
+  PlotterService._internal();
+
   static const MethodChannel _channel = MethodChannel('com.flashgard.plotter/api');
   static const EventChannel _eventChannel = EventChannel('com.flashgard.plotter/progress');
 
@@ -38,6 +45,7 @@ class PlotterService {
   bool get isClassicPlotter => _connectionType == 'classic';
   bool get isSdkPlotter => _connectionType == 'sdk';
   String? get connectedName => _connectedName;
+  String? get connectedAddress => _connectedAddress;
 
   /// Stream of cutting progress (0-100)
   Stream<int> get progressStream => _eventChannel.receiveBroadcastStream().map((event) => event as int);
@@ -77,6 +85,42 @@ class PlotterService {
         _connectedAddress = device.address;
         _connectedName = device.name;
         _connectionType = result['type'] as String?;
+        
+        String startString = device.name.toLowerCase().contains('portrait') || device.name.toLowerCase().contains('cameo') ? 'IN;PA;SP1;' : 'IN;PA;';
+        String endString = 'IN;PU0,0;\u0003';
+        String xySeparator = ',';
+        bool splitCommands = device.name.toLowerCase().contains('portrait') || device.name.toLowerCase().contains('cameo');
+        bool mirrorX = device.name.toLowerCase().contains('portrait') || device.name.toLowerCase().contains('cameo');
+        bool mirrorY = false;
+
+        try {
+          final profile = await ApiService.checkOrRegisterPlotter(name: device.name, macAddress: device.address);
+          if (profile != null && profile['plotterMaster'] != null) {
+            final master = profile['plotterMaster'];
+            splitCommands = master['splitCommands'] ?? splitCommands;
+            startString = master['startString'] ?? startString;
+            endString = master['endString'] ?? endString;
+            xySeparator = master['xySeparator'] ?? xySeparator;
+            mirrorX = master['mirrorX'] ?? mirrorX;
+            mirrorY = master['mirrorY'] ?? mirrorY;
+          }
+        } catch (e) {
+          print('[PlotterService] Failed to fetch server profile, using default rules: $e');
+        }
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('last_connected_plotter_address', device.address);
+        await prefs.setString('last_connected_plotter_name', device.name);
+        await prefs.setString('last_connected_plotter_type', device.type);
+
+        await prefs.setString('plotter_start_string', startString);
+        await prefs.setString('plotter_end_string', endString);
+        await prefs.setString('plotter_xy_separator', xySeparator);
+        await prefs.setBool('plotter_split_commands', splitCommands);
+        await prefs.setBool('plotter_mirror_x', mirrorX);
+        await prefs.setBool('plotter_mirror_y', mirrorY);
+
+        notifyListeners();
       }
       return {
         'success': success,
@@ -85,6 +129,7 @@ class PlotterService {
     } on PlatformException catch (e) {
       print('Failed to connect to ${device.address}: ${e.message}');
       _connectionType = null;
+      notifyListeners();
       return {'success': false, 'type': 'none', 'error': e.message};
     }
   }
@@ -95,6 +140,13 @@ class PlotterService {
       await _channel.invokeMethod('disconnect');
       _connectionType = null;
       _connectedName = null;
+      _connectedAddress = null;
+      
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('last_connected_plotter_address');
+      await prefs.remove('last_connected_plotter_name');
+      await prefs.remove('last_connected_plotter_type');
+      notifyListeners();
     } on PlatformException catch (e) {
       print('Failed to disconnect: ${e.message}');
     }
@@ -105,8 +157,10 @@ class PlotterService {
     try {
       final bool result = await _channel.invokeMethod('isConnected');
       if (!result) {
-        _connectionType = null;
-        _connectedName = null;
+        if (_connectionType != null) {
+          _connectionType = null;
+          notifyListeners();
+        }
       }
       return result;
     } on PlatformException catch (e) {
@@ -174,6 +228,14 @@ class PlotterService {
     double? height,
   }) async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final startString = prefs.getString('plotter_start_string') ?? 'IN;PA;';
+      final endString = prefs.getString('plotter_end_string') ?? '\u0003';
+      final xySeparator = prefs.getString('plotter_xy_separator') ?? ',';
+      final splitCommands = prefs.getBool('plotter_split_commands') ?? false;
+      final mirrorX = prefs.getBool('plotter_mirror_x') ?? false;
+      final mirrorY = prefs.getBool('plotter_mirror_y') ?? false;
+
       final bool result = await _channel.invokeMethod('cutFile', {
         'content': content,
         'name': name,
@@ -181,11 +243,50 @@ class PlotterService {
         'force': force,
         'width': width,
         'height': height,
+        'startString': startString,
+        'endString': endString,
+        'xySeparator': xySeparator,
+        'splitCommands': splitCommands,
+        'mirrorX': mirrorX,
+        'mirrorY': mirrorY,
       });
       return result;
     } on PlatformException catch (e) {
       print('Failed to cut file: ${e.message}');
       return false;
     }
+  }
+
+  Future<bool> reset() async {
+    try {
+      final bool result = await _channel.invokeMethod('reset');
+      return result;
+    } on PlatformException catch (e) {
+      print('Failed to reset plotter: ${e.message}');
+      return false;
+    }
+  }
+
+  Future<bool> tryAutoConnect() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final address = prefs.getString('last_connected_plotter_address');
+      final name = prefs.getString('last_connected_plotter_name');
+      final type = prefs.getString('last_connected_plotter_type');
+      if (address != null && name != null) {
+        print('[PlotterService] Attempting background auto-connect to $name ($address)');
+        final device = PlotterDevice(
+          name: name,
+          address: address,
+          rssi: 0,
+          type: type ?? 'classic',
+        );
+        final result = await connect(device);
+        return result['success'] == true;
+      }
+    } catch (e) {
+      print('[PlotterService] Auto-connect failed: $e');
+    }
+    return false;
   }
 }

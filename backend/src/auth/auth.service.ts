@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
+import { decryptLicenseKey } from '../utils/encryption';
 
 function verifyAspNetIdentityV3Hash(hashedPassword: string, password: string): boolean {
     try {
@@ -202,6 +203,54 @@ export class AuthService {
       teamIds
     };
 
+    let licenseKey: string | null = null;
+    if (activeOrg) {
+      let activeLicense = await this.prisma.orgLicense.findFirst({
+        where: {
+          tenantId: activeOrg.id,
+          status: 'ACTIVE',
+        },
+        select: {
+          key: true,
+        },
+      });
+
+      if (!activeLicense) {
+        // Automatically activate an AVAILABLE license assigned to this organization
+        const availableLicense = await this.prisma.orgLicense.findFirst({
+          where: {
+            tenantId: activeOrg.id,
+            status: 'AVAILABLE',
+          },
+        });
+
+        if (availableLicense) {
+          const activatedLicense = await this.prisma.orgLicense.update({
+            where: { id: availableLicense.id },
+            data: {
+              status: 'ACTIVE',
+              activatedAt: new Date(),
+            },
+            select: {
+              key: true,
+              tenantId: true,
+              ownerId: true,
+            },
+          });
+          activeLicense = activatedLicense;
+
+          if (activatedLicense.tenantId) {
+            await this.ensureEntityWallet(activatedLicense.tenantId);
+          }
+          if (activatedLicense.ownerId && activatedLicense.ownerId !== activatedLicense.tenantId) {
+            await this.ensureEntityWallet(activatedLicense.ownerId);
+          }
+        }
+      }
+
+      licenseKey = activeLicense?.key ? decryptLicenseKey(activeLicense.key) : null;
+    }
+
     return {
       access_token: this.jwtService.sign(jwtPayload),
       // Frontend stores this as the "current user". 
@@ -209,12 +258,15 @@ export class AuthService {
       user: {
         userId: user.id,
         email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
         organizationId: activeOrg?.id,
         roleId: activeRole?.id,
         isSuperAdmin: user.isSuperAdmin,
         permissions,
         permissionScopes,
         organization: activeOrg ?? undefined,
+        licenseKey: licenseKey,
         accessibleOrgs: user.organizations?.map((o: any) => ({
           organizationId: o.organizationId,
           roleId: o.roleId,
@@ -223,5 +275,102 @@ export class AuthService {
         })) || []
       },
     };
+  }
+
+  async loginDevice(licenseKey: string) {
+    const plotter = await (this.prisma as any).plotter.findFirst({
+      where: {
+        licenseKey,
+        status: 'ACTIVE',
+      },
+      include: {
+        organization: true,
+      }
+    });
+
+    if (!plotter) return null;
+
+    // Find a user belonging to the plotter's organization
+    const userOrgLink = await (this.prisma as any).userOrganization.findFirst({
+      where: {
+        organizationId: plotter.organizationId,
+      },
+      include: {
+        user: true,
+      }
+    });
+
+    let user = userOrgLink?.user;
+    if (!user) {
+      // Fallback: get the first active user in the system
+      user = await this.prisma.user.findFirst({
+        where: { isActive: true }
+      });
+    }
+
+    if (!user) return null;
+
+    const permissions = ['catalog:read', 'cuts:write', 'settings:read'];
+    const permissionScopes = {
+      'catalog:read': 'all',
+      'cuts:write': 'all',
+      'settings:read': 'all',
+    };
+
+    const jwtPayload = {
+      email: user.email,
+      sub: user.id,
+      organizationId: plotter.organizationId,
+      isSuperAdmin: user.isSuperAdmin || false,
+      permissions,
+      permissionScopes,
+      teamIds: [],
+    };
+
+    return {
+      access_token: this.jwtService.sign(jwtPayload),
+      user: {
+        userId: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        organizationId: plotter.organizationId,
+        isSuperAdmin: user.isSuperAdmin || false,
+        permissions,
+        permissionScopes,
+        organization: plotter.organization ?? undefined,
+        accessibleOrgs: plotter.organization ? [{
+          organizationId: plotter.organizationId,
+          roleId: null,
+          isPrimary: true,
+          organizationName: plotter.organization.name,
+        }] : [],
+        isDevice: true,
+      }
+    };
+  }
+
+  private async ensureEntityWallet(orgId: string) {
+    if (!orgId) return;
+    const wallet = await this.prisma.entityWallet.findFirst({
+      where: {
+        OR: [
+          { orgId },
+          { tenantId: orgId }
+        ]
+      }
+    });
+
+    if (!wallet) {
+      await this.prisma.entityWallet.create({
+        data: {
+          orgId,
+          tenantId: orgId,
+          balance: 0,
+          totalCredits: 0,
+          usedCredits: 0
+        }
+      });
+    }
   }
 }

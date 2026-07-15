@@ -1,10 +1,23 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request } from '@nestjs/common';
 import { PlotterDevicesService } from './plotter-devices.service';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('plotter-devices')
 export class PlotterDevicesController {
   constructor(private readonly plotterDevicesService: PlotterDevicesService) {}
+
+  @Post('check-or-register')
+  @UseGuards(JwtAuthGuard)
+  @RequirePermissions('cuts:write')
+  checkOrRegister(@Request() req: any, @Body() data: any) {
+    const organizationId = req.user.organizationId;
+    return this.plotterDevicesService.checkOrRegister({
+      name: data.name,
+      macAddress: data.macAddress,
+      organizationId,
+    });
+  }
 
   @Post()
   @RequirePermissions('settings:write')

@@ -21,6 +21,19 @@ export class AuthController {
     return this.authService.login(user, body.organizationId);
   }
 
+  @Public()
+  @Post('device-login')
+  async deviceLogin(@Body() body: { licenseKey: string }) {
+    if (!body.licenseKey) {
+      throw new UnauthorizedException('License key is required');
+    }
+    const result = await this.authService.loginDevice(body.licenseKey);
+    if (!result) {
+      throw new UnauthorizedException('Invalid device license key');
+    }
+    return result;
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('switch-org')
   async switchOrg(@Request() req: any, @Body() body: { organizationId: string }) {

@@ -18,6 +18,12 @@ export class PlottersService {
       maxSpeed: plotterData.maxSpeed !== undefined && plotterData.maxSpeed !== null && plotterData.maxSpeed !== '' ? parseInt(plotterData.maxSpeed, 10) : null,
       maxForce: plotterData.maxForce !== undefined && plotterData.maxForce !== null && plotterData.maxForce !== '' ? parseInt(plotterData.maxForce, 10) : null,
       status: plotterData.status || 'ACTIVE',
+      splitCommands: plotterData.splitCommands !== undefined ? !!plotterData.splitCommands : false,
+      startString: plotterData.startString || null,
+      endString: plotterData.endString || null,
+      xySeparator: plotterData.xySeparator || null,
+      mirrorX: plotterData.mirrorX !== undefined ? !!plotterData.mirrorX : false,
+      mirrorY: plotterData.mirrorY !== undefined ? !!plotterData.mirrorY : false,
     };
 
     const parsedLegacySettings = legacySettings ? {
@@ -45,9 +51,6 @@ export class PlottersService {
       targetPenUp: legacySettings.targetPenUp !== undefined && legacySettings.targetPenUp !== null && legacySettings.targetPenUp !== '' ? parseInt(legacySettings.targetPenUp, 10) : null,
       targetPenDown: legacySettings.targetPenDown !== undefined && legacySettings.targetPenDown !== null && legacySettings.targetPenDown !== '' ? parseInt(legacySettings.targetPenDown, 10) : null,
       baseXYSeparator: legacySettings.baseXYSeparator,
-      xySeparator: legacySettings.xySeparator,
-      startString: legacySettings.startString,
-      endString: legacySettings.endString,
       isAndroid: !!legacySettings.isAndroid,
     } : undefined;
 
@@ -132,6 +135,12 @@ export class PlottersService {
       maxSpeed: plotterData.maxSpeed !== undefined && plotterData.maxSpeed !== null && plotterData.maxSpeed !== '' ? parseInt(plotterData.maxSpeed, 10) : null,
       maxForce: plotterData.maxForce !== undefined && plotterData.maxForce !== null && plotterData.maxForce !== '' ? parseInt(plotterData.maxForce, 10) : null,
       status: plotterData.status,
+      splitCommands: plotterData.splitCommands !== undefined ? !!plotterData.splitCommands : undefined,
+      startString: plotterData.startString !== undefined ? (plotterData.startString || null) : undefined,
+      endString: plotterData.endString !== undefined ? (plotterData.endString || null) : undefined,
+      xySeparator: plotterData.xySeparator !== undefined ? (plotterData.xySeparator || null) : undefined,
+      mirrorX: plotterData.mirrorX !== undefined ? !!plotterData.mirrorX : undefined,
+      mirrorY: plotterData.mirrorY !== undefined ? !!plotterData.mirrorY : undefined,
     };
 
     const legacyUpdate: any = {};
@@ -161,9 +170,6 @@ export class PlottersService {
         targetPenUp: legacySettings.targetPenUp !== undefined && legacySettings.targetPenUp !== null && legacySettings.targetPenUp !== '' ? parseInt(legacySettings.targetPenUp, 10) : null,
         targetPenDown: legacySettings.targetPenDown !== undefined && legacySettings.targetPenDown !== null && legacySettings.targetPenDown !== '' ? parseInt(legacySettings.targetPenDown, 10) : null,
         baseXYSeparator: legacySettings.baseXYSeparator,
-        xySeparator: legacySettings.xySeparator,
-        startString: legacySettings.startString,
-        endString: legacySettings.endString,
         isAndroid: !!legacySettings.isAndroid,
       };
 

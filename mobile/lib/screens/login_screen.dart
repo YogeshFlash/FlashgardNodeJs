@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:local_auth/local_auth.dart';
 import '../providers/auth_provider.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -14,17 +15,60 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final _phoneController = TextEditingController();
   final _otpController = TextEditingController();
+  final LocalAuthentication _localAuth = LocalAuthentication();
   
-  bool _isOtpMode = false;
+  int _loginMode = 0; // 0: Email, 1: Mobile OTP
   bool _isLoading = false;
   bool _otpSent = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      if (auth.isBiometricsEnabled) {
+        _handleBiometricLogin();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _phoneController.dispose();
+    _otpController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleBiometricLogin() async {
+    setState(() => _isLoading = true);
+    try {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final success = await auth.loginWithBiometrics();
+      if (success && mounted) {
+        Navigator.pushReplacementNamed(context, '/home');
+        return;
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Biometric authentication failed or cancelled.')),
+        );
+      }
+    } catch (e) {
+      print('Biometric Login UI Error: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   Future<void> _handleLogin() async {
     setState(() => _isLoading = true);
     final auth = Provider.of<AuthProvider>(context, listen: false);
     
     bool success = false;
-    if (_isOtpMode) {
+    if (_loginMode == 1) {
       if (!_otpSent) {
         // Mock send OTP
         await Future.delayed(const Duration(seconds: 1));
@@ -84,6 +128,45 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 40),
               
+              Consumer<AuthProvider>(
+                builder: (context, auth, _) {
+                  if (auth.isBiometricsEnabled) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: _isLoading ? null : _handleBiometricLogin,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0F172A),
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size(double.infinity, 56),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: const Icon(Icons.fingerprint, size: 24),
+                          label: const Text(
+                            'Quick Login with Biometrics', 
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Row(
+                          children: const [
+                            Expanded(child: Divider()),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 16),
+                              child: Text('OR', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                            ),
+                            Expanded(child: Divider()),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+
               // Login Mode Toggle
               Container(
                 decoration: BoxDecoration(
@@ -95,18 +178,19 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     Expanded(
                       child: GestureDetector(
-                        onTap: () => setState(() { _isOtpMode = false; _otpSent = false; }),
+                        onTap: () => setState(() { _loginMode = 0; _otpSent = false; }),
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           decoration: BoxDecoration(
-                            color: !_isOtpMode ? Colors.white : Colors.transparent,
+                            color: _loginMode == 0 ? Colors.white : Colors.transparent,
                             borderRadius: BorderRadius.circular(8),
-                            boxShadow: !_isOtpMode ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)] : null,
+                            boxShadow: _loginMode == 0 ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)] : null,
                           ),
                           child: Center(
                             child: Text('Email', style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: !_isOtpMode ? Theme.of(context).colorScheme.primary : Colors.blueGrey[600],
+                              color: _loginMode == 0 ? Theme.of(context).colorScheme.primary : Colors.blueGrey[600],
+                              fontSize: 12,
                             )),
                           ),
                         ),
@@ -114,18 +198,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     Expanded(
                       child: GestureDetector(
-                        onTap: () => setState(() => _isOtpMode = true),
+                        onTap: () => setState(() { _loginMode = 1; }),
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           decoration: BoxDecoration(
-                            color: _isOtpMode ? Colors.white : Colors.transparent,
+                            color: _loginMode == 1 ? Colors.white : Colors.transparent,
                             borderRadius: BorderRadius.circular(8),
-                            boxShadow: _isOtpMode ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)] : null,
+                            boxShadow: _loginMode == 1 ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)] : null,
                           ),
                           child: Center(
                             child: Text('Mobile OTP', style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: _isOtpMode ? Theme.of(context).colorScheme.primary : Colors.blueGrey[600],
+                              color: _loginMode == 1 ? Theme.of(context).colorScheme.primary : Colors.blueGrey[600],
+                              fontSize: 12,
                             )),
                           ),
                         ),
@@ -136,7 +221,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 32),
 
-              if (!_isOtpMode) ...[
+              if (_loginMode == 0) ...[
                 const Text('Email Address', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 const SizedBox(height: 8),
                 TextField(
@@ -191,7 +276,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 onPressed: _isLoading ? null : _handleLogin,
                 child: _isLoading 
                   ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : Text(_isOtpMode && !_otpSent ? 'Send OTP' : 'Sign In'),
+                  : Text(_loginMode == 1 && !_otpSent ? 'Send OTP' : 'Sign In'),
               ),
               const SizedBox(height: 24),
               Center(

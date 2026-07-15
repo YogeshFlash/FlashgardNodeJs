@@ -40,4 +40,10 @@ export const CONFIG = {
     BUCKET: getEnv('AWS_S3_BUCKET', 'flash-buk-01'),
     KEY_PREFIX: getEnv('AWS_S3_KEY_PREFIX', 'ScratchGardImages/Uploads/Owner/Catalog/'),
   },
+
+  // Razorpay Configuration
+  RAZORPAY: {
+    KEY_ID: getEnv('RAZORPAY_KEY_ID', 'rzp_test_TAYRXg4tPXtPVQ'),
+    KEY_SECRET: getEnv('RAZORPAY_KEY_SECRET', 'qKSc6zRlIWIXlkucn729YNbw'),
+  },
 };

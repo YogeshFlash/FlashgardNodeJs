@@ -52,26 +52,26 @@ const Sidebar = ({
 
 
   return (
-    <aside className={`${mobile ? 'w-full' : `${collapsed ? 'w-20' : 'w-64'} transition-all duration-300 fixed left-0 top-0 h-screen`} bg-[#150303]/75 backdrop-blur-xl -webkit-backdrop-blur-xl text-white/80 border-r border-[#CE1D19]/30 shadow-[0_8px_32px_0_rgba(206,29,25,0.05)] flex flex-col z-20`}>
-      <div className={`h-16 flex items-center px-6 border-b border-[#CE1D19]/25 bg-transparent ${collapsed ? 'justify-center px-0' : 'justify-between'}`}>
+    <aside className={`${mobile ? 'w-full' : `${collapsed ? 'w-20' : 'w-64'} transition-all duration-300 fixed left-0 top-0 h-screen`} bg-[#150303] text-rose-100/70 border-r border-[#2c0b0b] flex flex-col z-20`}>
+      <div className={`h-16 flex items-center px-6 border-b border-[#2c0b0b] bg-[#1a0505] ${collapsed ? 'justify-center px-0' : 'justify-between'}`}>
         <div className={`flex items-center gap-3 font-bold text-white tracking-wide ${collapsed ? 'hidden' : 'flex'}`}>
-          <img src={logo} alt="Flashgard" className="w-8 h-8 object-contain filter drop-shadow-[0_0_8px_rgba(206,29,25,0.5)]" />
-          <span className="text-lg bg-gradient-to-r from-white via-rose-100 to-rose-200 bg-clip-text text-transparent">Flashgard</span>
+          <img src={logo} alt="Flashgard" className="w-8 h-8 object-contain" />
+          <span className="text-lg">Flashgard</span>
         </div>
         <button 
           onClick={onToggle}
-          className={`p-1.5 rounded-lg transition-colors text-white/60 hover:text-white hover:bg-[#CE1D19]/15 hover:shadow-[0_0_10px_rgba(206,29,25,0.15)] ${collapsed ? '' : 'ml-2'}`}
+          className={`p-1.5 rounded-lg transition-colors text-rose-200/60 hover:text-white hover:bg-[#2c0b0b] ${collapsed ? '' : 'ml-2'}`}
         >
           <Menu className="w-5 h-5" />
         </button>
         {mobile && (
-          <button onClick={onClose} className="text-white/60 hover:text-white ml-2">
+          <button onClick={onClose} className="text-rose-200/60 hover:text-white ml-2">
             <X className="w-5 h-5" />
           </button>
         )}
       </div>
 
-      <nav className={`flex-1 py-6 space-y-1.5 overflow-y-auto ${collapsed ? 'px-2' : 'px-4'}`}>
+      <nav className={`flex-1 py-6 space-y-1 overflow-y-auto ${collapsed ? 'px-2' : 'px-4'}`}>
         {visibleNavItems.map((item) => (
           <NavLink
             key={item.path}
@@ -80,11 +80,11 @@ const Sidebar = ({
             onClick={onClose}
             title={collapsed ? t(item.translationKey) : ''}
             className={({ isActive }) =>
-              `flex items-center rounded-lg transition-all font-semibold text-sm gap-3 duration-200
-              ${collapsed ? 'justify-center p-2.5' : 'px-3.5 py-3'}
+              `flex items-center rounded-lg transition-all font-medium text-sm gap-3
+              ${collapsed ? 'justify-center p-2.5' : 'px-3 py-2.5'}
               ${isActive
-                ? 'bg-[#CE1D19]/20 text-white border border-[#CE1D19]/45 shadow-[0_0_15px_rgba(206,29,25,0.2)]' 
-                : 'hover:bg-[#CE1D19]/10 hover:text-white text-white/70 border border-transparent hover:border-white/5'}`
+                ? 'bg-[#CE1D19]/15 text-[#fecdd3] border border-[#CE1D19]/40' 
+                : 'hover:bg-[#2c0b0b] hover:text-white text-rose-200/70'}`
             }
           >
             <item.icon className="w-5 h-5 flex-shrink-0" />
@@ -93,7 +93,7 @@ const Sidebar = ({
         ))}
       </nav>
 
-      <div className={`p-4 border-t border-[#CE1D19]/25 bg-transparent ${collapsed ? 'flex justify-center' : ''}`}>
+      <div className={`p-4 border-t border-[#2c0b0b] ${collapsed ? 'flex justify-center' : ''}`}>
         {!collapsed && (
           <>
             {user?.isSuperAdmin ? (
@@ -101,17 +101,17 @@ const Sidebar = ({
                 <p className="text-amber-400 text-xs font-semibold">⚡ {t('platformAdmin')}</p>
               </div>
             ) : user?.organization && (
-              <div className="mb-3 px-3 py-1.5 bg-[#CE1D19]/10 border border-[#CE1D19]/20 rounded-lg">
-                <p className="text-[#CE1D19] text-xs font-semibold">🏛️ {user.organization.name}</p>
+              <div className="mb-3 px-3 py-1.5 bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 rounded-lg">
+                <p className="text-[var(--color-primary)] text-xs font-semibold">🏛️ {user.organization.name}</p>
               </div>
             )}
-            <p className="text-xs text-white/50 px-3 mb-2 truncate">
+            <p className="text-xs text-rose-300/50 px-3 mb-2 truncate">
               {user?.organization?.name || 'Flashgard'}
             </p>
           </>
         )}
         {collapsed && (
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs text-white/60 bg-[#CE1D19]/25 border border-[#CE1D19]/40 shadow-[0_0_8px_rgba(206,29,25,0.2)]">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs text-rose-300/50 bg-[#1c0505]">
             {user?.email?.slice(0, 1).toUpperCase()}
           </div>
         )}
@@ -250,11 +250,7 @@ const DashboardLayout = () => {
   const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0f172a] relative overflow-hidden transition-colors duration-300">
-      {/* Background colorful blur blobs behind the glassmorphic sidebar */}
-      <div className="fixed left-[-100px] top-[-100px] w-[350px] h-[350px] bg-[#CE1D19]/12 rounded-full blur-[110px] pointer-events-none z-10" />
-      <div className="fixed left-[50px] top-[250px] w-[300px] h-[300px] bg-indigo-600/8 rounded-full blur-[130px] pointer-events-none z-10" />
-
+    <div className="min-h-screen bg-slate-50">
       {/* Desktop Sidebar */}
       <div className="hidden md:block">
         <Sidebar collapsed={isCollapsed} onToggle={() => setIsCollapsed(!isCollapsed)} theme={theme} />
@@ -277,7 +273,7 @@ const DashboardLayout = () => {
         onToggleTheme={toggleTheme}
       />
 
-      <main className={`transition-all duration-300 pt-16 min-h-screen overflow-y-auto ${isCollapsed ? 'md:pl-20' : 'md:pl-64'} relative z-20`}>
+      <main className={`transition-all duration-300 pt-16 min-h-screen overflow-y-auto ${isCollapsed ? 'md:pl-20' : 'md:pl-64'}`}>
         <div className="p-6 lg:p-8">
           <Outlet />
         </div>

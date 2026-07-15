@@ -1,15 +1,19 @@
-const axios = require('axios');
+const http = require('http');
 
-async function testBatches() {
-  try {
-    // 1. Login as fgadmin
-    const loginRes = await axios.post('http://localhost:3000/api/auth/login', {
-      email: 'fgadmin@flashsolutions.in',
-      password: 'password' // I don't know the password...
-    });
-    console.log(loginRes.data);
-  } catch (e) {
-    console.error(e.message);
-  }
-}
-testBatches();
+http.get('http://localhost:3000/api/model-categories?onlyWithModels=true&parentId=null', (res) => {
+  console.log('Status Code:', res.statusCode);
+  let data = '';
+  res.on('data', chunk => data += chunk);
+  res.on('end', () => {
+    try {
+      console.log('Headers:', res.headers);
+      console.log('Response body preview:', data.substring(0, 500));
+      const parsed = JSON.parse(data);
+      console.log('Parsed items count:', parsed.length);
+    } catch (e) {
+      console.log('Error parsing response:', e.message);
+    }
+  });
+}).on('error', err => {
+  console.error('API request error:', err.message);
+});

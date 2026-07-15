@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { MobileHomeService } from './mobile-home.service';
 import { Public } from '../auth/public.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -9,10 +9,10 @@ export class MobileHomeController {
   constructor(private readonly service: MobileHomeService) {}
 
   // Mobile App Content Retrieval Endpoint
-  @Public()
+  @UseGuards(JwtAuthGuard)
   @Get('content')
-  getMobileContent() {
-    return this.service.getMobileContent();
+  getMobileContent(@Request() req: any) {
+    return this.service.getMobileContent(req.user);
   }
 
   // --- Promotions CRUD ---

@@ -113,6 +113,121 @@ export class MigrationService {
     return { generated, failed };
   }
 
+  async generateImageForCategory(categoryId: string) {
+    const { saveHpglAsJpg } = require('../utils/hpgl-parser');
+    const outputDir = path.join(process.cwd(), 'uploads', 'designs');
+    
+    const files = await this.prisma.modelCutFile.findMany({
+        where: { model: { categoryId } }
+    });
+
+    let generated = 0;
+    let failed = 0;
+
+    for (const file of files) {
+        try {
+            const decryptedPlt = this.decrypt(file.encryptedPltData);
+            const fileName = `${file.id}.jpg`;
+            const relativePath = await saveHpglAsJpg(decryptedPlt, outputDir, fileName);
+            
+            await this.prisma.modelCutFile.update({
+                where: { id: file.id },
+                data: { designFilePath: relativePath }
+            });
+            generated++;
+        } catch (e) {
+            this.logger.error(`Failed to generate preview for ${file.id}: ${e.message}`);
+            failed++;
+        }
+    }
+    return { generated, failed };
+  }
+
+  async generateImageForBrand(brandId: string) {
+    const { saveHpglAsJpg } = require('../utils/hpgl-parser');
+    const outputDir = path.join(process.cwd(), 'uploads', 'designs');
+    
+    const files = await this.prisma.modelCutFile.findMany({
+        where: { model: { brandId } }
+    });
+
+    let generated = 0;
+    let failed = 0;
+
+    for (const file of files) {
+        try {
+            const decryptedPlt = this.decrypt(file.encryptedPltData);
+            const fileName = `${file.id}.jpg`;
+            const relativePath = await saveHpglAsJpg(decryptedPlt, outputDir, fileName);
+            
+            await this.prisma.modelCutFile.update({
+                where: { id: file.id },
+                data: { designFilePath: relativePath }
+            });
+            generated++;
+        } catch (e) {
+            this.logger.error(`Failed to generate preview for ${file.id}: ${e.message}`);
+            failed++;
+        }
+    }
+    return { generated, failed };
+  }
+
+  async normalizeModel(modelId: string) {
+    const files = await this.prisma.modelCutFile.findMany({
+        where: { modelId }
+    });
+    return this.batchNormalize(files);
+  }
+
+  async normalizeCategory(categoryId: string) {
+    const files = await this.prisma.modelCutFile.findMany({
+        where: { model: { categoryId } }
+    });
+    return this.batchNormalize(files);
+  }
+
+  async normalizeBrand(brandId: string) {
+    const files = await this.prisma.modelCutFile.findMany({
+        where: { model: { brandId } }
+    });
+    return this.batchNormalize(files);
+  }
+
+  private async batchNormalize(files: any[]) {
+    const { saveHpglAsJpg } = require('../utils/hpgl-parser');
+    const { normalizeHpgl } = require('../utils/hpgl-normalizer');
+    const outputDir = path.join(process.cwd(), 'uploads', 'designs');
+    
+    let normalized = 0;
+    let failed = 0;
+
+    for (const file of files) {
+        try {
+            const decrypted = this.decrypt(file.encryptedPltData);
+            const pltString = decrypted;
+            const normalizedPlt = normalizeHpgl(pltString);
+            
+            const fileName = `${Date.now()}-${file.modelId}-${file.cutPatternId}.jpg`;
+            const designFilePath = await saveHpglAsJpg(normalizedPlt, outputDir, fileName);
+            const binaryData = this.encrypt(normalizedPlt);
+            
+            await this.prisma.modelCutFile.update({
+                where: { id: file.id },
+                data: {
+                    encryptedPltData: binaryData,
+                    designFilePath: designFilePath
+                }
+            });
+            normalized++;
+        } catch (e) {
+            this.logger.error(`Failed to normalize file ${file.id}: ${e.message}`);
+            failed++;
+        }
+    }
+    return { normalized, failed };
+  }
+
   async generateImageForCutFile(cutFileId: string) {
     const { saveHpglAsJpg } = require('../utils/hpgl-parser');
     const outputDir = path.join(process.cwd(), 'uploads', 'designs');

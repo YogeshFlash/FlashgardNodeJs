@@ -211,15 +211,6 @@ class _ModelsScreenState extends State<ModelsScreen> {
         if (mainModel != null) {
           final subResponse = await ApiService.getModelCategories(parentId: mainModel['id']);
           data = subResponse.where((cat) => cat['parentId'] == mainModel['id']).toList();
-          
-          // Add Mobile Decals if it exists as a parallel root category
-          final decalRoot = roots.firstWhere(
-            (cat) => cat['name'].toString().toLowerCase().contains('decal'),
-            orElse: () => null,
-          );
-          if (decalRoot != null && !data.any((cat) => cat['id'] == decalRoot['id'])) {
-            data.add(decalRoot);
-          }
         } else {
           data = roots;
         }

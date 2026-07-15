@@ -137,4 +137,85 @@ export class PlotterDevicesService {
       where: { id },
     });
   }
+
+  async checkOrRegister(data: { name: string; macAddress: string; organizationId: string }) {
+    let plotter = await (this.prisma as any).plotter.findFirst({
+      where: {
+        macAddress: data.macAddress,
+      },
+      include: {
+        plotterMaster: {
+          include: {
+            legacySettings: true,
+          },
+        },
+      },
+    });
+
+    if (!plotter) {
+      // Find matching PlotterMaster by name keyword
+      let master = await (this.prisma as any).plotterMaster.findFirst({
+        where: {
+          OR: [
+            { plotterName: { contains: data.name, mode: 'insensitive' } },
+            { legacySettings: { searchKeyword: { contains: data.name, mode: 'insensitive' } } },
+          ],
+        },
+        include: {
+          legacySettings: true,
+        },
+      });
+
+      if (!master) {
+        // Create a new master profile automatically
+        const isPortrait = data.name.toLowerCase().includes('portrait') || data.name.toLowerCase().includes('cameo');
+        master = await (this.prisma as any).plotterMaster.create({
+          data: {
+            plotterName: data.name,
+            manufacturer: isPortrait ? 'Silhouette' : 'Generic',
+            connectionType: 'BLUETOOTH',
+            status: 'ACTIVE',
+            splitCommands: isPortrait,
+            startString: isPortrait ? 'IN;PA;SP1;' : 'IN;PA;',
+            endString: 'IN;PU0,0;\u0003',
+            xySeparator: ',',
+            mirrorX: isPortrait,
+            mirrorY: false,
+            legacySettings: {
+              create: {
+                scaleX: 1.0,
+                scaleY: 1.0,
+                plotterType: isPortrait ? 'Portrait' : 'Generic',
+                searchKeyword: data.name,
+                languageType: 'HPGL',
+                isAndroid: true,
+              },
+            },
+          },
+          include: {
+            legacySettings: true,
+          },
+        });
+      }
+
+      plotter = await (this.prisma as any).plotter.create({
+        data: {
+          name: data.name,
+          macAddress: data.macAddress,
+          plotterMasterId: master.id,
+          organizationId: data.organizationId || null,
+          status: 'ACTIVE',
+        },
+        include: {
+          plotterMaster: {
+            include: {
+              legacySettings: true,
+            },
+          },
+        },
+      });
+    }
+
+    return plotter;
+  }
 }
