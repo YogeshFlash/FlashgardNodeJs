@@ -103,6 +103,9 @@ class TextElement {
   double y; // Y position relative to top-left of base shape in mm
   double width; // in mm
   double height; // in mm
+  final String fontFamily;
+  final bool isBold;
+  double rotation; // in degrees
 
   TextElement({
     required this.id,
@@ -111,6 +114,9 @@ class TextElement {
     required this.y,
     required this.width,
     required this.height,
+    this.fontFamily = 'Roboto',
+    this.isBold = true,
+    this.rotation = 0.0,
   });
 
   TextElement copyWith({
@@ -119,6 +125,9 @@ class TextElement {
     double? y,
     double? width,
     double? height,
+    String? fontFamily,
+    bool? isBold,
+    double? rotation,
   }) {
     return TextElement(
       id: id,
@@ -127,6 +136,9 @@ class TextElement {
       y: y ?? this.y,
       width: width ?? this.width,
       height: height ?? this.height,
+      fontFamily: fontFamily ?? this.fontFamily,
+      isBold: isBold ?? this.isBold,
+      rotation: rotation ?? this.rotation,
     );
   }
 }
@@ -259,16 +271,25 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
   String? _savedPltContent;
 
   PMFont? _ttfFont;
+  final Map<String, PMFont> _loadedTtfFonts = {};
 
   Future<void> _loadTtfFont() async {
-    if (_ttfFont != null) return;
     try {
-      final bytes = await rootBundle.load('assets/fonts/Roboto-Bold.ttf');
       final reader = PMFontReader();
-      _ttfFont = reader.parseTTFAsset(bytes);
-      print("DEBUG TEXT CUT: Roboto-Bold.ttf loaded successfully via PMFontReader!");
+      
+      final robotoBytes = await rootBundle.load('assets/fonts/Roboto-Bold.ttf');
+      _loadedTtfFonts['Roboto'] = reader.parseTTFAsset(robotoBytes);
+      _ttfFont = _loadedTtfFonts['Roboto'];
+      
+      final pacificoBytes = await rootBundle.load('assets/fonts/Pacifico.ttf');
+      _loadedTtfFonts['Pacifico'] = reader.parseTTFAsset(pacificoBytes);
+      
+      final montserratBytes = await rootBundle.load('assets/fonts/Montserrat-Bold.ttf');
+      _loadedTtfFonts['Montserrat'] = reader.parseTTFAsset(montserratBytes);
+      
+      print("DEBUG TEXT CUT: All custom fonts loaded successfully via PMFontReader!");
     } catch (e, stack) {
-      print("DEBUG TEXT CUT ERROR loading font: $e");
+      print("DEBUG TEXT CUT ERROR loading fonts: $e");
       print(stack);
     }
   }
@@ -1774,15 +1795,18 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                                 top: dTop,
                                                 width: dW,
                                                 height: dH,
-                                                child: SizedBox.expand(
-                                                  child: FittedBox(
-                                                    fit: BoxFit.fill,
-                                                    child: Text(
-                                                      decalText.text,
-                                                      style: const TextStyle(
-                                                        fontWeight: FontWeight.bold,
-                                                        color: Colors.black,
-                                                        fontFamily: 'Roboto',
+                                                child: Transform.rotate(
+                                                  angle: decalText.rotation * pi / 180.0,
+                                                  child: SizedBox.expand(
+                                                    child: FittedBox(
+                                                      fit: BoxFit.fill,
+                                                      child: Text(
+                                                        decalText.text,
+                                                        style: TextStyle(
+                                                          fontWeight: decalText.isBold ? FontWeight.bold : FontWeight.normal,
+                                                          color: Colors.black,
+                                                          fontFamily: decalText.fontFamily,
+                                                        ),
                                                       ),
                                                     ),
                                                   ),
@@ -1846,10 +1870,13 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                           top: dTop - 2,
                                           width: dW + 4,
                                           height: dH + 4,
-                                          child: IgnorePointer(
-                                            child: Container(
-                                              decoration: BoxDecoration(
-                                                border: Border.all(color: Colors.indigo, width: 2.0),
+                                          child: Transform.rotate(
+                                            angle: _selectedText!.rotation * pi / 180.0,
+                                            child: IgnorePointer(
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  border: Border.all(color: Colors.indigo, width: 2.0),
+                                                ),
                                               ),
                                             ),
                                           ),
@@ -2321,6 +2348,128 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
             ),
           ],
         ),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Font Style', style: TextStyle(fontSize: 10, color: Colors.blueGrey)),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey[300]!),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: t.fontFamily,
+                        isExpanded: true,
+                        items: ['Roboto', 'Pacifico', 'Montserrat'].map((f) {
+                          return DropdownMenuItem<String>(
+                            value: f,
+                            child: Text(f, style: TextStyle(fontFamily: f, fontSize: 13)),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            _saveToHistory();
+                            setState(() {
+                              final idx = _texts.indexWhere((item) => item.id == t.id);
+                              if (idx != -1) {
+                                _texts[idx] = t.copyWith(fontFamily: val);
+                                _selectedText = _texts[idx];
+                              }
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Format', style: TextStyle(fontSize: 10, color: Colors.blueGrey)),
+                const SizedBox(height: 4),
+                Material(
+                  color: Colors.transparent,
+                  child: Ink(
+                    decoration: ShapeDecoration(
+                      color: t.isBold ? Colors.indigo.withOpacity(0.1) : Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(color: t.isBold ? Colors.indigo : Colors.grey[300]!),
+                      ),
+                    ),
+                    child: IconButton(
+                      icon: Icon(Icons.format_bold, color: t.isBold ? Colors.indigo : Colors.grey[700]),
+                      onPressed: () {
+                        _saveToHistory();
+                        setState(() {
+                          final idx = _texts.indexWhere((item) => item.id == t.id);
+                          if (idx != -1) {
+                            _texts[idx] = t.copyWith(isBold: !t.isBold);
+                            _selectedText = _texts[idx];
+                          }
+                        });
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Rotation (degrees)', style: TextStyle(fontSize: 10, color: Colors.blueGrey)),
+                      Text('${t.rotation.toInt()}°', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 2,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                    ),
+                    child: Slider(
+                      value: t.rotation,
+                      min: -180.0,
+                      max: 180.0,
+                      onChangeStart: (v) => _saveToHistory(),
+                      onChanged: (val) {
+                        setState(() {
+                          final idx = _texts.indexWhere((item) => item.id == t.id);
+                          if (idx != -1) {
+                            _texts[idx] = t.copyWith(rotation: val);
+                            _selectedText = _texts[idx];
+                          }
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
@@ -2865,6 +3014,12 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       final double charW = t.width / chars.length;
       final double charH = t.height;
 
+      final double centerXSteps = (t.x + t.width / 2.0 + _originMinX) * 40.0;
+      final double centerYSteps = ((_originGlobalMaxY - _originMinY) - (t.y + t.height / 2.0)) * 40.0;
+      final double theta = t.rotation * pi / 180.0;
+      final double cosT = cos(-theta);
+      final double sinT = sin(-theta);
+
       print('DEBUG TEXT CUT: _categoryWiseDecals keys = ${_categoryWiseDecals.keys.toList()}');
       final alphabetKey = _categoryWiseDecals.keys.firstWhere(
         (k) => k.toLowerCase().contains('alphabet'),
@@ -2915,9 +3070,10 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
 
         if (decalPlt == null || decalPlt.trim().isEmpty) {
           print('DEBUG TEXT CUT: PLT empty/null for "$char". Falling back to local vector.');
-          if (_ttfFont != null) {
+          final activeFont = _loadedTtfFonts[t.fontFamily] ?? _ttfFont;
+          if (activeFont != null) {
             final charCode = char.codeUnitAt(0);
-            final svgPath = _ttfFont!.generateSVGPathForCharacter(charCode);
+            final svgPath = activeFont.generateSVGPathForCharacter(charCode);
             decalPlt = _parseSvgToHpgl(svgPath);
           } else {
             final rawPath = _localAlphabetPlt[char] ?? '';
@@ -2985,8 +3141,18 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           final int finalX = (targetLeftSteps + fitOffsetX + normX * scale).round();
           final int finalY = (targetBottomSteps + fitOffsetY + normY * scale).round();
 
+          int rotatedX = finalX;
+          int rotatedY = finalY;
+
+          if (t.rotation != 0.0) {
+            final double rx = finalX - centerXSteps;
+            final double ry = finalY - centerYSteps;
+            rotatedX = (rx * cosT - ry * sinT + centerXSteps).round();
+            rotatedY = (rx * sinT + ry * cosT + centerYSteps).round();
+          }
+
           final finalCmd = (cmd == 'PU' || cmd == 'M') ? 'PU' : 'PD';
-          mergedPlt += '$finalCmd$finalX,$finalY;';
+          mergedPlt += '$finalCmd$rotatedX,$rotatedY;';
         }
       }
     }
