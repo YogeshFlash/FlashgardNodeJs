@@ -8,6 +8,8 @@ import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../services/plotter_service.dart';
 import '../providers/auth_provider.dart';
+import 'package:text_to_path_maker/text_to_path_maker.dart';
+import 'package:flutter/services.dart';
 
 enum CutoutType {
   circle,
@@ -256,6 +258,21 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
   // In-memory secured PLT content (never written to disk)
   String? _savedPltContent;
 
+  PMFont? _ttfFont;
+
+  Future<void> _loadTtfFont() async {
+    if (_ttfFont != null) return;
+    try {
+      final bytes = await rootBundle.load('assets/fonts/Roboto-Bold.ttf');
+      final reader = PMFontReader();
+      _ttfFont = reader.parseTTFAsset(bytes);
+      print("DEBUG TEXT CUT: Roboto-Bold.ttf loaded successfully via PMFontReader!");
+    } catch (e, stack) {
+      print("DEBUG TEXT CUT ERROR loading font: $e");
+      print(stack);
+    }
+  }
+
   Future<void> _loadDbDecals() async {
     setState(() => _isLoadingDbDecals = true);
     try {
@@ -436,6 +453,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     }
     _initPlotterParams();
     _loadDbDecals();
+    _loadTtfFont();
   }
 
   @override
@@ -2550,6 +2568,144 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     return plt;
   }
 
+  static String _parseSvgToHpgl(String svgPath) {
+    String plt = '';
+    final regex = RegExp(r'([A-Za-z])|(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)');
+    final matches = regex.allMatches(svgPath);
+
+    double lastX = 0.0;
+    double lastY = 0.0;
+    double startX = 0.0;
+    double startY = 0.0;
+
+    String currentCmd = '';
+    List<double> coords = [];
+
+    void processCommand() {
+      if (currentCmd.isEmpty) return;
+
+      final upperCmd = currentCmd.toUpperCase();
+      final isRelative = currentCmd != upperCmd;
+
+      if (upperCmd == 'M') {
+        for (int i = 0; i < coords.length; i += 2) {
+          if (i + 1 >= coords.length) break;
+          double x = coords[i];
+          double y = coords[i + 1];
+          if (isRelative) {
+            x += lastX;
+            y += lastY;
+          }
+          if (i == 0) {
+            plt += 'PU${x.round()},${y.round()};';
+            startX = x;
+            startY = y;
+          } else {
+            plt += 'PD${x.round()},${y.round()};';
+          }
+          lastX = x;
+          lastY = y;
+        }
+      } else if (upperCmd == 'L') {
+        for (int i = 0; i < coords.length; i += 2) {
+          if (i + 1 >= coords.length) break;
+          double x = coords[i];
+          double y = coords[i + 1];
+          if (isRelative) {
+            x += lastX;
+            y += lastY;
+          }
+          plt += 'PD${x.round()},${y.round()};';
+          lastX = x;
+          lastY = y;
+        }
+      } else if (upperCmd == 'Q') {
+        for (int i = 0; i < coords.length; i += 4) {
+          if (i + 3 >= coords.length) break;
+          double cx = coords[i];
+          double cy = coords[i + 1];
+          double tx = coords[i + 2];
+          double ty = coords[i + 3];
+          if (isRelative) {
+            cx += lastX;
+            cy += lastY;
+            tx += lastX;
+            ty += lastY;
+          }
+
+          const int steps = 32;
+          for (int step = 1; step <= steps; step++) {
+            final double t = step / steps;
+            final double mt = 1.0 - t;
+            final double bx = mt * mt * lastX + 2.0 * mt * t * cx + t * t * tx;
+            final double by = mt * mt * lastY + 2.0 * mt * t * cy + t * t * ty;
+            plt += 'PD${bx.round()},${by.round()};';
+          }
+          lastX = tx;
+          lastY = ty;
+        }
+      } else if (upperCmd == 'C') {
+        for (int i = 0; i < coords.length; i += 6) {
+          if (i + 5 >= coords.length) break;
+          double c1x = coords[i];
+          double c1y = coords[i + 1];
+          double c2x = coords[i + 2];
+          double c2y = coords[i + 3];
+          double tx = coords[i + 4];
+          double ty = coords[i + 5];
+          if (isRelative) {
+            c1x += lastX;
+            c1y += lastY;
+            c2x += lastX;
+            c2y += lastY;
+            tx += lastX;
+            ty += lastY;
+          }
+
+          const int steps = 32;
+          for (int step = 1; step <= steps; step++) {
+            final double t = step / steps;
+            final double mt = 1.0 - t;
+            final double bx = mt * mt * mt * lastX +
+                3.0 * mt * mt * t * c1x +
+                3.0 * mt * t * t * c2x +
+                t * t * t * tx;
+            final double by = mt * mt * mt * lastY +
+                3.0 * mt * mt * t * c1y +
+                3.0 * mt * t * t * c2y +
+                t * t * t * ty;
+            plt += 'PD${bx.round()},${by.round()};';
+          }
+          lastX = tx;
+          lastY = ty;
+        }
+      } else if (upperCmd == 'Z') {
+        plt += 'PD${startX.round()},${startY.round()};';
+        lastX = startX;
+        lastY = startY;
+      }
+      coords.clear();
+    }
+
+    for (final match in matches) {
+      final cmdToken = match.group(1);
+      if (cmdToken != null) {
+        processCommand();
+        currentCmd = cmdToken;
+      } else {
+        final xStr = match.group(2);
+        final yStr = match.group(3);
+        if (xStr != null && yStr != null) {
+          coords.add(double.parse(xStr));
+          coords.add(double.parse(yStr));
+        }
+      }
+    }
+    processCommand();
+
+    return plt;
+  }
+
   static const _s3CatalogBaseUrl = 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog';
 
   String _getImageUrl(dynamic item) {
@@ -2759,8 +2915,14 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
 
         if (decalPlt == null || decalPlt.trim().isEmpty) {
           print('DEBUG TEXT CUT: PLT empty/null for "$char". Falling back to local vector.');
-          final rawPath = _localAlphabetPlt[char] ?? '';
-          decalPlt = _tessellatePath(rawPath);
+          if (_ttfFont != null) {
+            final charCode = char.codeUnitAt(0);
+            final svgPath = _ttfFont!.generateSVGPathForCharacter(charCode);
+            decalPlt = _parseSvgToHpgl(svgPath);
+          } else {
+            final rawPath = _localAlphabetPlt[char] ?? '';
+            decalPlt = _tessellatePath(rawPath);
+          }
         }
 
         if (decalPlt.trim().isEmpty) {
