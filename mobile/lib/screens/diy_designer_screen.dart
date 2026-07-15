@@ -2741,7 +2741,9 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         final double targetLeftSteps   = leftMm   * 40.0;
         final double targetBottomSteps = bottomMm * 40.0;
 
-        final double targetW = charW * 40.0;
+        // Add horizontal padding (letter spacing) so letters do not touch or overlap
+        final double paddedCharW = charW * 0.76;
+        final double targetW = paddedCharW * 40.0;
         final double targetH = charH * 40.0;
 
         // BoxFit.contain scaling
@@ -2749,7 +2751,8 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         final double scaledW = decalW * scale;
         final double scaledH = decalH * scale;
 
-        final double fitOffsetX = (targetW - scaledW) / 2.0;
+        // Centering offset inside the full cell (incorporating padding gap)
+        final double fitOffsetX = ((charW * 40.0) - scaledW) / 2.0;
         final double fitOffsetY = (targetH - scaledH) / 2.0;
 
         for (final match in matches) {
