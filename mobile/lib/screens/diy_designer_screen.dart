@@ -1813,7 +1813,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                                         style: TextStyle(
                                                           fontWeight: decalText.isBold ? FontWeight.bold : FontWeight.normal,
                                                           color: Colors.black,
-                                                          fontFamily: decalText.fontFamily,
+                                                          fontFamily: decalText.fontFamily == 'Pacifico' ? 'cursive' : 'sans-serif',
                                                         ),
                                                       ),
                                                     ),
@@ -2378,7 +2378,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                         items: ['Roboto', 'Pacifico', 'Montserrat'].map((f) {
                           return DropdownMenuItem<String>(
                             value: f,
-                            child: Text(f, style: TextStyle(fontFamily: f, fontSize: 13)),
+                            child: Text(f, style: TextStyle(fontFamily: f == 'Pacifico' ? 'cursive' : 'sans-serif', fontSize: 13)),
                           );
                         }).toList(),
                         onChanged: (val) {
