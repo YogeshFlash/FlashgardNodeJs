@@ -103,9 +103,6 @@ class TextElement {
   double y; // Y position relative to top-left of base shape in mm
   double width; // in mm
   double height; // in mm
-  final String fontFamily;
-  final bool isBold;
-  double rotation; // in degrees
 
   TextElement({
     required this.id,
@@ -114,9 +111,6 @@ class TextElement {
     required this.y,
     required this.width,
     required this.height,
-    this.fontFamily = 'Roboto',
-    this.isBold = true,
-    this.rotation = 0.0,
   });
 
   TextElement copyWith({
@@ -125,9 +119,6 @@ class TextElement {
     double? y,
     double? width,
     double? height,
-    String? fontFamily,
-    bool? isBold,
-    double? rotation,
   }) {
     return TextElement(
       id: id,
@@ -136,9 +127,6 @@ class TextElement {
       y: y ?? this.y,
       width: width ?? this.width,
       height: height ?? this.height,
-      fontFamily: fontFamily ?? this.fontFamily,
-      isBold: isBold ?? this.isBold,
-      rotation: rotation ?? this.rotation,
     );
   }
 }
@@ -266,38 +254,22 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
   Map<String, List<dynamic>> _categoryWiseDecals = {};
   String? _selectedSubCategoryName;
   bool _isLoadingDbDecals = false;
+  bool _showDecalsList = true;
 
   // In-memory secured PLT content (never written to disk)
   String? _savedPltContent;
 
   PMFont? _ttfFont;
-  final Map<String, PMFont> _loadedTtfFonts = {};
 
   Future<void> _loadTtfFont() async {
+    if (_ttfFont != null) return;
     try {
-      ByteData padByteData(ByteData orig) {
-        final Uint8List origBytes = orig.buffer.asUint8List(orig.offsetInBytes, orig.lengthInBytes);
-        final padded = Uint8List(origBytes.length + 100);
-        padded.setRange(0, origBytes.length, origBytes);
-        return ByteData.view(padded.buffer);
-      }
-
-      final robotoBytes = await rootBundle.load('assets/fonts/Roboto-Bold.ttf');
-      final reader1 = PMFontReader();
-      _loadedTtfFonts['Roboto'] = reader1.parseTTFAsset(padByteData(robotoBytes));
-      _ttfFont = _loadedTtfFonts['Roboto'];
-      
-      final pacificoBytes = await rootBundle.load('assets/fonts/Pacifico.ttf');
-      final reader2 = PMFontReader();
-      _loadedTtfFonts['Pacifico'] = reader2.parseTTFAsset(padByteData(pacificoBytes));
-      
-      final montserratBytes = await rootBundle.load('assets/fonts/Montserrat-Bold.ttf');
-      final reader3 = PMFontReader();
-      _loadedTtfFonts['Montserrat'] = reader3.parseTTFAsset(padByteData(montserratBytes));
-      
-      print("DEBUG TEXT CUT: All custom fonts loaded successfully via PMFontReader!");
+      final bytes = await rootBundle.load('assets/fonts/Roboto-Bold.ttf');
+      final reader = PMFontReader();
+      _ttfFont = reader.parseTTFAsset(bytes);
+      print("DEBUG TEXT CUT: Roboto-Bold.ttf loaded successfully via PMFontReader!");
     } catch (e, stack) {
-      print("DEBUG TEXT CUT ERROR loading fonts: $e");
+      print("DEBUG TEXT CUT ERROR loading font: $e");
       print(stack);
     }
   }
@@ -1600,12 +1572,29 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Decal Canvas Actions',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey),
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _showDecalsList = !_showDecalsList;
+                              });
+                            },
+                            child: Row(
+                              children: [
+                                const Text(
+                                  'Decal Canvas Actions',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey),
+                                ),
+                                const SizedBox(width: 4),
+                                Icon(
+                                  _showDecalsList ? Icons.expand_less : Icons.expand_more,
+                                  size: 14,
+                                  color: Colors.blueGrey,
+                                ),
+                              ],
+                            ),
                           ),
                           TextButton.icon(
-                            onPressed: () => _addText('TEST'),
+                            onPressed: _showAddTextDialog,
                             icon: const Icon(Icons.title, size: 14, color: Colors.indigo),
                             label: const Text(
                               'Add Text',
@@ -1619,90 +1608,92 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                           ),
                         ],
                       ),
-                      if (_isLoadingDbDecals) ...[
-                        const SizedBox(height: 12),
-                        const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
-                      ] else if (_categoryWiseDecals.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: _categoryWiseDecals.keys.map((subCat) {
-                              final isSelected = _selectedSubCategoryName == subCat;
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 6),
-                                child: ChoiceChip(
-                                  label: Text(
-                                    subCat,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: isSelected ? Colors.white : Colors.black87,
+                      if (_showDecalsList) ...[
+                        if (_isLoadingDbDecals) ...[
+                          const SizedBox(height: 12),
+                          const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
+                        ] else if (_categoryWiseDecals.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: _categoryWiseDecals.keys.map((subCat) {
+                                final isSelected = _selectedSubCategoryName == subCat;
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: ChoiceChip(
+                                    label: Text(
+                                      subCat,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: isSelected ? Colors.white : Colors.black87,
+                                      ),
                                     ),
-                                  ),
-                                  selected: isSelected,
-                                  selectedColor: Colors.indigo,
-                                  backgroundColor: Colors.grey[100],
-                                  visualDensity: VisualDensity.compact,
-                                  onSelected: (val) {
-                                    setState(() {
-                                      _selectedSubCategoryName = subCat;
-                                    });
-                                  },
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        if (_selectedSubCategoryName != null && _categoryWiseDecals[_selectedSubCategoryName] != null)
-                          SizedBox(
-                            height: 80,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: _categoryWiseDecals[_selectedSubCategoryName]!.length,
-                              itemBuilder: (ctx, idx) {
-                                final model = _categoryWiseDecals[_selectedSubCategoryName]![idx];
-                                final name = model['name'] ?? 'Decal';
-                                final imgUrl = _getImageUrl(model);
-
-                                return GestureDetector(
-                                  onTap: () => _addDecal(name, imgUrl, model['id']?.toString()),
-                                  child: Container(
-                                    margin: const EdgeInsets.only(right: 12),
-                                    width: 70,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: Colors.grey[200]!),
-                                    ),
-                                    child: Column(
-                                      children: [
-                                        Expanded(
-                                          child: ClipRRect(
-                                            borderRadius: const BorderRadius.vertical(top: Radius.circular(7)),
-                                            child: Image.network(
-                                              imgUrl,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (ctx, err, stack) => const Icon(Icons.broken_image, size: 20, color: Colors.grey),
-                                            ),
-                                          ),
-                                        ),
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
-                                          child: Text(
-                                            name,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                    selected: isSelected,
+                                    selectedColor: Colors.indigo,
+                                    backgroundColor: Colors.grey[100],
+                                    visualDensity: VisualDensity.compact,
+                                    onSelected: (val) {
+                                      setState(() {
+                                        _selectedSubCategoryName = subCat;
+                                      });
+                                    },
                                   ),
                                 );
-                              },
+                              }).toList(),
                             ),
                           ),
+                          const SizedBox(height: 10),
+                          if (_selectedSubCategoryName != null && _categoryWiseDecals[_selectedSubCategoryName] != null)
+                            SizedBox(
+                              height: 80,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _categoryWiseDecals[_selectedSubCategoryName]!.length,
+                                itemBuilder: (ctx, idx) {
+                                  final model = _categoryWiseDecals[_selectedSubCategoryName]![idx];
+                                  final name = model['name'] ?? 'Decal';
+                                  final imgUrl = _getImageUrl(model);
+
+                                  return GestureDetector(
+                                    onTap: () => _addDecal(name, imgUrl, model['id']?.toString()),
+                                    child: Container(
+                                      margin: const EdgeInsets.only(right: 12),
+                                      width: 70,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.grey[200]!),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          Expanded(
+                                            child: ClipRRect(
+                                              borderRadius: const BorderRadius.vertical(top: Radius.circular(7)),
+                                              child: Image.network(
+                                                imgUrl,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (ctx, err, stack) => const Icon(Icons.broken_image, size: 20, color: Colors.grey),
+                                              ),
+                                            ),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                                            child: Text(
+                                              name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                        ],
                       ],
                     ],
                   ),
@@ -1803,18 +1794,15 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                                 top: dTop,
                                                 width: dW,
                                                 height: dH,
-                                                child: Transform.rotate(
-                                                  angle: decalText.rotation * pi / 180.0,
-                                                  child: SizedBox.expand(
-                                                    child: FittedBox(
-                                                      fit: BoxFit.fill,
-                                                      child: Text(
-                                                        decalText.text,
-                                                        style: TextStyle(
-                                                          fontWeight: decalText.isBold ? FontWeight.bold : FontWeight.normal,
-                                                          color: Colors.black,
-                                                          fontFamily: decalText.fontFamily == 'Pacifico' ? 'cursive' : 'sans-serif',
-                                                        ),
+                                                child: SizedBox.expand(
+                                                  child: FittedBox(
+                                                    fit: BoxFit.fill,
+                                                    child: Text(
+                                                      decalText.text,
+                                                      style: const TextStyle(
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.black,
+                                                        fontFamily: 'Roboto',
                                                       ),
                                                     ),
                                                   ),
@@ -1878,13 +1866,10 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                           top: dTop - 2,
                                           width: dW + 4,
                                           height: dH + 4,
-                                          child: Transform.rotate(
-                                            angle: _selectedText!.rotation * pi / 180.0,
-                                            child: IgnorePointer(
-                                              child: Container(
-                                                decoration: BoxDecoration(
-                                                  border: Border.all(color: Colors.indigo, width: 2.0),
-                                                ),
+                                          child: IgnorePointer(
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                border: Border.all(color: Colors.indigo, width: 2.0),
                                               ),
                                             ),
                                           ),
@@ -2356,86 +2341,6 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
             ),
           ],
         ),
-        
-        const SizedBox(height: 8),
-        
-        // Font Selection and Bold Toggle
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Font Family:', style: TextStyle(fontSize: 11, color: Colors.blueGrey)),
-            const SizedBox(width: 8),
-            DropdownButton<String>(
-              value: t.fontFamily,
-              items: ['Roboto', 'Pacifico', 'Montserrat'].map((f) {
-                return DropdownMenuItem<String>(
-                  value: f,
-                  child: Text(f, style: TextStyle(fontFamily: f == 'Pacifico' ? 'cursive' : 'sans-serif', fontSize: 12)),
-                );
-              }).toList(),
-              onChanged: (val) {
-                if (val != null) {
-                  _saveToHistory();
-                  setState(() {
-                    final idx = _texts.indexWhere((item) => item.id == t.id);
-                    if (idx != -1) {
-                      _texts[idx] = t.copyWith(fontFamily: val);
-                      _selectedText = _texts[idx];
-                    }
-                  });
-                }
-              },
-            ),
-            const Spacer(),
-            IconButton(
-              icon: Icon(
-                t.isBold ? Icons.format_bold : Icons.format_bold_outlined,
-                color: t.isBold ? Colors.indigo : Colors.grey,
-              ),
-              onPressed: () {
-                _saveToHistory();
-                setState(() {
-                  final idx = _texts.indexWhere((item) => item.id == t.id);
-                  if (idx != -1) {
-                    _texts[idx] = t.copyWith(isBold: !t.isBold);
-                    _selectedText = _texts[idx];
-                  }
-                });
-              },
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 8),
-
-        // Rotation Slider
-        Row(
-          children: [
-            const Text('Rotate:', style: TextStyle(fontSize: 11, color: Colors.blueGrey)),
-            Expanded(
-              child: Slider(
-                value: t.rotation,
-                min: -180.0,
-                max: 180.0,
-                onChangeStart: (v) => _saveToHistory(),
-                onChanged: (val) {
-                  setState(() {
-                    final idx = _texts.indexWhere((item) => item.id == t.id);
-                    if (idx != -1) {
-                      _texts[idx] = t.copyWith(rotation: val.roundToDouble());
-                      _selectedText = _texts[idx];
-                    }
-                  });
-                },
-              ),
-            ),
-            Text('${t.rotation.toInt()}°', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-          ],
-        ),
-
-        const SizedBox(height: 8),
-
-        // Width / Height Sliders
         Row(
           children: [
             Expanded(
@@ -2460,7 +2365,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                     }
                     if (t.y + newH > _baseHeight) {
                       newH = _baseHeight - t.y;
-                      newW = _snap(newW / ratio);
+                      newW = _snap(newH * ratio);
                     }
 
                     final idx = _texts.indexWhere((item) => item.id == t.id);
@@ -2509,10 +2414,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
             ),
           ],
         ),
-
         const SizedBox(height: 8),
-
-        // Position Sliders
         Row(
           children: [
             Expanded(
@@ -2983,12 +2885,6 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       final double charW = t.width / chars.length;
       final double charH = t.height;
 
-      final double centerXSteps = (t.x + t.width / 2.0 + _originMinX) * 40.0;
-      final double centerYSteps = ((_originGlobalMaxY - _originMinY) - (t.y + t.height / 2.0)) * 40.0;
-      final double theta = t.rotation * pi / 180.0;
-      final double cosT = cos(-theta);
-      final double sinT = sin(-theta);
-
       print('DEBUG TEXT CUT: _categoryWiseDecals keys = ${_categoryWiseDecals.keys.toList()}');
       final alphabetKey = _categoryWiseDecals.keys.firstWhere(
         (k) => k.toLowerCase().contains('alphabet'),
@@ -3039,10 +2935,9 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
 
         if (decalPlt == null || decalPlt.trim().isEmpty) {
           print('DEBUG TEXT CUT: PLT empty/null for "$char". Falling back to local vector.');
-          final activeFont = _loadedTtfFonts[t.fontFamily] ?? _ttfFont;
-          if (activeFont != null) {
+          if (_ttfFont != null) {
             final charCode = char.codeUnitAt(0);
-            final svgPath = activeFont.generateSVGPathForCharacter(charCode);
+            final svgPath = _ttfFont!.generateSVGPathForCharacter(charCode);
             decalPlt = _parseSvgToHpgl(svgPath);
           } else {
             final rawPath = _localAlphabetPlt[char] ?? '';
@@ -3110,18 +3005,8 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           final int finalX = (targetLeftSteps + fitOffsetX + normX * scale).round();
           final int finalY = (targetBottomSteps + fitOffsetY + normY * scale).round();
 
-          int rotatedX = finalX;
-          int rotatedY = finalY;
-
-          if (t.rotation != 0.0) {
-            final double rx = finalX - centerXSteps;
-            final double ry = finalY - centerYSteps;
-            rotatedX = (rx * cosT - ry * sinT + centerXSteps).round();
-            rotatedY = (rx * sinT + ry * cosT + centerYSteps).round();
-          }
-
           final finalCmd = (cmd == 'PU' || cmd == 'M') ? 'PU' : 'PD';
-          mergedPlt += '$finalCmd$rotatedX,$rotatedY;';
+          mergedPlt += '$finalCmd$finalX,$finalY;';
         }
       }
     }
