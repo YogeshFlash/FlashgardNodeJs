@@ -1605,7 +1605,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey),
                           ),
                           TextButton.icon(
-                            onPressed: _showAddTextDialog,
+                            onPressed: () => _addText('TEST'),
                             icon: const Icon(Icons.title, size: 14, color: Colors.indigo),
                             label: const Text(
                               'Add Text',
