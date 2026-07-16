@@ -1803,18 +1803,15 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                                 top: dTop,
                                                 width: dW,
                                                 height: dH,
-                                                child: Transform.rotate(
-                                                  angle: decalText.rotation * pi / 180.0,
-                                                  child: SizedBox.expand(
-                                                    child: FittedBox(
-                                                      fit: BoxFit.fill,
-                                                      child: Text(
-                                                        decalText.text,
-                                                        style: TextStyle(
-                                                          fontWeight: decalText.isBold ? FontWeight.bold : FontWeight.normal,
-                                                          color: Colors.black,
-                                                          fontFamily: decalText.fontFamily == 'Pacifico' ? 'cursive' : 'sans-serif',
-                                                        ),
+                                                child: SizedBox.expand(
+                                                  child: FittedBox(
+                                                    fit: BoxFit.fill,
+                                                    child: Text(
+                                                      decalText.text,
+                                                      style: TextStyle(
+                                                        fontWeight: decalText.isBold ? FontWeight.bold : FontWeight.normal,
+                                                        color: Colors.black,
+                                                        fontFamily: decalText.fontFamily == 'Pacifico' ? 'cursive' : 'sans-serif',
                                                       ),
                                                     ),
                                                   ),
@@ -1878,13 +1875,10 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                           top: dTop - 2,
                                           width: dW + 4,
                                           height: dH + 4,
-                                          child: Transform.rotate(
-                                            angle: _selectedText!.rotation * pi / 180.0,
-                                            child: IgnorePointer(
-                                              child: Container(
-                                                decoration: BoxDecoration(
-                                                  border: Border.all(color: Colors.indigo, width: 2.0),
-                                                ),
+                                          child: IgnorePointer(
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                border: Border.all(color: Colors.indigo, width: 2.0),
                                               ),
                                             ),
                                           ),
@@ -2353,243 +2347,6 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                   onPressed: _deleteSelectedText,
                 ),
               ],
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Font Style', style: TextStyle(fontSize: 10, color: Colors.blueGrey)),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey[300]!),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: t.fontFamily,
-                        isExpanded: true,
-                        items: ['Roboto', 'Pacifico', 'Montserrat'].map((f) {
-                          return DropdownMenuItem<String>(
-                            value: f,
-                            child: Text(f, style: TextStyle(fontFamily: f == 'Pacifico' ? 'cursive' : 'sans-serif', fontSize: 13)),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            _saveToHistory();
-                            setState(() {
-                              final idx = _texts.indexWhere((item) => item.id == t.id);
-                              if (idx != -1) {
-                                _texts[idx] = t.copyWith(fontFamily: val);
-                                _selectedText = _texts[idx];
-                              }
-                            });
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Format', style: TextStyle(fontSize: 10, color: Colors.blueGrey)),
-                const SizedBox(height: 4),
-                Material(
-                  color: Colors.transparent,
-                  child: Ink(
-                    decoration: ShapeDecoration(
-                      color: t.isBold ? Colors.indigo.withOpacity(0.1) : Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        side: BorderSide(color: t.isBold ? Colors.indigo : Colors.grey[300]!),
-                      ),
-                    ),
-                    child: IconButton(
-                      icon: Icon(Icons.format_bold, color: t.isBold ? Colors.indigo : Colors.grey[700]),
-                      onPressed: () {
-                        _saveToHistory();
-                        setState(() {
-                          final idx = _texts.indexWhere((item) => item.id == t.id);
-                          if (idx != -1) {
-                            _texts[idx] = t.copyWith(isBold: !t.isBold);
-                            _selectedText = _texts[idx];
-                          }
-                        });
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Rotation (degrees)', style: TextStyle(fontSize: 10, color: Colors.blueGrey)),
-                      Text('${t.rotation.toInt()}°', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      trackHeight: 2,
-                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                    ),
-                    child: Slider(
-                      value: t.rotation,
-                      min: -180.0,
-                      max: 180.0,
-                      onChangeStart: (v) => _saveToHistory(),
-                      onChanged: (val) {
-                        setState(() {
-                          final idx = _texts.indexWhere((item) => item.id == t.id);
-                          if (idx != -1) {
-                            _texts[idx] = t.copyWith(rotation: val);
-                            _selectedText = _texts[idx];
-                          }
-                        });
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _buildInspectorSlider(
-                'Width (mm)',
-                t.width,
-                10.0,
-                _baseWidth,
-                (val) {
-                  setState(() {
-                    final double ratio = t.width / t.height;
-                    double newW = _snap(val);
-                    double newH = _snap(newW / ratio);
-                    
-                    if (newH > _baseHeight) {
-                      newH = _baseHeight;
-                      newW = _snap(newH * ratio);
-                    }
-                    if (t.x + newW > _baseWidth) {
-                      newW = _baseWidth - t.x;
-                      newH = _snap(newW / ratio);
-                    }
-                    if (t.y + newH > _baseHeight) {
-                      newH = _baseHeight - t.y;
-                      newW = _snap(newH * ratio);
-                    }
-
-                    final idx = _texts.indexWhere((item) => item.id == t.id);
-                    if (idx != -1) {
-                      _texts[idx] = t.copyWith(width: newW, height: newH);
-                      _selectedText = _texts[idx];
-                    }
-                  });
-                },
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _buildInspectorSlider(
-                'Height (mm)',
-                t.height,
-                5.0,
-                _baseHeight,
-                (val) {
-                  setState(() {
-                    final double ratio = t.width / t.height;
-                    double newH = _snap(val);
-                    double newW = _snap(newH * ratio);
-
-                    if (newW > _baseWidth) {
-                      newW = _baseWidth;
-                      newH = _snap(newW / ratio);
-                    }
-                    if (t.x + newW > _baseWidth) {
-                      newW = _baseWidth - t.x;
-                      newH = _snap(newW / ratio);
-                    }
-                    if (t.y + newH > _baseHeight) {
-                      newH = _baseHeight - t.y;
-                      newW = _snap(newH * ratio);
-                    }
-
-                    final idx = _texts.indexWhere((item) => item.id == t.id);
-                    if (idx != -1) {
-                      _texts[idx] = t.copyWith(width: newW, height: newH);
-                      _selectedText = _texts[idx];
-                    }
-                  });
-                },
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _buildInspectorSlider(
-                'Position X (mm)',
-                t.x,
-                0.0,
-                _baseWidth - t.width,
-                (val) {
-                  setState(() {
-                    final double newX = _snap(val);
-                    final idx = _texts.indexWhere((item) => item.id == t.id);
-                    if (idx != -1) {
-                      _texts[idx] = t.copyWith(x: newX);
-                      _selectedText = _texts[idx];
-                    }
-                  });
-                },
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _buildInspectorSlider(
-                'Position Y (mm)',
-                t.y,
-                0.0,
-                _baseHeight - t.height,
-                (val) {
-                  setState(() {
-                    final double newY = _snap(val);
-                    final idx = _texts.indexWhere((item) => item.id == t.id);
-                    if (idx != -1) {
-                      _texts[idx] = t.copyWith(y: newY);
-                      _selectedText = _texts[idx];
-                    }
-                  });
-                },
-              ),
             ),
           ],
         ),
