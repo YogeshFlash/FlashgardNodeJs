@@ -2849,7 +2849,12 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       final double targetH = d.height * 40.0;
 
       // BoxFit.contain: scale down/up while preserving the aspect ratio
-      final double scale = min(targetW / decalW, targetH / decalH);
+      final double baseScale = min(targetW / decalW, targetH / decalH);
+      
+      // Apply a standard visual padding offset (75% graphic fit ratio)
+      // to match the transparent margins of the database PNG catalog images.
+      const double fitRatio = 0.75;
+      final double scale = baseScale * fitRatio;
 
       final double scaledW = decalW * scale;
       final double scaledH = decalH * scale;
