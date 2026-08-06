@@ -1980,15 +1980,6 @@ const Organizations = () => {
     });
   }, [orgs, expandedIds, debouncedSearch]);
 
-  const matchCount = React.useMemo(() => {
-    if (!debouncedSearch.trim()) return 0;
-    const query = debouncedSearch.toLowerCase().trim();
-    return orgs.filter((org: any) =>
-      String(org.name || '').toLowerCase().includes(query) ||
-      (org.type && String(org.type).toLowerCase().includes(query))
-    ).length;
-  }, [orgs, debouncedSearch]);
-
   const handleExportExcel = () => {
     if (!orgs || orgs.length === 0) {
       alert('No organizations available to export.');
@@ -2275,11 +2266,11 @@ const Organizations = () => {
         )}
 
         <div className="p-3 border-t border-slate-200 bg-white flex items-center justify-between">
-          <p className="text-xs text-slate-400 text-center w-full">
+          <p className="text-xs text-slate-500 font-medium text-center w-full">
             {debouncedSearch.trim() ? (
-              <span>{matchCount} match{matchCount !== 1 ? 'es' : ''} found</span>
+              <span>{orgRows.length.toLocaleString()} organization{orgRows.length !== 1 ? 's' : ''} listed</span>
             ) : (
-              <span>{orgs.length} organization{orgs.length !== 1 ? 's' : ''}</span>
+              <span>{orgs.length.toLocaleString()} organization{orgs.length !== 1 ? 's' : ''}</span>
             )}
           </p>
         </div>
