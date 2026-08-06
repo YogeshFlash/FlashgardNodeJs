@@ -276,11 +276,15 @@ export class LicensesService {
     } else if (!isSuperAdmin) {
       where.OR = [
         { ownerId: orgId },
+        { tenantId: orgId },
         {
           transferItems: {
             some: {
               transfer: {
-                fromOrgId: orgId
+                OR: [
+                  { fromOrgId: orgId },
+                  { toOrgId: orgId }
+                ]
               }
             }
           }
