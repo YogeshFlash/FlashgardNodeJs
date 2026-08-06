@@ -10,6 +10,7 @@ export class LicensesService implements OnModuleInit {
 
   async onModuleInit() {
     try {
+      await this.prisma.$connect();
       // 1. Licenses with no machine that match ownerId == tenantId are AVAILABLE (remaining stock)
       const unassignedHqLicenses = await (this.prisma.orgLicense as any).findMany({
         where: {
