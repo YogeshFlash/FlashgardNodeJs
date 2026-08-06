@@ -600,10 +600,20 @@ const ModelsPage: React.FC = () => {
     }
   };
 
+  const [isExportingTabExcel, setIsExportingTabExcel] = useState(false);
+
   const handleExportCurrentTabExcel = async () => {
+    setIsExportingTabExcel(true);
     try {
       if (activeTab === 'catalog') {
-        const dataToExport = (models || []).map((m: any, idx: number) => ({
+        const { items } = await modelsApi.getAll(
+          selectedBrandId || undefined,
+          selectedCategoryId || undefined,
+          searchTerm,
+          0,
+          100000
+        );
+        const dataToExport = (items || []).map((m: any, idx: number) => ({
           '#': idx + 1,
           'Model Name': m.name || '',
           'Brand': m.brand?.name || '',
@@ -617,7 +627,9 @@ const ModelsPage: React.FC = () => {
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Models');
         XLSX.writeFile(workbook, `Models_List_${new Date().toISOString().substring(0, 10)}.xlsx`);
       } else if (activeTab === 'designs') {
-        const dataToExport = (allDesigns || []).map((d: any, idx: number) => ({
+        const res = await modelCutFilesApi.getAll(undefined, searchTerm, 0, 100000);
+        const items = res.items || [];
+        const dataToExport = (items || []).map((d: any, idx: number) => ({
           '#': idx + 1,
           'Model Name': d.model?.name || '',
           'Brand Name': d.model?.brand?.name || '',
@@ -648,6 +660,8 @@ const ModelsPage: React.FC = () => {
     } catch (err: any) {
       console.error('Export failed:', err);
       alert('Export failed: ' + (err.message || err));
+    } finally {
+      setIsExportingTabExcel(false);
     }
   };
 
@@ -903,10 +917,11 @@ const ModelsPage: React.FC = () => {
                 </div>
                 <button
                   onClick={handleExportCurrentTabExcel}
-                  className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm"
+                  disabled={isExportingTabExcel}
+                  className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm disabled:opacity-50"
                   title={`Export Listed ${activeTab} as Excel`}
                 >
-                  <Download className="w-3.5 h-3.5 text-slate-600" />
+                  {isExportingTabExcel ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--color-accent)]" /> : <Download className="w-3.5 h-3.5 text-slate-600" />}
                 </button>
                 <button onClick={handleRefresh} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm" title="Refresh">
                   <RotateCcw className={`w-3.5 h-3.5 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
