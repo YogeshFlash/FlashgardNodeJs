@@ -419,30 +419,25 @@ const ModelsPage: React.FC = () => {
 
       const categoryMap = new Map(categories.map(c => [c.id, c.name]));
 
-      const buildFullHierarchy = (parentId: string | null, depth: number, prefix: string) => {
+      const buildFullHierarchy = (parentId: string | null, depth: number) => {
         const childCats = categories
           .filter(c => c.parentId === parentId)
           .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
-        childCats.forEach((cat, cIdx) => {
-          const isLastCat = cIdx === childCats.length - 1;
-          const catSymbol = depth === 0 ? '📁 ' : (isLastCat ? '└── 📁 ' : '├── 📁 ');
-          const catIndent = prefix + catSymbol;
-
+        childCats.forEach((cat) => {
           const isRoot = depth === 0;
+          const indent = '  '.repeat(depth);
           sheetData.push([
-            `${catIndent}${cat.name}`,
+            `${indent}${cat.name}`,
             isRoot ? 'ROOT CATEGORY' : 'SUB-CATEGORY',
             cat.name,
             cat.parentId ? (categoryMap.get(cat.parentId) || '') : 'Top Level',
-            '—',
+            '',
             cat.isActive !== false ? 'ACTIVE' : 'INACTIVE',
-            '—',
+            '',
             cat.createdAt ? new Date(cat.createdAt).toLocaleDateString() : ''
           ]);
           rowTypes.push({ type: isRoot ? 'ROOT' : 'CATEGORY', depth });
-
-          const newPrefix = prefix + (depth === 0 ? '' : (isLastCat ? '    ' : '│   '));
 
           // Find brands associated with this category via models OR activeCombinations
           const brandIdsInCat = new Set<string>();
@@ -451,33 +446,26 @@ const ModelsPage: React.FC = () => {
 
           const catBrands = brands.filter(b => brandIdsInCat.has(b.id)).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-          catBrands.forEach((brand, bIdx) => {
-            const isLastBrand = bIdx === catBrands.length - 1;
-            const brandSymbol = isLastBrand ? '└── 🏷️ ' : '├── 🏷️ ';
-            const brandIndent = newPrefix + brandSymbol;
-
+          catBrands.forEach((brand) => {
+            const brandIndent = '  '.repeat(depth + 1);
             sheetData.push([
               `${brandIndent}${brand.name}`,
               'BRAND',
               cat.name,
               brand.name,
-              '—',
+              '',
               brand.isActive !== false ? 'ACTIVE' : 'INACTIVE',
-              '—',
+              '',
               brand.createdAt ? new Date(brand.createdAt).toLocaleDateString() : ''
             ]);
             rowTypes.push({ type: 'BRAND', depth: depth + 1 });
-
-            const brandPrefix = newPrefix + (isLastBrand ? '    ' : '│   ');
 
             // Models under this category + brand
             const key = `${cat.id}_${brand.id}`;
             const catBrandModels = (modelsByCatBrand.get(key) || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-            catBrandModels.forEach((m, mIdx) => {
-              const isLastModel = mIdx === catBrandModels.length - 1;
-              const modelSymbol = isLastModel ? '└── 📱 ' : '├── 📱 ';
-              const modelIndent = brandPrefix + modelSymbol;
+            catBrandModels.forEach((m) => {
+              const modelIndent = '  '.repeat(depth + 2);
               const cutCount = m.cutFilesCount || m.cutFiles?.length || 0;
 
               sheetData.push([
@@ -495,12 +483,12 @@ const ModelsPage: React.FC = () => {
           });
 
           // Recurse subcategories
-          buildFullHierarchy(cat.id, depth + 1, newPrefix);
+          buildFullHierarchy(cat.id, depth + 1);
         });
       };
 
       const mainModelCat = categories.find(c => c.name === 'Main Model' && c.parentId === null);
-      buildFullHierarchy(mainModelCat ? mainModelCat.id : null, 0, '');
+      buildFullHierarchy(mainModelCat ? mainModelCat.id : null, 0);
 
       const worksheet = XLSX.utils.aoa_to_sheet(sheetData);
       const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
