@@ -1,12 +1,31 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrgLicenseStatus, OrgLicenseType, TransferStatus } from '@prisma/client';
 import { encryptLicenseKey, decryptLicenseKey } from '../utils/encryption';
 import { resolveTransferPath } from '../utils/hierarchy.util';
 
 @Injectable()
-export class LicensesService {
+export class LicensesService implements OnModuleInit {
   constructor(private prisma: PrismaService) {}
+
+  async onModuleInit() {
+    try {
+      await (this.prisma.orgLicense as any).updateMany({
+        where: {
+          machineId: null,
+          deviceHash: null,
+          macAddress: null,
+          status: 'ACTIVE'
+        },
+        data: {
+          status: 'AVAILABLE',
+          activatedAt: null
+        }
+      });
+    } catch (e) {
+      console.error('Failed to sync unactivated license statuses on startup:', e);
+    }
+  }
 
   private generateProfessionalKey(): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No O, I, 1, 0 to avoid confusion

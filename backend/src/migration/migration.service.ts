@@ -1849,15 +1849,18 @@ export class MigrationService {
           continue;
         }
 
+        const isActivated = lic.IsActivated == 1 || lic.IsActivated === true || lic.IsActivated === 'true' || Boolean(lic.MachineID) || Boolean(lic.DeviceHash) || Boolean(lic.MacAddress);
+        const status = isActivated ? ('ACTIVE' as const) : ('AVAILABLE' as const);
+
         const licenseData = {
           key: encryptedKey,
           batchId: batch.id,
-          status: 'ACTIVE' as const,
+          status,
           ownerId: finalOrgId,
           tenantId: initialOwnerId,
           legacyId: licenseId,
-          activatedAt: batchCreatedDate,
-          startDate: batchCreatedDate,
+          activatedAt: isActivated ? batchCreatedDate : null,
+          startDate: isActivated ? batchCreatedDate : null,
           licenseName: lic.LicenseName || lic.Name || null,
           referenceName: lic.ReferenceName || null
         };
