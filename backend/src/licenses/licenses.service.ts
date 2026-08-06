@@ -417,7 +417,7 @@ export class LicensesService implements OnModuleInit {
       include: {
         fromOrg: { select: { name: true } },
         toOrg: { select: { name: true } },
-        items: { include: { license: true, credit: true } }
+        items: { include: { license: true } }
       },
       orderBy: { createdAt: 'desc' }
     });
