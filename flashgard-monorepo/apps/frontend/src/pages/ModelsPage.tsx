@@ -615,14 +615,23 @@ const ModelsPage: React.FC = () => {
         );
         const dataToExport = (items || []).map((m: any, idx: number) => ({
           '#': idx + 1,
-          'Model Name': m.name || '',
-          'Brand': m.brand?.name || '',
           'Category': m.category?.name || '',
+          'Brand': m.brand?.name || '',
+          'Model Name': m.name || '',
           'Status': m.isActive !== false ? 'Active' : 'Inactive',
           'Cut Files Count': m.cutFilesCount || m.cutFiles?.length || 0,
           'Created At': m.createdAt ? new Date(m.createdAt).toLocaleDateString() : ''
         }));
         const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        worksheet['!cols'] = [
+          { wch: 8 },  // #
+          { wch: 25 }, // Category
+          { wch: 20 }, // Brand
+          { wch: 35 }, // Model Name
+          { wch: 12 }, // Status
+          { wch: 16 }, // Cut Files Count
+          { wch: 15 }  // Created At
+        ];
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Models');
         XLSX.writeFile(workbook, `Models_List_${new Date().toISOString().substring(0, 10)}.xlsx`);
