@@ -600,6 +600,57 @@ const ModelsPage: React.FC = () => {
     }
   };
 
+  const handleExportCurrentTabExcel = async () => {
+    try {
+      if (activeTab === 'catalog') {
+        const dataToExport = (models || []).map((m: any, idx: number) => ({
+          '#': idx + 1,
+          'Model Name': m.name || '',
+          'Brand': m.brand?.name || '',
+          'Category': m.category?.name || '',
+          'Status': m.isActive !== false ? 'Active' : 'Inactive',
+          'Cut Files Count': m.cutFilesCount || m.cutFiles?.length || 0,
+          'Created At': m.createdAt ? new Date(m.createdAt).toLocaleDateString() : ''
+        }));
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Models');
+        XLSX.writeFile(workbook, `Models_List_${new Date().toISOString().substring(0, 10)}.xlsx`);
+      } else if (activeTab === 'designs') {
+        const dataToExport = (allDesigns || []).map((d: any, idx: number) => ({
+          '#': idx + 1,
+          'Model Name': d.model?.name || '',
+          'Brand Name': d.model?.brand?.name || '',
+          'Category Name': d.model?.category?.name || '',
+          'Cut Pattern': d.cutPattern?.name || '',
+          'Sort Order': d.sortOrder ?? 0,
+          'Legacy ID': d.legacyId || '',
+          'Created At': d.createdAt ? new Date(d.createdAt).toLocaleDateString() : ''
+        }));
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Designs');
+        XLSX.writeFile(workbook, `Designs_List_${new Date().toISOString().substring(0, 10)}.xlsx`);
+      } else {
+        const list = filteredItems;
+        const tabName = activeTab.charAt(0).toUpperCase() + activeTab.slice(1);
+        const dataToExport = (list || []).map((item: any, idx: number) => ({
+          '#': idx + 1,
+          'Name': item.name || '',
+          'Status': item.isActive !== false ? 'Active' : 'Inactive',
+          'Created At': item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''
+        }));
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, tabName);
+        XLSX.writeFile(workbook, `${tabName}_List_${new Date().toISOString().substring(0, 10)}.xlsx`);
+      }
+    } catch (err: any) {
+      console.error('Export failed:', err);
+      alert('Export failed: ' + (err.message || err));
+    }
+  };
+
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
     if (tab !== 'catalog') setSelected(null);
@@ -822,17 +873,41 @@ const ModelsPage: React.FC = () => {
           <div className="flex-shrink-0">
             <div className="px-6 py-4 border-b border-slate-200 bg-white flex items-center justify-between gap-4">
               <h2 className="text-xl font-bold text-slate-900 capitalize shrink-0">Manage {activeTab}</h2>
-              <div className="flex items-center gap-4 flex-1 justify-end">
+              <div className="flex items-center gap-3 flex-1 justify-end">
                 <div className="relative w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
                     type="text"
                     placeholder={`Search ${activeTab}...`}
-                    className="w-full pl-9 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/20"
+                    className="w-full pl-9 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/20"
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setCurrentPage(1);
+                      setDesignsPage(1);
+                    }}
                   />
+                  {searchTerm && (
+                    <button
+                      onClick={() => {
+                        setSearchTerm('');
+                        setCurrentPage(1);
+                        setDesignsPage(1);
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200/50"
+                      title="Clear search"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
+                <button
+                  onClick={handleExportCurrentTabExcel}
+                  className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm"
+                  title={`Export Listed ${activeTab} as Excel`}
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-600" />
+                </button>
                 <button onClick={handleRefresh} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm" title="Refresh">
                   <RotateCcw className={`w-3.5 h-3.5 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
                 </button>
