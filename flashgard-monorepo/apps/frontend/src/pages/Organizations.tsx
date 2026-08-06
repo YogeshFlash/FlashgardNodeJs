@@ -1324,6 +1324,10 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
   const startIndex = (currentPage - 1) * pageSize;
   const paginatedLicenses = filteredLicenses.slice(startIndex, startIndex + pageSize);
 
+  const totalLicenses = licenses.length;
+  const availableLicenses = licenses.filter(l => l.status === 'AVAILABLE').length;
+  const assignedLicenses = totalLicenses - availableLicenses;
+
   return (
     <div className="p-6 space-y-4">
       {modal && <IssueLicenseModal orgId={orgId} onClose={() => setModal(false)} onSave={() => { setModal(false); load(); }} />}
@@ -1338,6 +1342,22 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
         onConfirm={toggleStatus}
         onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false, error: undefined }))}
       />
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-2">
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+          <p className="text-indigo-600 text-xs font-bold uppercase tracking-wider mb-1">Total Licenses</p>
+          <p className="text-2xl font-black text-indigo-700">{totalLicenses}</p>
+        </div>
+        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+          <p className="text-emerald-600 text-xs font-bold uppercase tracking-wider mb-1">Assigned / Active</p>
+          <p className="text-2xl font-black text-emerald-700">{assignedLicenses}</p>
+        </div>
+        <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+          <p className="text-amber-600 text-xs font-bold uppercase tracking-wider mb-1">Remaining / Available</p>
+          <p className="text-2xl font-black text-amber-700">{availableLicenses}</p>
+        </div>
+      </div>
       
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h3 className="font-semibold text-slate-700">Organization Licenses</h3>
