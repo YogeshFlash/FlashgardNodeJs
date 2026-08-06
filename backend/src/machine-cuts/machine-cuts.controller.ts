@@ -42,7 +42,9 @@ export class MachineCutsController {
     @Query('take') take?: string,
     @Query('search') search?: string,
     @Query('isPositiveCut') isPositiveCut?: string,
-    @Query('categoryName') categoryName?: string
+    @Query('categoryName') categoryName?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string
   ) {
     const skipVal = skip ? parseInt(skip) : 0;
     const takeVal = take ? parseInt(take) : 50;
@@ -58,7 +60,9 @@ export class MachineCutsController {
       search,
       isPositiveCut: isPositive,
       isSuperAdmin: req.user.isSuperAdmin,
-      categoryName
+      categoryName,
+      startDate,
+      endDate
     });
   }
 

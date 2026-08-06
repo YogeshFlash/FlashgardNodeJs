@@ -935,6 +935,10 @@ model MachineCutLog {
   @@index([createdAt(sort: Desc)])
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([licenseId, createdAt(sort: Desc)])
+  @@index([organizationId, isPositiveCut, createdAt(sort: Desc)])
+  @@index([licenseId, isPositiveCut, createdAt(sort: Desc)])
+  @@index([brandName, modelName])
+  @@index([userId, createdAt(sort: Desc)])
   @@map("machine_cut_logs")
 }
 

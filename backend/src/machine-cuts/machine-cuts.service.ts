@@ -163,8 +163,10 @@ export class MachineCutsService {
     isPositiveCut?: boolean;
     isSuperAdmin?: boolean;
     categoryName?: string;
+    startDate?: string;
+    endDate?: string;
   }) {
-    const { orgId, licenseId, skip, take, search, isPositiveCut, isSuperAdmin, categoryName } = params;
+    const { orgId, licenseId, skip, take, search, isPositiveCut, isSuperAdmin, categoryName, startDate, endDate } = params;
     const where: any = {};
 
     if (!isSuperAdmin) {
@@ -185,6 +187,12 @@ export class MachineCutsService {
       where.isPositiveCut = isPositiveCut;
     }
 
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
     if (categoryName) {
       where.model = {
         category: {
@@ -201,6 +209,8 @@ export class MachineCutsService {
         { plotterId: { contains: search, mode: 'insensitive' } },
         { qrCode: { contains: search, mode: 'insensitive' } },
         { appUniqueId: { contains: search, mode: 'insensitive' } },
+        { brandName: { contains: search, mode: 'insensitive' } },
+        { modelName: { contains: search, mode: 'insensitive' } },
         {
           license: {
             key: { contains: search, mode: 'insensitive' }
