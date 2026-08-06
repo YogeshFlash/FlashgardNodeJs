@@ -1996,7 +1996,7 @@ const Organizations = () => {
     }
 
     try {
-      const rows = buildOrgRows(orgs);
+      const rows = (debouncedSearch.trim() && orgRows.length > 0) ? orgRows : buildOrgRows(orgs);
       const orgMap = new Map(orgs.map((o: any) => [o.id, o]));
 
       const headers = [
@@ -2015,7 +2015,7 @@ const Organizations = () => {
 
       rows.forEach(({ org, depth }: any) => {
         const parent = org.parentId ? orgMap.get(org.parentId) : null;
-        const indentedName = `${'   '.repeat(depth)}${depth > 0 ? '↳ ' : ''}${org.name || ''}`;
+        const indentedName = `${'  '.repeat(depth)}${org.name || ''}`;
 
         // Extract users (Names & Emails)
         const userList = org.users || [];
@@ -2024,7 +2024,7 @@ const Organizations = () => {
               const full = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.username || 'User';
               return u.email ? `${full} (${u.email})` : full;
             }).join('\n')
-          : '—';
+          : '';
 
         // Extract addresses
         const addressList = org.addresses || [];
@@ -2033,7 +2033,7 @@ const Organizations = () => {
               const parts = [a.streetLine1, a.streetLine2, a.city, a.state, a.postalCode, a.country].filter(Boolean);
               return `${a.type ? `[${String(a.type).toUpperCase()}] ` : ''}${parts.join(', ')}`;
             }).join('\n')
-          : '—';
+          : '';
 
         sheetData.push([
           `Level ${depth}`,
