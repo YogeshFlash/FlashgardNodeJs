@@ -759,8 +759,8 @@ const RechargePackageModal = ({ pkg, onClose, onSave }: { pkg?: any; onClose: ()
         name: form.name,
         description: form.description,
         planType: form.planType,
-        credits: form.planType === 'USAGE' ? Number(form.credits) : null,
-        validityDays: form.planType === 'UNLIMITED' ? Number(form.validityDays) : null,
+        credits: form.planType === 'USAGE' ? Number(form.credits) || 0 : 0,
+        validityDays: form.planType === 'UNLIMITED' ? Number(form.validityDays) || 0 : 0,
         price: Number(form.price),
         currency: form.currency,
       };

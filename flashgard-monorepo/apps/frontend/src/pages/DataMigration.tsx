@@ -22,7 +22,7 @@ import {
   Ticket,
   Cpu
 } from 'lucide-react';
-import { migrationApi, API_BASE } from '../lib/api';
+import { migrationApi, getApiBase } from '../lib/api';
 import { SearchableSelect } from '../components/SearchableSelect';
 
 type MainTab = 'legacy' | 'mssql' | 'bulk' | 'history';
@@ -78,7 +78,7 @@ const DataMigration: React.FC = () => {
   const handleDownloadCsv = async () => {
     try {
       const token = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE}/migration/logs/csv`, {
+      const response = await fetch(`${getApiBase()}/migration/logs/csv`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -104,7 +104,7 @@ const DataMigration: React.FC = () => {
   const handleDownloadFailures = async (logId: string) => {
     try {
       const token = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE}/migration/logs/${logId}/failures`, {
+      const response = await fetch(`${getApiBase()}/migration/logs/${logId}/failures`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

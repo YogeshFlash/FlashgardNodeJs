@@ -131,7 +131,13 @@ export class OrganizationsService {
 
     return this.prisma.organization.findMany({
       where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
-      include: { organizationType: true, tenantWallets: true },
+      include: {
+        organizationType: true,
+        tenantWallets: true,
+        users: { select: { id: true, firstName: true, lastName: true, email: true } },
+        addresses: true,
+        contacts: true
+      },
       orderBy: { name: 'asc' },
     });
   }

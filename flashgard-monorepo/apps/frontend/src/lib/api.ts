@@ -1,6 +1,6 @@
-import { CONFIG } from '@config';
-
-export const API_BASE = CONFIG.FRONTEND.API_BASE_URL;
+// API Base URL (Proxied to http://localhost:3000 locally by Vite, and proxied by Nginx on production)
+export const API_BASE = '/api';
+export const getApiBase = () => API_BASE;
 
 function getToken() {
   return localStorage.getItem('access_token');
@@ -259,7 +259,7 @@ export const modelsApi = {
     if (take !== undefined) url += `take=${take}&`;
     return request<{ items: any[], total: number }>(url);
   },
-  getActiveCombinations: () => request<{categoryId: string, brandId: string}[]>('/models/active-combinations'),
+  getActiveCombinations: () => request<{ categoryId: string, brandId: string }[]>('/models/active-combinations'),
   getOne: (id: string) => request<any>(`/models/${id}`),
   create: (data: any) => request<any>('/models', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: any) => request<any>(`/models/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
@@ -363,12 +363,12 @@ export const licensesApi = {
   getBatches: () => request<any[]>('/licenses/batches'),
   getBatchDetails: (id: string) => request<any>(`/licenses/batches/${id}`),
   issue: (data: any) => request<any>('/licenses/issue', { method: 'POST', body: JSON.stringify(data) }),
-  dispatch: (data: { licenseIds: string[]; toOrgId: string }) => 
+  dispatch: (data: { licenseIds: string[]; toOrgId: string }) =>
     request<any>('/licenses/dispatch', { method: 'POST', body: JSON.stringify(data) }),
   acceptTransfer: (id: string) => request<any>(`/licenses/accept-transfer/${id}`, { method: 'POST' }),
   rejectTransfer: (id: string) => request<any>(`/licenses/reject-transfer/${id}`, { method: 'POST' }),
   recallTransfer: (id: string) => request<any>(`/licenses/recall-transfer/${id}`, { method: 'POST' }),
-  activate: (data: { key: string; fingerprint: any; geo: any }) => 
+  activate: (data: { key: string; fingerprint: any; geo: any }) =>
     request<any>('/licenses/activate', { method: 'POST', body: JSON.stringify(data) }),
   getInventory: (orgId?: string, skip?: number, take?: number, search?: string, batchId?: string, status?: string, hideUnavailable?: boolean) => {
     const p = new URLSearchParams();
@@ -425,7 +425,7 @@ export const licensesApi = {
 // ─── Cut Credits ─────────────────────────────────────
 export const cutCreditsApi = {
   issue: (data: any) => request<any>('/cut-credits/issue', { method: 'POST', body: JSON.stringify(data) }),
-  dispatch: (data: { amount: number; toOrgId: string; fromOrgId?: string; targetLicenseId?: string }) => 
+  dispatch: (data: { amount: number; toOrgId: string; fromOrgId?: string; targetLicenseId?: string }) =>
     request<any>('/cut-credits/dispatch', { method: 'POST', body: JSON.stringify(data) }),
   getInventory: (orgId?: string, skip?: number, take?: number, search?: string, planType?: string, receivingOrgId?: string) => {
     const p = new URLSearchParams();
@@ -517,7 +517,7 @@ export const migrationApi = {
     formData.append('file', file);
     return request<any>('/migration/legacy/mobile-app-cuts', { method: 'POST', body: formData });
   },
-  dbConnect: (config: any) => 
+  dbConnect: (config: any) =>
     request<any>('/migration/db/connect', { method: 'POST', body: JSON.stringify(config) }),
   dbRun: (data: any) =>
     request<any>('/migration/db/run', { method: 'POST', body: JSON.stringify(data) }),
@@ -693,7 +693,7 @@ export const materialsApi = {
 
 export const mobileHomeApi = {
   getContent: () => request<any>('/mobile-home/content'),
-  
+
   // Promotions
   getPromotions: () => request<any[]>('/mobile-home/promotions'),
   createPromotion: (data: any) => request<any>('/mobile-home/promotions', { method: 'POST', body: JSON.stringify(data) }),

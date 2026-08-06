@@ -3,7 +3,7 @@ import { orgsApi, contactsApi, usersApi, addressesApi, licensesApi, cutCreditsAp
 import {
   Building2, Plus, Search, Edit2, Trash2, Loader2,
   Users, MapPin, Phone, Ticket, Key,
-  ChevronRight, ChevronLeft, Star, Check, ChevronDown, X, Gift, RotateCcw
+  ChevronRight, ChevronLeft, Star, Check, ChevronDown, X, Gift, RotateCcw, Download, ShieldCheck
 } from 'lucide-react';
 import { HasPermission } from '../components/HasPermission';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,6 +11,7 @@ import { UserModal } from './UsersPage';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ResetPasswordModal } from '../components/ResetPasswordModal';
 import { TransferCreditsModal } from './LicensesPage';
+import XLSX from 'xlsx-js-style';
 
 function buildOrgRows(orgs: any[]) {
   const byParent = new Map<string, any[]>();
@@ -65,6 +66,74 @@ function buildOrgRows(orgs: any[]) {
 
   return rows;
 }
+
+const HighlightText = ({ text, highlight }: { text: string; highlight: string }) => {
+  if (!text) return null;
+  if (!highlight || !highlight.trim()) return <span>{text}</span>;
+  const escaped = highlight.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
+  return (
+    <span>
+      {parts.map((part, i) =>
+        part.toLowerCase() === highlight.trim().toLowerCase() ? (
+          <mark key={i} className="bg-amber-200 text-amber-900 rounded px-0.5 font-bold">{part}</mark>
+        ) : (
+          part
+        )
+      )}
+    </span>
+  );
+};
+
+const OrgHoverCard = ({ org, orgs, position, typeColors }: { org: any; orgs: any[]; position: { top: number; left: number }; typeColors: Record<string, string> }) => {
+  if (!org) return null;
+  const parentOrg = org.parentId ? orgs.find((o: any) => o.id === org.parentId) : null;
+  const topPos = Math.min(position.top, typeof window !== 'undefined' ? window.innerHeight - 180 : position.top);
+
+  return (
+    <div
+      style={{ top: `${Math.max(10, topPos)}px`, left: `${position.left}px` }}
+      className="fixed z-50 w-72 bg-slate-900/95 backdrop-blur-md text-white p-3.5 rounded-xl shadow-2xl border border-slate-700/80 transition-opacity duration-150 animate-in fade-in zoom-in-95 pointer-events-none"
+    >
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/30">
+            <Building2 className="w-4 h-4" />
+          </div>
+          <h4 className="font-bold text-xs text-white leading-snug break-words">{org.name}</h4>
+        </div>
+      </div>
+
+      <div className="space-y-1.5 text-[11px] text-slate-300 border-t border-slate-800/80 pt-2.5 mt-1">
+        {org.type && (
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400">Type:</span>
+            <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${typeColors[org.type] || 'bg-slate-800 text-slate-300'}`}>
+              {org.type}
+            </span>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between">
+          <span className="text-slate-400">Status:</span>
+          <span className={`inline-flex items-center gap-1 font-semibold ${org.isActive !== false ? 'text-emerald-400' : 'text-slate-400'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${org.isActive !== false ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+            {org.isActive !== false ? 'Active' : 'Inactive'}
+          </span>
+        </div>
+
+        {parentOrg && (
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400">Parent Org:</span>
+            <span className="font-medium text-slate-200 truncate max-w-[150px]" title={parentOrg.name}>
+              {parentOrg.name}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // ─── Helper Components ───────────────────────────────
 const TabBar = ({ tabs, active, onChange }: { tabs: any[]; active: string; onChange: (t: string) => void }) => (
@@ -458,7 +527,9 @@ export const OrgRoleModal = ({ role, orgId, onClose, onSave }: any) => {
   const [form, setForm] = useState(role || { name: '', description: '', isSystemRole: false, permissionIds: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
+  const [permFilter, setPermFilter] = useState('');
+  const [activeModuleTab, setActiveModuleTab] = useState<string>('all');
+
   // Permissions State
   const [allPerms, setAllPerms] = useState<any[]>([]);
   const [permsLoading, setPermsLoading] = useState(true);
@@ -480,6 +551,142 @@ export const OrgRoleModal = ({ role, orgId, onClose, onSave }: any) => {
     });
   };
 
+  const MODULE_CONFIG = [
+    {
+      id: 'org_module',
+      label: 'Organizations & Contacts',
+      icon: '🏢',
+      groups: ['orgs', 'contacts', 'addresses']
+    },
+    {
+      id: 'access_module',
+      label: 'Users & Access Control',
+      icon: '👥',
+      groups: ['users', 'roles']
+    },
+    {
+      id: 'catalog_module',
+      label: 'Catalog & Hardware',
+      icon: '📦',
+      groups: ['catalog', 'production', 'plotters']
+    },
+    {
+      id: 'inventory_module',
+      label: 'Inventory & Warehouse',
+      icon: '🏬',
+      groups: ['inventory', 'inward']
+    },
+    {
+      id: 'system_module',
+      label: 'Licenses & System',
+      icon: '⚡',
+      groups: ['licenses', 'audit_logs']
+    }
+  ];
+
+  const groupLabels: Record<string, { label: string; icon: string }> = {
+    orgs: { label: 'Organizations Main', icon: '🏢' },
+    contacts: { label: "Organization's Contacts", icon: '📇' },
+    addresses: { label: "Organization's Addresses", icon: '📍' },
+    users: { label: 'Users & Staff', icon: '👥' },
+    roles: { label: 'Access Roles & Permissions', icon: '🛡️' },
+    catalog: { label: 'Catalog & Cut Patterns', icon: '📦' },
+    inventory: { label: 'Film Inventory & Stock', icon: '🏬' },
+    inward: { label: 'Inward Receipts', icon: '📥' },
+    production: { label: 'Production & Work Orders', icon: '⚙️' },
+    audit_logs: { label: 'Audit Logs', icon: '📋' },
+    licenses: { label: 'Licenses & Transfers', icon: '🔑' },
+    plotters: { label: 'Plotters & Hardware', icon: '🖥️' },
+  };
+
+  const getActionBadge = (action: string) => {
+    const act = action.split(':')[1] || action;
+    if (act === 'read' || act === 'view') return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700 uppercase tracking-wider shrink-0">READ</span>;
+    if (act === 'write' || act === 'create' || act === 'edit') return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-700 uppercase tracking-wider shrink-0">WRITE</span>;
+    if (act === 'delete' || act === 'purge') return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-700 uppercase tracking-wider shrink-0">DELETE</span>;
+    return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700 uppercase tracking-wider shrink-0">{act.toUpperCase()}</span>;
+  };
+
+  const filteredPerms = React.useMemo(() => {
+    if (!permFilter.trim()) return allPerms;
+    const q = permFilter.toLowerCase().trim();
+    return allPerms.filter(p =>
+      p.action.toLowerCase().includes(q) ||
+      (p.description || '').toLowerCase().includes(q)
+    );
+  }, [allPerms, permFilter]);
+
+  // Group by Modules for display
+  const modulesWithPerms = React.useMemo(() => {
+    const rawGroups: Record<string, any[]> = filteredPerms.reduce((acc: any, p: any) => {
+      const g = p.action.split(':')[0];
+      if (!acc[g]) acc[g] = [];
+      acc[g].push(p);
+      return acc;
+    }, {});
+
+    const modules: Array<{ id: string; label: string; icon: string; groups: Array<{ groupKey: string; perms: any[] }> }> = [];
+
+    MODULE_CONFIG.forEach(m => {
+      if (activeModuleTab !== 'all' && activeModuleTab !== m.id) return;
+
+      const mGroupItems: Array<{ groupKey: string; perms: any[] }> = [];
+      m.groups.forEach(gKey => {
+        if (rawGroups[gKey] && rawGroups[gKey].length > 0) {
+          mGroupItems.push({ groupKey: gKey, perms: rawGroups[gKey] });
+        }
+      });
+
+      if (mGroupItems.length > 0) {
+        modules.push({
+          id: m.id,
+          label: m.label,
+          icon: m.icon,
+          groups: mGroupItems
+        });
+      }
+    });
+
+    if (activeModuleTab === 'all') {
+      const knownGroupKeys = MODULE_CONFIG.flatMap(m => m.groups);
+      const uncategorized = Object.keys(rawGroups).filter(gKey => !knownGroupKeys.includes(gKey));
+      if (uncategorized.length > 0) {
+        modules.push({
+          id: 'other_module',
+          label: 'Other Modules',
+          icon: '⚡',
+          groups: uncategorized.map(gKey => ({ groupKey: gKey, perms: rawGroups[gKey] }))
+        });
+      }
+    }
+
+    return modules;
+  }, [filteredPerms, activeModuleTab]);
+
+  const toggleAllInGroup = (perms: any[]) => {
+    const permIds = perms.map((p: any) => p.id);
+    const current = form.permissionIds || [];
+    const allSelected = permIds.every((id: string) => current.includes(id));
+
+    setForm((prev: any) => ({
+      ...prev,
+      permissionIds: allSelected
+        ? current.filter((id: string) => !permIds.includes(id))
+        : Array.from(new Set([...current, ...permIds]))
+    }));
+  };
+
+  const toggleSelectAllGlobal = () => {
+    const allIds = allPerms.map((p: any) => p.id);
+    const current = form.permissionIds || [];
+    const isAllSelected = allIds.length > 0 && allIds.every((id: string) => current.includes(id));
+
+    setForm((prev: any) => ({
+      ...prev,
+      permissionIds: isAllSelected ? [] : allIds
+    }));
+  };
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError('');
     try {
@@ -491,63 +698,224 @@ export const OrgRoleModal = ({ role, orgId, onClose, onSave }: any) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 className="text-lg font-semibold">{role ? 'Edit Role' : 'New Role'}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
-        </div>
-        <form onSubmit={save} className="p-6 space-y-4">
-          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Role Name</label>
-            <input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Sales Manager" required />
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden border border-slate-100">
+        
+        {/* Modal Header */}
+        <div className="px-6 py-4 bg-slate-50/80 border-b border-slate-200/80 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shadow-xs">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-800">{role ? `Edit Role: ${role.name}` : 'Create New Role'}</h2>
+              <p className="text-xs text-slate-500">Configure role details and specific permissions access scope.</p>
+            </div>
           </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Description</label>
-            <textarea className="input-field resize-none" rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Describe what this role does..." />
+          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <form onSubmit={save} className="flex-1 overflow-y-auto p-6 space-y-5">
+          {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl p-3">{error}</p>}
+          
+          {/* General Information */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wide block mb-1.5">Role Name</label>
+              <input 
+                className="input-field py-2 text-sm font-medium" 
+                value={form.name} 
+                onChange={e => setForm({ ...form, name: e.target.value })} 
+                placeholder="e.g. Sales Manager" 
+                required 
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wide block mb-1.5">Description</label>
+              <input 
+                className="input-field py-2 text-sm" 
+                value={form.description || ''} 
+                onChange={e => setForm({ ...form, description: e.target.value })} 
+                placeholder="Brief summary of responsibilities..." 
+              />
+            </div>
           </div>
 
-          {/* Permissions Grid */}
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-2 border-b border-slate-100 pb-2">Role Permissions</label>
+          {/* Permissions Suite */}
+          <div className="space-y-3 pt-1 border-t border-slate-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Module Permissions</h3>
+                <p className="text-[11px] text-slate-400">Permissions grouped by application modules</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg">
+                  {(form.permissionIds || []).length} / {allPerms.length} Selected
+                </span>
+                <button
+                  type="button"
+                  onClick={toggleSelectAllGlobal}
+                  className="text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 px-2.5 py-1 rounded-lg hover:bg-slate-50 transition-colors"
+                >
+                  {(form.permissionIds || []).length === allPerms.length ? 'Deselect All' : 'Select All'}
+                </button>
+              </div>
+            </div>
+
+            {/* Module Filter Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 custom-scrollbar">
+              <button
+                type="button"
+                onClick={() => setActiveModuleTab('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                  activeModuleTab === 'all'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+                }`}
+              >
+                <span>⚡ All Modules</span>
+              </button>
+              {MODULE_CONFIG.map(m => {
+                const mGroups = m.groups;
+                const mPerms = allPerms.filter((p: any) => mGroups.includes(p.action.split(':')[0]));
+                const mSelected = mPerms.filter((p: any) => (form.permissionIds || []).includes(p.id)).length;
+
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setActiveModuleTab(m.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                      activeModuleTab === m.id
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+                    }`}
+                  >
+                    <span>{m.icon} {m.label}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      activeModuleTab === m.id ? 'bg-white/20 text-white' : mSelected > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-500'
+                    }`}>
+                      {mSelected}/{mPerms.length}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Search Bar */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                className="w-full pl-9 pr-8 py-2 bg-slate-50/80 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all"
+                placeholder="Filter module permissions (e.g. contacts, address, view, edit)..."
+                value={permFilter}
+                onChange={e => setPermFilter(e.target.value)}
+              />
+              {permFilter && (
+                <button 
+                  onClick={() => setPermFilter('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Permissions Grid Grouped by Modules */}
             {permsLoading ? (
-              <div className="flex items-center justify-center p-6"><Loader2 className="w-5 h-5 animate-spin text-blue-500" /></div>
+              <div className="flex items-center justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
+            ) : modulesWithPerms.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50/50 rounded-xl border border-slate-100">
+                <p className="text-xs text-slate-400 font-medium">No matching permissions found for filter "{permFilter}"</p>
+              </div>
             ) : (
-              <div className="grid grid-cols-2 gap-x-6 gap-y-4 max-h-56 overflow-y-auto pr-2 custom-scrollbar">
-                {Object.entries(
-                  allPerms.reduce((acc: any, p: any) => {
-                    const group = p.action.split(':')[0];
-                    if (!acc[group]) acc[group] = [];
-                    acc[group].push(p);
-                    return acc;
-                  }, {})
-                ).map(([group, perms]: any) => (
-                  <div key={group} className="space-y-2">
-                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{group}</h4>
-                    {perms.map((p: any) => (
-                      <label key={p.id} className="flex items-start gap-2.5 group cursor-pointer">
-                        <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-colors
-                          ${(form.permissionIds || []).includes(p.id) ? 'bg-blue-600 border-blue-600' : 'border-slate-300 group-hover:border-blue-400'}`}>
-                          {(form.permissionIds || []).includes(p.id) && <Check className="w-3 h-3 text-white" />}
-                        </div>
-                        <input type="checkbox" className="sr-only" checked={(form.permissionIds || []).includes(p.id)} onChange={() => togglePerm(p.id)} />
-                        <span className="text-xs text-slate-600 group-hover:text-slate-900 select-none leading-tight pt-0.5">{p.description}</span>
-                      </label>
-                    ))}
+              <div className="space-y-4 max-h-[340px] overflow-y-auto pr-1.5 custom-scrollbar">
+                {modulesWithPerms.map(mod => (
+                  <div key={mod.id} className="space-y-2.5">
+                    {/* Module Section Banner Header */}
+                    <div className="flex items-center justify-between bg-slate-100/80 px-3 py-1.5 rounded-lg border border-slate-200/60">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{mod.icon}</span>
+                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{mod.label}</h4>
+                      </div>
+                      <span className="text-[10px] font-semibold text-slate-500">{mod.groups.length} Section{mod.groups.length > 1 ? 's' : ''}</span>
+                    </div>
+
+                    {/* Module Group Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                      {mod.groups.map(({ groupKey, perms }) => {
+                        const permIds = perms.map((p: any) => p.id);
+                        const selectedCount = permIds.filter((id: string) => (form.permissionIds || []).includes(id)).length;
+                        const allSelected = selectedCount === perms.length && perms.length > 0;
+                        const groupInfo = groupLabels[groupKey] || { label: groupKey, icon: '⚡' };
+
+                        return (
+                          <div key={groupKey} className={`p-3.5 rounded-xl border transition-all ${selectedCount > 0 ? 'bg-slate-50/90 border-slate-300/80 shadow-2xs' : 'bg-slate-50/40 border-slate-200/60'}`}>
+                            <div className="flex items-center justify-between border-b border-slate-200/60 pb-2 mb-2.5">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="text-xs">{groupInfo.icon}</span>
+                                <h4 className="text-xs font-bold text-slate-800 truncate">
+                                  {groupInfo.label}
+                                </h4>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${selectedCount > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200/70 text-slate-500'}`}>
+                                  {selectedCount}/{perms.length}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => toggleAllInGroup(perms)}
+                                className="text-[10px] font-bold text-blue-600 hover:underline shrink-0 ml-2"
+                              >
+                                {allSelected ? 'Deselect' : 'Select all'}
+                              </button>
+                            </div>
+
+                            <div className="space-y-2">
+                              {perms.map((p: any) => {
+                                const isChecked = (form.permissionIds || []).includes(p.id);
+                                return (
+                                  <label key={p.id} className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer ${isChecked ? 'bg-white border-blue-500/40 shadow-2xs' : 'bg-white/60 border-slate-200/60 hover:border-slate-300'}`}>
+                                    <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+                                      <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${isChecked ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
+                                        {isChecked && <Check className="w-3 h-3 text-white" />}
+                                      </div>
+                                      <input type="checkbox" className="sr-only" checked={isChecked} onChange={() => togglePerm(p.id)} />
+                                      <div className="min-w-0 flex-1">
+                                        <p className={`text-xs font-semibold leading-tight truncate ${isChecked ? 'text-slate-900' : 'text-slate-600'}`}>{p.description || p.action}</p>
+                                        <p className="text-[10px] font-mono text-slate-400 truncate">{p.action}</p>
+                                      </div>
+                                    </div>
+                                    {getActionBadge(p.action)}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
+        </form>
 
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
-            <button type="submit" disabled={loading} className="btn-primary flex items-center gap-2 disabled:opacity-60">
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />} Save
+        {/* Modal Footer */}
+        <div className="px-6 py-3.5 bg-slate-50/90 border-t border-slate-200 flex items-center justify-between shrink-0">
+          <span className="text-xs text-slate-500 font-medium">{(form.permissionIds || []).length} permissions active</span>
+          <div className="flex items-center gap-2.5">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-white hover:border-slate-300 transition-colors">Cancel</button>
+            <button type="button" onClick={save} disabled={loading} className="btn-primary py-2 text-xs flex items-center gap-2 disabled:opacity-60 shadow-xs">
+              {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {role ? 'Save Changes' : 'Create Role'}
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
@@ -633,7 +1001,7 @@ const ContactsTab = ({ orgId }: { orgId: number }) => {
       {modal && <ContactModal contact={modal === 'new' ? null : modal} orgId={orgId} onClose={() => setModal(null)} onSave={() => { setModal(null); load(); }} />}
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-slate-700">Contacts</h3>
-        <HasPermission permission="orgs:write">
+        <HasPermission permission={['contacts:write', 'orgs:write']} requireAll={false}>
           <button onClick={() => setModal('new')} className="btn-primary text-sm flex items-center gap-1.5 py-1.5">
             <Plus className="w-3.5 h-3.5" /> Add Contact
           </button>
@@ -661,10 +1029,10 @@ const ContactsTab = ({ orgId }: { orgId: number }) => {
                 </div>
               </div>
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <HasPermission permission="orgs:write">
+                <HasPermission permission={['contacts:write', 'orgs:write']} requireAll={false}>
                   <button onClick={() => setModal(c)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
                 </HasPermission>
-                <HasPermission permission="orgs:write">
+                <HasPermission permission={['contacts:delete', 'contacts:write', 'orgs:write']} requireAll={false}>
                   <button onClick={() => del(c.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </HasPermission>
               </div>
@@ -779,7 +1147,7 @@ const AddressesTab = ({ orgId }: { orgId: number }) => {
       {modal && <AddressModal address={modal === 'new' ? null : modal} orgId={orgId} onClose={() => setModal(null)} onSave={() => { setModal(null); load(); }} />}
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-slate-700">Addresses</h3>
-        <HasPermission permission="orgs:write">
+        <HasPermission permission={['addresses:write', 'orgs:write']} requireAll={false}>
           <button onClick={() => setModal('new')} className="btn-primary text-sm flex items-center gap-1.5 py-1.5">
             <Plus className="w-3.5 h-3.5" /> Add Address
           </button>
@@ -807,10 +1175,10 @@ const AddressesTab = ({ orgId }: { orgId: number }) => {
                 </div>
               </div>
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <HasPermission permission="orgs:write">
+                <HasPermission permission={['addresses:write', 'orgs:write']} requireAll={false}>
                   <button onClick={() => setModal(a)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
                 </HasPermission>
-                <HasPermission permission="orgs:write">
+                <HasPermission permission={['addresses:delete', 'addresses:write', 'orgs:write']} requireAll={false}>
                   <button onClick={() => del(a.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </HasPermission>
               </div>
@@ -874,6 +1242,9 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
   const [licenses, setLicenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [confirmState, setConfirmState] = useState<{isOpen: boolean; license?: any; newStatus?: string; loading: boolean; error?: string}>({
     isOpen: false, loading: false
   });
@@ -886,6 +1257,10 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
   }, [orgId]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, pageSize]);
 
   const toggleStatus = async () => {
     if (!confirmState.license || !confirmState.newStatus) return;
@@ -904,8 +1279,31 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
     setConfirmState({ isOpen: true, license, newStatus, loading: false, error: undefined });
   };
 
+  const filteredLicenses = licenses.filter(l => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase();
+    const lastTransfer = l.transferItems?.[0]?.transfer;
+    const assignedBy = lastTransfer?.fromOrg?.name || 'Flashgard';
+    const ownerName = l.owner?.name || '';
+    const key = l.key || '';
+    const status = l.status || '';
+    const type = l.batch?.licenseType || '';
+
+    return (
+      key.toLowerCase().includes(term) ||
+      ownerName.toLowerCase().includes(term) ||
+      status.toLowerCase().includes(term) ||
+      type.toLowerCase().includes(term) ||
+      assignedBy.toLowerCase().includes(term)
+    );
+  });
+
+  const totalPages = Math.ceil(filteredLicenses.length / pageSize) || 1;
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedLicenses = filteredLicenses.slice(startIndex, startIndex + pageSize);
+
   return (
-    <div className="p-6">
+    <div className="p-6 space-y-4">
       {modal && <IssueLicenseModal orgId={orgId} onClose={() => setModal(false)} onSave={() => { setModal(false); load(); }} />}
       <ConfirmDialog 
         isOpen={confirmState.isOpen}
@@ -919,71 +1317,167 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
         onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false, error: undefined }))}
       />
       
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h3 className="font-semibold text-slate-700">Organization Licenses</h3>
-        <HasPermission permission="licenses:write">
-          <button onClick={() => setModal(true)} className="btn-primary text-sm flex items-center gap-1.5 py-1.5">
-            <Plus className="w-3.5 h-3.5" /> Add Licenses
-          </button>
-        </HasPermission>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative min-w-[200px] flex-1 sm:flex-initial">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search licenses..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200/50"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <HasPermission permission="licenses:write">
+            <button onClick={() => setModal(true)} className="btn-primary text-xs flex items-center gap-1.5 py-1.5 px-3 whitespace-nowrap">
+              <Plus className="w-3.5 h-3.5" /> Add Licenses
+            </button>
+          </HasPermission>
+        </div>
       </div>
 
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>
-      ) : licenses.length === 0 ? (
-        <EmptyState icon={Key} message="No licenses found for this organization." onAdd={() => setModal(true)} addLabel="Add Licenses" />
+      ) : filteredLicenses.length === 0 ? (
+        <EmptyState icon={Key} message={searchTerm ? "No licenses match your search." : "No licenses found for this organization."} onAdd={() => setModal(true)} addLabel="Add Licenses" />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
-              <tr>
-                <th className="p-3">Org</th>
-                <th className="p-3">Key</th>
-                <th className="p-3">Type</th>
-                <th className="p-3">Assigned Date</th>
-                <th className="p-3">Assigned By</th>
-                <th className="p-3">Status</th>
-                <th className="p-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {licenses.map(l => {
-                const lastTransfer = l.transferItems?.[0]?.transfer;
-                const assignedDate = lastTransfer?.resolvedAt || lastTransfer?.createdAt || l.createdAt;
-                const assignedBy = lastTransfer?.fromOrg?.name || 'Flashgard';
-                return (
-                  <tr key={l.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="p-3">
-                       <div className="flex flex-col">
-                        <span className="font-bold text-slate-900">{l.owner?.name}</span>
-                        <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{l.owner?.organizationType?.name}</span>
-                      </div>
-                    </td>
-                    <td className="p-3 font-mono font-bold text-slate-800">{l.key}</td>
-                    <td className="p-3">{l.batch?.licenseType || 'BASIC'}</td>
-                    <td className="p-3 text-slate-500">{new Date(assignedDate).toLocaleDateString()}</td>
-                    <td className="p-3 font-semibold text-slate-700">{assignedBy}</td>
-                    <td className="p-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${l.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : l.status === 'AVAILABLE' ? 'bg-blue-100 text-blue-700' : l.status === 'SUSPENDED' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
-                        {l.status}
-                      </span>
-                    </td>
-                    <td className="p-3 text-right">
-                      <HasPermission permission="licenses:write">
-                        <button 
-                          onClick={() => handleToggleClick(l)} 
-                          className={`text-xs font-semibold px-2 py-1 rounded transition-colors ${l.status === 'AVAILABLE' || l.status === 'ACTIVE' ? 'text-amber-600 hover:bg-amber-50' : 'text-emerald-600 hover:bg-emerald-50'}`}
-                        >
-                          {l.status === 'AVAILABLE' || l.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
-                        </button>
-                      </HasPermission>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Top Pagination Controls */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 bg-slate-50/60 p-2.5 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span>Showing {startIndex + 1} to {Math.min(startIndex + pageSize, filteredLicenses.length)} of {filteredLicenses.length} licenses</span>
+              <select
+                value={pageSize}
+                onChange={e => setPageSize(Number(e.target.value))}
+                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-500"
+              >
+                <option value={10}>10 / page</option>
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
+                title="Previous Page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="px-3 py-1 font-semibold text-slate-700">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
+                title="Next Page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+                <tr>
+                  <th className="p-3">Org</th>
+                  <th className="p-3">Key</th>
+                  <th className="p-3">Type</th>
+                  <th className="p-3">Assigned Date</th>
+                  <th className="p-3">Assigned By</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {paginatedLicenses.map(l => {
+                  const lastTransfer = l.transferItems?.[0]?.transfer;
+                  const assignedDate = lastTransfer?.resolvedAt || lastTransfer?.createdAt || l.createdAt;
+                  const assignedBy = lastTransfer?.fromOrg?.name || 'Flashgard';
+                  return (
+                    <tr key={l.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="p-3">
+                         <div className="flex flex-col">
+                          <span className="font-bold text-slate-900">{l.owner?.name}</span>
+                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{l.owner?.organizationType?.name}</span>
+                        </div>
+                      </td>
+                      <td className="p-3 font-mono font-bold text-slate-800">{l.key}</td>
+                      <td className="p-3">{l.batch?.licenseType || 'BASIC'}</td>
+                      <td className="p-3 text-slate-500">{new Date(assignedDate).toLocaleDateString()}</td>
+                      <td className="p-3 font-semibold text-slate-700">{assignedBy}</td>
+                      <td className="p-3">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${l.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : l.status === 'AVAILABLE' ? 'bg-blue-100 text-blue-700' : l.status === 'SUSPENDED' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                          {l.status}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right">
+                        <HasPermission permission="licenses:write">
+                          <button 
+                            onClick={() => handleToggleClick(l)} 
+                            className={`text-xs font-semibold px-2 py-1 rounded transition-colors ${l.status === 'AVAILABLE' || l.status === 'ACTIVE' ? 'text-amber-600 hover:bg-amber-50' : 'text-emerald-600 hover:bg-emerald-50'}`}
+                          >
+                            {l.status === 'AVAILABLE' || l.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
+                          </button>
+                        </HasPermission>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Bottom Pagination Controls */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1 text-xs text-slate-500">
+            <div className="flex items-center gap-2">
+              <span>Showing {startIndex + 1} to {Math.min(startIndex + pageSize, filteredLicenses.length)} of {filteredLicenses.length} licenses</span>
+              <select
+                value={pageSize}
+                onChange={e => setPageSize(Number(e.target.value))}
+                className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-500"
+              >
+                <option value={10}>10 / page</option>
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+                title="Previous Page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="px-3 py-1 font-semibold text-slate-700">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+                title="Next Page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -993,6 +1487,9 @@ const CreditsTab = ({ orgId, org, orgs, reload }: { orgId: string, org: any, org
   const [transfers, setTransfers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   
   const wallet = org?.tenantWallets?.[0] || { balance: 0, usedCredits: 0, totalCredits: 0 };
 
@@ -1003,6 +1500,30 @@ const CreditsTab = ({ orgId, org, orgs, reload }: { orgId: string, org: any, org
       setTransfers(items);
     }).catch(() => {}).finally(() => setLoading(false));
   }, [orgId]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, pageSize]);
+
+  const filteredTransfers = transfers.filter(t => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase();
+    const assignedFrom = t.owner?.name || 'System';
+    const planType = t.planType || '';
+    const notes = t.notes || '';
+    const credits = String(t.credits || '');
+
+    return (
+      assignedFrom.toLowerCase().includes(term) ||
+      planType.toLowerCase().includes(term) ||
+      notes.toLowerCase().includes(term) ||
+      credits.toLowerCase().includes(term)
+    );
+  });
+
+  const totalPages = Math.ceil(filteredTransfers.length / pageSize) || 1;
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedTransfers = filteredTransfers.slice(startIndex, startIndex + pageSize);
 
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>;
   
@@ -1024,66 +1545,162 @@ const CreditsTab = ({ orgId, org, orgs, reload }: { orgId: string, org: any, org
         </div>
       </div>
 
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h3 className="font-semibold text-slate-700">Assignment History</h3>
-        <HasPermission permission="licenses:write">
-          <button onClick={() => setModal(true)} className="btn-primary text-sm flex items-center gap-1.5 py-1.5 px-3">
-            <Plus className="w-3.5 h-3.5" /> Assign Credit
-          </button>
-        </HasPermission>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative min-w-[200px] flex-1 sm:flex-initial">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search credit transfers..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200/50"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <HasPermission permission="licenses:write">
+            <button onClick={() => setModal(true)} className="btn-primary text-xs flex items-center gap-1.5 py-1.5 px-3 whitespace-nowrap">
+              <Plus className="w-3.5 h-3.5" /> Assign Credit
+            </button>
+          </HasPermission>
+        </div>
       </div>
       
       {modal && <TransferCreditsModal initialOrgId={orgId} orgs={orgs} isAssignMode={true} onClose={() => setModal(false)} onSave={() => { setModal(false); reload(); }} />}
       
-      {transfers.length === 0 ? (
-        <EmptyState icon={Ticket} message="No credit assignments found for this organization." />
+      {filteredTransfers.length === 0 ? (
+        <EmptyState icon={Ticket} message={searchTerm ? "No credit assignments match your search." : "No credit assignments found for this organization."} />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
-              <tr>
-                <th className="p-3">Assigned From</th>
-                <th className="p-3">Credits / Plan</th>
-                <th className="p-3">Notes / Payment</th>
-                <th className="p-3">Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {transfers.map(t => (
-                <tr key={t.id}>
-                  <td className="p-3 font-semibold text-slate-700">{t.owner?.name || 'System'}</td>
-                  <td className="p-3 font-bold">
-                    <div className="flex flex-col">
-                      <span className={t.planType === 'UNLIMITED' ? 'text-purple-600' : t.planType === 'LIFETIME' ? 'text-amber-600' : 'text-emerald-600'}>
-                        {t.planType === 'USAGE' ? `+${t.credits} Cuts` : t.planType === 'UNLIMITED' ? (
-                          (() => {
-                            const start = t.startDate ? new Date(t.startDate) : new Date(t.createdAt);
-                            const end = t.endDate ? new Date(t.endDate) : (t.validityDays ? new Date(start.getTime() + t.validityDays * 24 * 60 * 60 * 1000) : null);
-                            return end ? `${start.toLocaleDateString()} - ${end.toLocaleDateString()}` : `${t.validityDays} Days`;
-                          })()
-                        ) : 'Lifetime'}
-                      </span>
-                      <span className="text-[10px] text-slate-400 uppercase tracking-wider">{t.planType || 'USAGE'} Plan</span>
-                      {t.isOffer && (
-                        <div className="flex items-center gap-1 mt-1 text-[10px] text-purple-600 font-bold uppercase tracking-wider">
-                          <Gift className="w-3 h-3" /> Offer
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-3 max-w-[220px]">
-                    {t.notes ? (
-                      <span className="text-xs text-slate-500 break-words">{t.notes}</span>
-                    ) : (
-                      <span className="text-slate-300 text-xs">—</span>
-                    )}
-                  </td>
-                  <td className="p-3 text-slate-500 whitespace-nowrap">{new Date(t.createdAt).toLocaleDateString()}</td>
+        <>
+          {/* Top Pagination Controls */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 bg-slate-50/60 p-2.5 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span>Showing {startIndex + 1} to {Math.min(startIndex + pageSize, filteredTransfers.length)} of {filteredTransfers.length} credit transfers</span>
+              <select
+                value={pageSize}
+                onChange={e => setPageSize(Number(e.target.value))}
+                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-500"
+              >
+                <option value={10}>10 / page</option>
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
+                title="Previous Page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="px-3 py-1 font-semibold text-slate-700">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
+                title="Next Page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+                <tr>
+                  <th className="p-3">Assigned From</th>
+                  <th className="p-3">Credits / Plan</th>
+                  <th className="p-3">Notes / Payment</th>
+                  <th className="p-3">Date</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {paginatedTransfers.map(t => (
+                  <tr key={t.id}>
+                    <td className="p-3 font-semibold text-slate-700">{t.owner?.name || 'System'}</td>
+                    <td className="p-3 font-bold">
+                      <div className="flex flex-col">
+                        <span className={t.planType === 'UNLIMITED' ? 'text-purple-600' : t.planType === 'LIFETIME' ? 'text-amber-600' : 'text-emerald-600'}>
+                          {t.planType === 'USAGE' ? `+${t.credits} Cuts` : t.planType === 'UNLIMITED' ? (
+                            (() => {
+                              const start = t.startDate ? new Date(t.startDate) : new Date(t.createdAt);
+                              const end = t.endDate ? new Date(t.endDate) : (t.validityDays ? new Date(start.getTime() + t.validityDays * 24 * 60 * 60 * 1000) : null);
+                              return end ? `${start.toLocaleDateString()} - ${end.toLocaleDateString()}` : `${t.validityDays} Days`;
+                            })()
+                          ) : 'Lifetime'}
+                        </span>
+                        <span className="text-[10px] text-slate-400 uppercase tracking-wider">{t.planType || 'USAGE'} Plan</span>
+                        {t.isOffer && (
+                          <div className="flex items-center gap-1 mt-1 text-[10px] text-purple-600 font-bold uppercase tracking-wider">
+                            <Gift className="w-3 h-3" /> Offer
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-3 max-w-[220px]">
+                      {t.notes ? (
+                        <span className="text-xs text-slate-500 break-words">{t.notes}</span>
+                      ) : (
+                        <span className="text-slate-300 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-slate-500 whitespace-nowrap">{new Date(t.createdAt).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Bottom Pagination Controls */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1 text-xs text-slate-500">
+            <div className="flex items-center gap-2">
+              <span>Showing {startIndex + 1} to {Math.min(startIndex + pageSize, filteredTransfers.length)} of {filteredTransfers.length} credit transfers</span>
+              <select
+                value={pageSize}
+                onChange={e => setPageSize(Number(e.target.value))}
+                className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-500"
+              >
+                <option value={10}>10 / page</option>
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+                title="Previous Page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="px-3 py-1 font-semibold text-slate-700">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+                title="Next Page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -1112,6 +1729,10 @@ const Organizations = () => {
   // New state for collapsible left sidebar and tree expansions
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [hoveredOrg, setHoveredOrg] = useState<{ org: any; pos: { top: number; left: number } } | null>(null);
+
+  // Ref map for smooth scrolling selected org into view in left list
+  const itemRefs = React.useRef<Map<string, HTMLDivElement>>(new Map());
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -1119,6 +1740,16 @@ const Organizations = () => {
     }, 400);
     return () => clearTimeout(timer);
   }, [search, debouncedSearch]);
+
+  // Smooth scroll selected organization into view in sidebar
+  useEffect(() => {
+    if (selected?.id) {
+      const el = itemRefs.current.get(selected.id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }, [selected?.id]);
 
   const toggleExpand = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1173,31 +1804,42 @@ const Organizations = () => {
 
   // Client-side search: auto-expand parent paths and select matching organization
   useEffect(() => {
-    if (!debouncedSearch || orgs.length === 0) return;
-    
-    const matched = orgs.find((org: any) => 
-      org.name.toLowerCase().includes(debouncedSearch.toLowerCase())
+    if (!debouncedSearch.trim() || orgs.length === 0) return;
+
+    const query = debouncedSearch.toLowerCase().trim();
+    const matched = orgs.filter((org: any) => 
+      String(org.name || '').toLowerCase().includes(query) ||
+      (org.type && String(org.type).toLowerCase().includes(query))
     );
     
-    if (matched) {
-      const parentIdsToExpand: string[] = [];
-      let currentParentId = matched.parentId;
+    if (matched.length > 0) {
+      const idsToExpand = new Set<string>();
       const orgMap = new Map(orgs.map(o => [o.id, o]));
-      while (currentParentId) {
-        parentIdsToExpand.push(currentParentId);
-        const parent = orgMap.get(currentParentId);
-        currentParentId = parent ? parent.parentId : null;
+
+      for (const m of matched) {
+        // Expand the matched org itself so its children are visible under it
+        idsToExpand.add(m.id);
+
+        let currentParentId = m.parentId;
+        while (currentParentId) {
+          idsToExpand.add(currentParentId);
+          const parent = orgMap.get(currentParentId);
+          currentParentId = parent ? parent.parentId : null;
+        }
       }
-      
-      if (parentIdsToExpand.length > 0) {
+
+      if (idsToExpand.size > 0) {
         setExpandedIds(prev => {
           const next = new Set(prev);
-          parentIdsToExpand.forEach(id => next.add(id));
+          idsToExpand.forEach(id => next.add(id));
           return next;
         });
       }
-      
-      selectOrg(matched);
+
+      // Auto-select first matching organization if current selection is not among results
+      if (!selected || !matched.some((m: any) => m.id === selected.id)) {
+        selectOrg(matched[0]);
+      }
     }
   }, [debouncedSearch, orgs]);
 
@@ -1219,7 +1861,60 @@ const Organizations = () => {
   const orgRows = React.useMemo(() => {
     const allRows = buildOrgRows(orgs);
     const orgMap = new Map(orgs.map(o => [o.id, o]));
+    const query = debouncedSearch.toLowerCase().trim();
+
+    if (!query) {
+      return allRows.filter((row: any) => {
+        let p = orgMap.get(row.org.parentId);
+        while (p) {
+          if (!expandedIds.has(p.id)) return false;
+          p = orgMap.get(p.parentId);
+        }
+        return true;
+      });
+    }
+
+    const matchingIds = new Set<string>();
+    const ancestorIds = new Set<string>();
+    const descendantIds = new Set<string>();
+
+    const childrenMap = new Map<string, any[]>();
+    for (const org of orgs) {
+      if (org.parentId) {
+        const list = childrenMap.get(org.parentId) || [];
+        list.push(org);
+        childrenMap.set(org.parentId, list);
+      }
+    }
+
+    const collectDescendants = (parentId: string) => {
+      const children = childrenMap.get(parentId) || [];
+      for (const child of children) {
+        if (!descendantIds.has(child.id)) {
+          descendantIds.add(child.id);
+          collectDescendants(child.id);
+        }
+      }
+    };
+
+    for (const org of orgs) {
+      const nameMatch = String(org.name || '').toLowerCase().includes(query);
+      const typeMatch = String(org.type || '').toLowerCase().includes(query);
+      if (nameMatch || typeMatch) {
+        matchingIds.add(org.id);
+        let curr = orgMap.get(org.parentId);
+        while (curr) {
+          ancestorIds.add(curr.id);
+          curr = orgMap.get(curr.parentId);
+        }
+        collectDescendants(org.id);
+      }
+    }
+
+    const visibleIds = new Set([...matchingIds, ...ancestorIds, ...descendantIds]);
+
     return allRows.filter((row: any) => {
+      if (!visibleIds.has(row.org.id)) return false;
       let p = orgMap.get(row.org.parentId);
       while (p) {
         if (!expandedIds.has(p.id)) return false;
@@ -1227,7 +1922,156 @@ const Organizations = () => {
       }
       return true;
     });
-  }, [orgs, expandedIds]);
+  }, [orgs, expandedIds, debouncedSearch]);
+
+  const matchCount = React.useMemo(() => {
+    if (!debouncedSearch.trim()) return 0;
+    const query = debouncedSearch.toLowerCase().trim();
+    return orgs.filter((org: any) =>
+      String(org.name || '').toLowerCase().includes(query) ||
+      (org.type && String(org.type).toLowerCase().includes(query))
+    ).length;
+  }, [orgs, debouncedSearch]);
+
+  const handleExportExcel = () => {
+    if (!orgs || orgs.length === 0) {
+      alert('No organizations available to export.');
+      return;
+    }
+
+    try {
+      const rows = buildOrgRows(orgs);
+      const orgMap = new Map(orgs.map((o: any) => [o.id, o]));
+
+      const headers = [
+        'Hierarchy Level',
+        'Organization Name (Tree)',
+        'Organization Name',
+        'Type',
+        'Status',
+        'Parent Organization',
+        'User Names',
+        'Addresses',
+        'Created At'
+      ];
+
+      const sheetData: any[][] = [headers];
+
+      rows.forEach(({ org, depth }: any) => {
+        const parent = org.parentId ? orgMap.get(org.parentId) : null;
+        const indentedName = `${'   '.repeat(depth)}${depth > 0 ? '↳ ' : ''}${org.name || ''}`;
+
+        // Extract users (Names & Emails)
+        const userList = org.users || [];
+        const userNamesStr = userList.length > 0
+          ? userList.map((u: any) => {
+              const full = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.username || 'User';
+              return u.email ? `${full} (${u.email})` : full;
+            }).join('\n')
+          : '—';
+
+        // Extract addresses
+        const addressList = org.addresses || [];
+        const addressesStr = addressList.length > 0
+          ? addressList.map((a: any) => {
+              const parts = [a.streetLine1, a.streetLine2, a.city, a.state, a.postalCode, a.country].filter(Boolean);
+              return `${a.type ? `[${String(a.type).toUpperCase()}] ` : ''}${parts.join(', ')}`;
+            }).join('\n')
+          : '—';
+
+        sheetData.push([
+          `Level ${depth}`,
+          indentedName,
+          org.name || '',
+          org.type ? String(org.type).toUpperCase() : '',
+          org.isActive !== false ? 'Active' : 'Inactive',
+          parent ? parent.name : 'None (Top-level)',
+          userNamesStr,
+          addressesStr,
+          org.createdAt ? new Date(org.createdAt).toLocaleDateString() : ''
+        ]);
+      });
+
+      const worksheet = XLSX.utils.aoa_to_sheet(sheetData);
+      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+
+      const headerStyle = {
+        font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: 'FFFFFF' } },
+        fill: { fgColor: { rgb: '1E293B' } },
+        alignment: { vertical: 'center', horizontal: 'left', wrapText: true },
+        border: {
+          top: { style: 'thin', color: { rgb: 'CBD5E1' } },
+          bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+          left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+          right: { style: 'thin', color: { rgb: 'CBD5E1' } }
+        }
+      };
+
+      const parentStyle = {
+        font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: '1E1B4B' } },
+        fill: { fgColor: { rgb: 'E0E7FF' } },
+        alignment: { vertical: 'top', horizontal: 'left', wrapText: true },
+        border: {
+          top: { style: 'thin', color: { rgb: 'CBD5E1' } },
+          bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+          left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+          right: { style: 'thin', color: { rgb: 'CBD5E1' } }
+        }
+      };
+
+      const childStyle = {
+        font: { name: 'Calibri', sz: 11, color: { rgb: '334155' } },
+        fill: { fgColor: { rgb: 'FFFFFF' } },
+        alignment: { vertical: 'top', horizontal: 'left', wrapText: true },
+        border: {
+          top: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          left: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          right: { style: 'thin', color: { rgb: 'E2E8F0' } }
+        }
+      };
+
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        const isHeader = R === 0;
+        const rowItem = !isHeader ? rows[R - 1] : null;
+        const isParent = rowItem ? (rowItem.hasChildren || rowItem.depth === 0 || orgs.some((o: any) => o.parentId === rowItem.org.id)) : false;
+
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!worksheet[cellRef]) continue;
+
+          if (isHeader) {
+            worksheet[cellRef].s = headerStyle;
+          } else if (isParent) {
+            worksheet[cellRef].s = parentStyle;
+          } else {
+            worksheet[cellRef].s = childStyle;
+          }
+        }
+      }
+
+      worksheet['!cols'] = [
+        { wch: 15 }, // Hierarchy Level
+        { wch: 32 }, // Organization Name (Tree)
+        { wch: 25 }, // Organization Name
+        { wch: 15 }, // Type
+        { wch: 12 }, // Status
+        { wch: 25 }, // Parent Organization
+        { wch: 38 }, // User Names
+        { wch: 45 }, // Addresses
+        { wch: 15 }  // Created At
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Organizations Hierarchy');
+
+      const dateStr = new Date().toISOString().substring(0, 10);
+      XLSX.writeFile(workbook, `Organizations_Hierarchy_${dateStr}.xlsx`);
+    } catch (err: any) {
+      console.error('Export failed:', err);
+      alert('Failed to export organizations: ' + (err.message || err));
+    }
+  };
 
   return (
     <div className="flex h-[calc(100vh-8rem)] -mx-6 -mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -1262,14 +2106,26 @@ const Organizations = () => {
             <div className="relative flex-1">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
-                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/20 focus:bg-white transition-all"
+                className="w-full pl-8 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/20 focus:bg-white transition-all"
                 placeholder="Search orgs..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200/50"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             <button onClick={() => fetchOrgs(true)} className="w-7 h-7 shrink-0 rounded-lg border border-slate-200 text-slate-500 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm" title="Refresh">
               <RotateCcw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+            <button onClick={handleExportExcel} className="w-7 h-7 shrink-0 rounded-lg border border-slate-200 text-slate-500 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm" title="Export Excel (Parent-Child Hierarchy)">
+              <Download className="w-3.5 h-3.5" />
             </button>
             <HasPermission permission="orgs:write">
               <button onClick={() => setOrgModal('new')} className="w-7 h-7 shrink-0 rounded-lg bg-[var(--color-accent)] text-white flex items-center justify-center hover:bg-[var(--color-accent-dark)] transition-colors shadow-sm" title="New Organization">
@@ -1287,19 +2143,43 @@ const Organizations = () => {
               <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
               {!isSidebarCollapsed && <p className="text-sm text-slate-400">No organizations found</p>}
             </div>
+          ) : orgRows.length === 0 ? (
+            <div className="p-6 text-center">
+              <Search className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              {!isSidebarCollapsed && (
+                <>
+                  <p className="text-xs font-semibold text-slate-600 mb-1">No matching organizations</p>
+                  <p className="text-[11px] text-slate-400">Try a different search term</p>
+                </>
+              )}
+            </div>
           ) : (
             <div className="space-y-1">
               {orgRows.map(({ org, depth, hasChildren }: any) => (
                 <div
                   key={org.id}
+                  ref={(el) => {
+                    if (el) itemRefs.current.set(org.id, el);
+                    else itemRefs.current.delete(org.id);
+                  }}
                   style={{ paddingLeft: `${depth * 1}rem` }}
                   onClick={() => selectOrg(org)}
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setHoveredOrg({
+                      org,
+                      pos: {
+                        top: rect.top,
+                        left: rect.right + 10,
+                      },
+                    });
+                  }}
+                  onMouseLeave={() => setHoveredOrg(null)}
                   className={`group flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all ${
                     selected?.id === org.id 
-                      ? 'bg-indigo-50 text-[var(--color-accent)]' 
+                      ? 'bg-indigo-50 text-[var(--color-accent)] font-bold ring-1 ring-indigo-200/80 shadow-sm' 
                       : 'hover:bg-white text-slate-600'
                   } ${isSidebarCollapsed ? 'justify-center' : ''}`}
-                  title={org.name}
                 >
                   <div className="relative flex items-center justify-center w-4 h-4 shrink-0" onClick={(e) => hasChildren ? toggleExpand(org.id, e) : undefined}>
                     {hasChildren ? (
@@ -1312,13 +2192,13 @@ const Organizations = () => {
                     )}
                   </div>
                   {!isSidebarCollapsed && (
-                    <div className="flex-1 min-w-0 flex items-center justify-between">
+                    <div className="flex-1 min-w-0 flex items-center justify-between gap-1">
                       <span className={`text-[11px] font-medium truncate ${depth === 0 ? 'uppercase tracking-wider font-bold text-slate-900' : ''}`}>
-                        {org.name}
+                        <HighlightText text={org.name} highlight={debouncedSearch} />
                       </span>
                       {org.type && (
-                         <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${typeColors[org.type] || 'bg-slate-100 text-slate-500'}`}>
-                           {org.type}
+                         <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider shrink-0 ${typeColors[org.type] || 'bg-slate-100 text-slate-500'}`}>
+                           <HighlightText text={org.type} highlight={debouncedSearch} />
                          </span>
                       )}
                     </div>
@@ -1329,8 +2209,23 @@ const Organizations = () => {
           )}
         </div>
 
-        <div className="p-3 border-t border-slate-200 bg-white">
-          <p className="text-xs text-slate-400 text-center">{orgs.length} organization{orgs.length !== 1 ? 's' : ''}</p>
+        {hoveredOrg && (
+          <OrgHoverCard
+            org={hoveredOrg.org}
+            orgs={orgs}
+            position={hoveredOrg.pos}
+            typeColors={typeColors}
+          />
+        )}
+
+        <div className="p-3 border-t border-slate-200 bg-white flex items-center justify-between">
+          <p className="text-xs text-slate-400 text-center w-full">
+            {debouncedSearch.trim() ? (
+              <span>{matchCount} match{matchCount !== 1 ? 'es' : ''} found</span>
+            ) : (
+              <span>{orgs.length} organization{orgs.length !== 1 ? 's' : ''}</span>
+            )}
+          </p>
         </div>
       </div>
 

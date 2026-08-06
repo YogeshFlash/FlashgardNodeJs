@@ -14,6 +14,14 @@ export default defineConfig({
     alias: {
       '@config': path.resolve(__dirname, '../../../backend/src/app-config.ts')
     }
+  },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      }
+    }
   }
 });
 

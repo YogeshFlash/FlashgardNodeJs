@@ -19,15 +19,14 @@ export const CONFIG = {
     PORT: Number(getEnv('PORT', 3000)),
     // Database connection string
     DATABASE_URL: getEnv('DATABASE_URL', "postgresql://postgres:PgAdmin@localhost:5432/FlashgardPro?schema=public"),
-	//DATABASE_URL: getEnv('DATABASE_URL', "postgresql://flashgard_admin:B75ZgxeGf6aAncEH@localhost:5432/flashgarddb2?schema=public"),
+
     // JWT secret for authentication
     JWT_SECRET: getEnv('JWT_SECRET', "flashgard-super-secret-key-2026"),
   },
 
   // Frontend Configuration
   FRONTEND: {
-    // API Base URL for frontend requests
-    API_BASE_URL: "http://localhost:3000/api",
+    API_BASE_URL: "/api",
   },
 
   // AWS S3 Configuration

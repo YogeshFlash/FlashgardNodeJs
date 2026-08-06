@@ -1609,7 +1609,7 @@ export class MigrationService {
     return result;
   }
 
-  async migrateLicenses(licensesFile: Express.Multer.File | any[], licenseDealersFile?: Express.Multer.File | any[], sourceName?: string) {
+  async migrateLicenses(licensesFile: Express.Multer.File | any[], licenseDealersFile?: Express.Multer.File | any[], sourceName?: string, mapsCache?: any) {
     let importedLicenses = 0;
     let updatedLicenses = 0;
     let skippedRows = 0;
@@ -1622,37 +1622,86 @@ export class MigrationService {
     const licensesData = Array.isArray(licensesFile) ? licensesFile : await this.parseCsvBuffer((licensesFile as Express.Multer.File).buffer);
     const licenseDealersData = licenseDealersFile ? (Array.isArray(licenseDealersFile) ? licenseDealersFile : await this.parseCsvBuffer((licenseDealersFile as Express.Multer.File).buffer)) : [];
 
-    // Sort assignments by LicenseAssignID ascending to ensure chronological order
-    licenseDealersData.sort((a, b) => {
-      const idA = parseInt(a.LicenseAssignID || a.LicenseAssignId || '0') || 0;
-      const idB = parseInt(b.LicenseAssignID || b.LicenseAssignId || '0') || 0;
-      return idA - idB;
-    });
+    let licenseDealerMap: Map<string, any[]>;
+    if (mapsCache?.licenseDealerMap) {
+      licenseDealerMap = mapsCache.licenseDealerMap;
+    } else {
+      // Sort assignments by LicenseAssignID ascending to ensure chronological order
+      licenseDealersData.sort((a, b) => {
+        const idA = parseInt(a.LicenseAssignID || a.LicenseAssignId || '0') || 0;
+        const idB = parseInt(b.LicenseAssignID || b.LicenseAssignId || '0') || 0;
+        return idA - idB;
+      });
 
-    // Map of LicenseID -> any[] (assignment rows)
-    const licenseDealerMap = new Map<string, any[]>();
-    for (const ld of licenseDealersData) {
-      const licId = String(ld.LicenseID || '').trim();
-      if (licId) {
-        if (!licenseDealerMap.has(licId)) {
-          licenseDealerMap.set(licId, []);
+      // Map of LicenseID -> any[] (assignment rows)
+      licenseDealerMap = new Map<string, any[]>();
+      for (const ld of licenseDealersData) {
+        const licId = String(ld.LicenseID || '').trim();
+        if (licId) {
+          if (!licenseDealerMap.has(licId)) {
+            licenseDealerMap.set(licId, []);
+          }
+          licenseDealerMap.get(licId)!.push(ld);
         }
-        licenseDealerMap.get(licId)!.push(ld);
       }
     }
 
     // Cache existing organizations and users for ownership resolution
-    const orgs = await this.prisma.organization.findMany({
-      select: { id: true, legacyId: true, parentId: true }
-    });
-    const orgMap = new Map<string, any>(); // DB ID -> org
-    const orgLegacyMap = new Map<string, string>(); // legacyId -> DB Org ID
-    orgs.forEach(o => {
-      orgMap.set(o.id, o);
-      if (o.legacyId) {
-        orgLegacyMap.set(o.legacyId, o.id);
+    let orgMap: Map<string, any>;
+    let orgLegacyMap: Map<string, string>;
+    let userOrgMap: Map<string, string>;
+    let rootOrg: any;
+    let batchCache: Map<string, any>;
+
+    if (mapsCache) {
+      orgMap = mapsCache.orgMap;
+      orgLegacyMap = mapsCache.orgLegacyMap;
+      userOrgMap = mapsCache.userOrgMap;
+      rootOrg = mapsCache.rootOrg;
+      batchCache = mapsCache.batchCache || new Map<string, any>();
+    } else {
+      const orgs = await this.prisma.organization.findMany({
+        select: { id: true, legacyId: true, parentId: true }
+      });
+      orgMap = new Map<string, any>(); // DB ID -> org
+      orgLegacyMap = new Map<string, string>(); // legacyId -> DB Org ID
+      orgs.forEach(o => {
+        orgMap.set(o.id, o);
+        if (o.legacyId) {
+          orgLegacyMap.set(o.legacyId, o.id);
+        }
+      });
+
+      const dbUsers = await this.prisma.user.findMany({
+        where: { organizationId: { not: null } },
+        select: { id: true, organizationId: true }
+      });
+      userOrgMap = new Map<string, string>(); // dbUserId -> DB Org ID
+      dbUsers.forEach(u => {
+        userOrgMap.set(u.id, u.organizationId!);
+      });
+
+      const orgTypes = await this.prisma.organizationType.findMany();
+      const parentType = orgTypes.find(o => o.name === 'parent') || orgTypes[0];
+      
+      rootOrg = await this.prisma.organization.findFirst({
+        where: { organizationTypeId: parentType?.id }
+      });
+      if (!rootOrg) {
+        rootOrg = await this.prisma.organization.findFirst({
+          where: { name: { contains: 'Flashgard', mode: 'insensitive' } }
+        });
       }
-    });
+      if (!rootOrg && parentType) {
+        rootOrg = await this.prisma.organization.create({
+          data: {
+            name: 'Flashgard',
+            organizationTypeId: parentType.id
+          }
+        });
+      }
+      batchCache = new Map<string, any>();
+    }
 
     const getOrgHierarchy = (orgId: string): string[] => {
       const hierarchy: string[] = [];
@@ -1668,15 +1717,6 @@ export class MigrationService {
       return hierarchy.reverse(); // Root first, leaf last
     };
 
-    const dbUsers = await this.prisma.user.findMany({
-      where: { organizationId: { not: null } },
-      select: { id: true, organizationId: true }
-    });
-    const userOrgMap = new Map<string, string>(); // dbUserId -> DB Org ID
-    dbUsers.forEach(u => {
-      userOrgMap.set(u.id, u.organizationId!);
-    });
-
     const resolveOrgId = (legacyUserId: string): string | undefined => {
       if (!legacyUserId) return undefined;
       const directOrgId = orgLegacyMap.get(legacyUserId);
@@ -1684,30 +1724,6 @@ export class MigrationService {
       const dbUserId = this.parseOrCreateUuid(legacyUserId);
       return userOrgMap.get(dbUserId);
     };
-
-    // Fetch organization types and root organization context
-    const orgTypes = await this.prisma.organizationType.findMany();
-    const parentType = orgTypes.find(o => o.name === 'parent') || orgTypes[0];
-    
-    // Find rootOrg by 'parent' type first (consistent with migrateUsers)
-    let rootOrg = await this.prisma.organization.findFirst({
-      where: { organizationTypeId: parentType?.id }
-    });
-    if (!rootOrg) {
-      rootOrg = await this.prisma.organization.findFirst({
-        where: { name: { contains: 'Flashgard', mode: 'insensitive' } }
-      });
-    }
-    if (!rootOrg && parentType) {
-      rootOrg = await this.prisma.organization.create({
-        data: {
-          name: 'Flashgard',
-          organizationTypeId: parentType.id
-        }
-      });
-    }
-
-    const batchCache = new Map<string, any>();
 
     for (const lic of licensesData) {
       try {
@@ -1960,16 +1976,18 @@ export class MigrationService {
       licenseDealersFile && !Array.isArray(licenseDealersFile) ? (licenseDealersFile as Express.Multer.File).originalname : ''
     ].filter(Boolean).join(', ');
 
-    await this.logMigration({
-      module: 'licenses',
-      fileName: fileName || 'Uploaded License CSV Files',
-      status: skippedRows === 0 ? 'SUCCESS' : (importedLicenses > 0 ? 'PARTIAL' : 'FAILED'),
-      processed: licensesData.length + licenseDealersData.length,
-      created: importedLicenses,
-      updated: updatedLicenses,
-      failed: skippedRows,
-      details: result
-    });
+    if (!mapsCache?.skipLog) {
+      await this.logMigration({
+        module: 'licenses',
+        fileName: fileName || 'Uploaded License CSV Files',
+        status: skippedRows === 0 ? 'SUCCESS' : (importedLicenses > 0 ? 'PARTIAL' : 'FAILED'),
+        processed: licensesData.length + licenseDealersData.length,
+        created: importedLicenses,
+        updated: updatedLicenses,
+        failed: skippedRows,
+        details: result
+      });
+    }
 
     return result;
   }
@@ -2298,7 +2316,7 @@ export class MigrationService {
     return result;
   }
 
-  async migrateCutCredits(dealerAssignFile: Express.Multer.File | any[], countFile?: Express.Multer.File | any[], sourceName?: string) {
+  async migrateCutCredits(dealerAssignFile: Express.Multer.File | any[], countFile?: Express.Multer.File | any[], sourceName?: string, mapsCache?: any) {
     let importedCredits = 0;
     let updatedCredits = 0;
     let skippedRows = 0;
@@ -2311,29 +2329,62 @@ export class MigrationService {
     const assignData = Array.isArray(dealerAssignFile) ? dealerAssignFile : await this.parseCsvBuffer((dealerAssignFile as Express.Multer.File).buffer);
     const countData = countFile ? (Array.isArray(countFile) ? countFile : await this.parseCsvBuffer((countFile as Express.Multer.File).buffer)) : [];
 
-    const countMap = new Map<string, any>();
-    countData.forEach(c => {
-      const dealerId = String(c.DealerID || '').trim();
-      if (dealerId && !countMap.has(dealerId)) {
-        countMap.set(dealerId, c);
+    let countMap: Map<string, any>;
+    let processedDealersForCount: Set<string>;
+    let orgLegacyMap: Map<string, string>;
+    let userOrgMap: Map<string, string>;
+    let rootOrg: any;
+    let sysAdmin: any;
+
+    if (mapsCache) {
+      countMap = mapsCache.countMap;
+      processedDealersForCount = mapsCache.processedDealersForCount || new Set<string>();
+      orgLegacyMap = mapsCache.orgLegacyMap;
+      userOrgMap = mapsCache.userOrgMap;
+      rootOrg = mapsCache.rootOrg;
+      sysAdmin = mapsCache.sysAdmin;
+    } else {
+      countMap = new Map<string, any>();
+      countData.forEach(c => {
+        const dealerId = String(c.DealerID || '').trim();
+        if (dealerId && !countMap.has(dealerId)) {
+          countMap.set(dealerId, c);
+        }
+      });
+
+      processedDealersForCount = new Set<string>();
+
+      const orgs = await this.prisma.organization.findMany({
+        where: { legacyId: { not: null } },
+        select: { id: true, legacyId: true }
+      });
+      orgLegacyMap = new Map<string, string>();
+      orgs.forEach(o => orgLegacyMap.set(o.legacyId!, o.id));
+
+      const dbUsers = await this.prisma.user.findMany({
+        where: { organizationId: { not: null } },
+        select: { id: true, organizationId: true }
+      });
+      userOrgMap = new Map<string, string>();
+      dbUsers.forEach(u => userOrgMap.set(u.id, u.organizationId!));
+
+      rootOrg = await this.prisma.organization.findFirst({
+        where: { name: { contains: 'Flashgard', mode: 'insensitive' } }
+      });
+      if (!rootOrg) {
+        const orgTypes = await this.prisma.organizationType.findMany();
+        const parentType = orgTypes.find(o => o.name === 'parent') || orgTypes[0];
+        if (parentType) {
+          rootOrg = await this.prisma.organization.create({
+            data: { name: 'Flashgard', organizationTypeId: parentType.id }
+          });
+        }
       }
-    });
 
-    const processedDealersForCount = new Set<string>();
-
-    const orgs = await this.prisma.organization.findMany({
-      where: { legacyId: { not: null } },
-      select: { id: true, legacyId: true }
-    });
-    const orgLegacyMap = new Map<string, string>();
-    orgs.forEach(o => orgLegacyMap.set(o.legacyId!, o.id));
-
-    const dbUsers = await this.prisma.user.findMany({
-      where: { organizationId: { not: null } },
-      select: { id: true, organizationId: true }
-    });
-    const userOrgMap = new Map<string, string>();
-    dbUsers.forEach(u => userOrgMap.set(u.id, u.organizationId!));
+      sysAdmin = await this.prisma.user.findFirst({
+        where: { isSuperAdmin: true }
+      });
+    }
 
     const resolveOrgId = (legacyUserId: string): string | undefined => {
       if (!legacyUserId) return undefined;
@@ -2342,23 +2393,6 @@ export class MigrationService {
       const dbUserId = this.parseOrCreateUuid(legacyUserId);
       return userOrgMap.get(dbUserId);
     };
-
-    let rootOrg = await this.prisma.organization.findFirst({
-      where: { name: { contains: 'Flashgard', mode: 'insensitive' } }
-    });
-    if (!rootOrg) {
-      const orgTypes = await this.prisma.organizationType.findMany();
-      const parentType = orgTypes.find(o => o.name === 'parent') || orgTypes[0];
-      if (parentType) {
-        rootOrg = await this.prisma.organization.create({
-          data: { name: 'Flashgard', organizationTypeId: parentType.id }
-        });
-      }
-    }
-
-    const sysAdmin = await this.prisma.user.findFirst({
-      where: { isSuperAdmin: true }
-    });
 
     for (const assign of assignData) {
       try {
@@ -2531,16 +2565,18 @@ export class MigrationService {
       failures: failures.slice(0, 1000)
     };
 
-    await this.logMigration({
-      module: 'cut-credits',
-      fileName: sourceName || (!Array.isArray(dealerAssignFile) ? (dealerAssignFile as Express.Multer.File).originalname : 'Uploaded Cut Credits CSV File'),
-      status: skippedRows === 0 ? 'SUCCESS' : (importedCredits > 0 ? 'PARTIAL' : 'FAILED'),
-      processed: assignData.length,
-      created: importedCredits,
-      updated: updatedCredits,
-      failed: skippedRows,
-      details: result
-    });
+    if (!mapsCache?.skipLog) {
+      await this.logMigration({
+        module: 'cut-credits',
+        fileName: sourceName || (!Array.isArray(dealerAssignFile) ? (dealerAssignFile as Express.Multer.File).originalname : 'Uploaded Cut Credits CSV File'),
+        status: skippedRows === 0 ? 'SUCCESS' : (importedCredits > 0 ? 'PARTIAL' : 'FAILED'),
+        processed: assignData.length,
+        created: importedCredits,
+        updated: updatedCredits,
+        failed: skippedRows,
+        details: result
+      });
+    }
 
     return result;
   }
@@ -3389,13 +3425,245 @@ export class MigrationService {
         const roleRows = tableMap.file2 ? (await pool.request().query("SELECT * FROM [" + tableMap.file2 + "]")).recordset : [];
         return await this.migrateUsers(userRows, roleRows, "MSSQL: " + tableMap.file1);
       } else if (moduleType === 'licenses') {
-        const licenseRows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
         const assignRows = tableMap.file2 ? (await pool.request().query("SELECT * FROM [" + tableMap.file2 + "]")).recordset : [];
-        return await this.migrateLicenses(licenseRows, assignRows, "MSSQL: " + tableMap.file1);
+
+        // Pre-build licenseDealerMap once for all batches
+        assignRows.sort((a: any, b: any) => {
+          const idA = parseInt(a.LicenseAssignID || a.LicenseAssignId || '0') || 0;
+          const idB = parseInt(b.LicenseAssignID || b.LicenseAssignId || '0') || 0;
+          return idA - idB;
+        });
+
+        const licenseDealerMap = new Map<string, any[]>();
+        for (const ld of assignRows) {
+          const licId = String(ld.LicenseID || '').trim();
+          if (licId) {
+            if (!licenseDealerMap.has(licId)) {
+              licenseDealerMap.set(licId, []);
+            }
+            licenseDealerMap.get(licId)!.push(ld);
+          }
+        }
+
+        const orgs = await this.prisma.organization.findMany({
+          select: { id: true, legacyId: true, parentId: true }
+        });
+        const orgMap = new Map<string, any>();
+        const orgLegacyMap = new Map<string, string>();
+        orgs.forEach(o => {
+          orgMap.set(o.id, o);
+          if (o.legacyId) orgLegacyMap.set(o.legacyId, o.id);
+        });
+
+        const dbUsers = await this.prisma.user.findMany({
+          where: { organizationId: { not: null } },
+          select: { id: true, organizationId: true }
+        });
+        const userOrgMap = new Map<string, string>();
+        dbUsers.forEach(u => userOrgMap.set(u.id, u.organizationId!));
+
+        const orgTypes = await this.prisma.organizationType.findMany();
+        const parentType = orgTypes.find(o => o.name === 'parent') || orgTypes[0];
+        let rootOrg = await this.prisma.organization.findFirst({
+          where: { organizationTypeId: parentType?.id }
+        });
+        if (!rootOrg) {
+          rootOrg = await this.prisma.organization.findFirst({
+            where: { name: { contains: 'Flashgard', mode: 'insensitive' } }
+          });
+        }
+        if (!rootOrg && parentType) {
+          rootOrg = await this.prisma.organization.create({
+            data: { name: 'Flashgard', organizationTypeId: parentType.id }
+          });
+        }
+
+        const batchCache = new Map<string, any>();
+
+        const mapsCache = {
+          licenseDealerMap,
+          orgMap,
+          orgLegacyMap,
+          userOrgMap,
+          rootOrg,
+          batchCache,
+          skipLog: true
+        };
+
+        const colCheck = await pool.request().query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + tableMap.file1 + "' AND COLUMN_NAME IN ('LicenseID', 'Licenseid', 'ID', 'Id')");
+        const orderCol = colCheck.recordset.length > 0 ? colCheck.recordset[0].COLUMN_NAME : 'LicenseID';
+
+        let offset = 0;
+        const limit = 1000;
+        let hasMore = true;
+        let totalImported = 0;
+        let totalUpdated = 0;
+        let totalSkipped = 0;
+        let processedRows = 0;
+        const allFailures: any[] = [];
+
+        while (hasMore) {
+          this.logger.log(`Fetching chunk for licenses: OFFSET ${offset} LIMIT ${limit}`);
+          let rows: any = (await pool.request().query(`SELECT * FROM [${tableMap.file1}] ORDER BY [${orderCol}] OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`)).recordset;
+
+          if (rows.length === 0) {
+            hasMore = false;
+            break;
+          }
+
+          const result = await this.migrateLicenses(rows, assignRows, "MSSQL: " + tableMap.file1, mapsCache);
+          totalImported += result.importedLicenses;
+          totalUpdated += result.updatedLicenses;
+          totalSkipped += result.skippedRows;
+          processedRows += rows.length;
+
+          if (allFailures.length < 1000 && result.failures) {
+            allFailures.push(...result.failures.slice(0, 1000 - allFailures.length));
+          }
+
+          rows = [];
+          offset += limit;
+
+          await new Promise(resolve => setTimeout(resolve, 300));
+          if ((global as any).gc) {
+            try { (global as any).gc(); } catch (e) {}
+          }
+        }
+
+        const summaryResult = {
+          importedLicenses: totalImported,
+          updatedLicenses: totalUpdated,
+          skippedRows: totalSkipped,
+          totalLicenseRows: processedRows,
+          failures: allFailures.slice(0, 1000)
+        };
+
+        await this.logMigration({
+          module: 'licenses',
+          fileName: "MSSQL Connection: " + tableMap.file1,
+          status: totalSkipped === 0 ? 'SUCCESS' : (totalImported + totalUpdated > 0 ? 'PARTIAL' : 'FAILED'),
+          processed: processedRows + assignRows.length,
+          created: totalImported,
+          updated: totalUpdated,
+          failed: totalSkipped,
+          details: summaryResult
+        });
+
+        return summaryResult;
       } else if (moduleType === 'cut-credits') {
-        const assignRows = (await pool.request().query("SELECT * FROM [" + tableMap.file1 + "]")).recordset;
         const countRows = tableMap.file2 ? (await pool.request().query("SELECT * FROM [" + tableMap.file2 + "]")).recordset : [];
-        return await this.migrateCutCredits(assignRows, countRows, "MSSQL: " + tableMap.file1);
+
+        const countMap = new Map<string, any>();
+        countRows.forEach((c: any) => {
+          const dealerId = String(c.DealerID || '').trim();
+          if (dealerId && !countMap.has(dealerId)) {
+            countMap.set(dealerId, c);
+          }
+        });
+
+        const processedDealersForCount = new Set<string>();
+
+        const orgs = await this.prisma.organization.findMany({
+          where: { legacyId: { not: null } },
+          select: { id: true, legacyId: true }
+        });
+        const orgLegacyMap = new Map<string, string>();
+        orgs.forEach(o => orgLegacyMap.set(o.legacyId!, o.id));
+
+        const dbUsers = await this.prisma.user.findMany({
+          where: { organizationId: { not: null } },
+          select: { id: true, organizationId: true }
+        });
+        const userOrgMap = new Map<string, string>();
+        dbUsers.forEach(u => userOrgMap.set(u.id, u.organizationId!));
+
+        let rootOrg = await this.prisma.organization.findFirst({
+          where: { name: { contains: 'Flashgard', mode: 'insensitive' } }
+        });
+        if (!rootOrg) {
+          const orgTypes = await this.prisma.organizationType.findMany();
+          const parentType = orgTypes.find(o => o.name === 'parent') || orgTypes[0];
+          if (parentType) {
+            rootOrg = await this.prisma.organization.create({
+              data: { name: 'Flashgard', organizationTypeId: parentType.id }
+            });
+          }
+        }
+
+        const sysAdmin = await this.prisma.user.findFirst({
+          where: { isSuperAdmin: true }
+        });
+
+        const mapsCache = {
+          countMap,
+          processedDealersForCount,
+          orgLegacyMap,
+          userOrgMap,
+          rootOrg,
+          sysAdmin,
+          skipLog: true
+        };
+
+        const colCheck = await pool.request().query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + tableMap.file1 + "' AND COLUMN_NAME IN ('Id', 'ID', 'CutcreditAssignDealerID')");
+        const orderCol = colCheck.recordset.length > 0 ? colCheck.recordset[0].COLUMN_NAME : 'Id';
+
+        let offset = 0;
+        const limit = 1000;
+        let hasMore = true;
+        let totalImported = 0;
+        let totalUpdated = 0;
+        let totalSkipped = 0;
+        let processedRows = 0;
+        const allFailures: any[] = [];
+
+        while (hasMore) {
+          this.logger.log(`Fetching chunk for cut-credits: OFFSET ${offset} LIMIT ${limit}`);
+          let rows: any = (await pool.request().query(`SELECT * FROM [${tableMap.file1}] ORDER BY [${orderCol}] OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`)).recordset;
+
+          if (rows.length === 0) {
+            hasMore = false;
+            break;
+          }
+
+          const result = await this.migrateCutCredits(rows, countRows, "MSSQL: " + tableMap.file1, mapsCache);
+          totalImported += result.importedCredits;
+          totalUpdated += result.updatedCredits;
+          totalSkipped += result.skippedRows;
+          processedRows += rows.length;
+
+          if (allFailures.length < 1000 && result.failures) {
+            allFailures.push(...result.failures.slice(0, 1000 - allFailures.length));
+          }
+
+          rows = [];
+          offset += limit;
+
+          await new Promise(resolve => setTimeout(resolve, 300));
+          if ((global as any).gc) {
+            try { (global as any).gc(); } catch (e) {}
+          }
+        }
+
+        const summaryResult = {
+          importedCredits: totalImported,
+          updatedCredits: totalUpdated,
+          skippedRows: totalSkipped,
+          totalCutCreditRows: processedRows,
+          failures: allFailures.slice(0, 1000)
+        };
+
+        await this.logMigration({
+          module: 'cut-credits',
+          fileName: "MSSQL Connection: " + tableMap.file1,
+          status: totalSkipped === 0 ? 'SUCCESS' : (totalImported + totalUpdated > 0 ? 'PARTIAL' : 'FAILED'),
+          processed: processedRows,
+          created: totalImported,
+          updated: totalUpdated,
+          failed: totalSkipped,
+          details: summaryResult
+        });
+
+        return summaryResult;
       } else if (moduleType === 'mobile-app-cuts') {
         // Pre-fetch maps cache once at service level before chunk loop
         const orgs = await this.prisma.organization.findMany({

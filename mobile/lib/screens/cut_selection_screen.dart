@@ -8,6 +8,7 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../services/plotter_service.dart';
 import 'diy_designer_screen.dart';
+import '../widgets/plotter_status_action.dart';
 
 class CutSelectionScreen extends StatefulWidget {
   final Map<String, dynamic> item;
@@ -99,6 +100,9 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
         elevation: 0,
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
+        actions: const [
+          PlotterStatusAction(),
+        ],
       ),
       body: Stack(
         children: [
@@ -189,7 +193,7 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
                         const SizedBox(height: 24),
                         Text(_loadingMessage, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                         const SizedBox(height: 16),
-                        if (_isCutting && _loadingMessage.contains('Cutting')) ...[
+                        if (_isCutting && (_loadingMessage.contains('Cutting') || _loadingMessage.contains('physically'))) ...[
                           LinearProgressIndicator(
                             value: _cutProgress / 100,
                             backgroundColor: Colors.grey[200],
@@ -198,6 +202,19 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
                           const SizedBox(height: 8),
                           Text('$_cutProgress%', style: const TextStyle(fontWeight: FontWeight.bold)),
                         ],
+                        const SizedBox(height: 16),
+                        TextButton.icon(
+                          onPressed: () async {
+                            await _plotterService.reset();
+                            if (mounted) {
+                              setState(() {
+                                _isCutting = false;
+                              });
+                            }
+                          },
+                          icon: const Icon(Icons.cancel, color: Colors.red),
+                          label: const Text('Cancel Cut', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                        ),
                         const SizedBox(height: 8),
                         const Text('Please keep your phone near the plotter', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
                       ],
@@ -409,7 +426,18 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
                 label: '$_selectedSpeed',
                 onChanged: (val) => setDialogState(() => _selectedSpeed = val.toInt()),
               ),
+               const SizedBox(height: 10),
+              const Text('Cutting Force / Pressure', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              Slider(
+                value: _selectedForce.toDouble(),
+                min: 10,
+                max: 1000,
+                divisions: 99,
+                label: '$_selectedForce',
+                onChanged: (val) => setDialogState(() => _selectedForce = val.toInt()),
+              ),
               const SizedBox(height: 10),
+
 
               Row(
                 children: [
@@ -548,18 +576,27 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
 
       // PHASE 3: Send to Plotter
       // At this point, internet is no longer required
+      // Listen to real-time progress
+      final double estimatedSeconds = PlotterService.estimateCutDuration(pltContent, _selectedSpeed);
       if (mounted) {
         setState(() {
-          _loadingMessage = 'Cutting in Progress...';
+          _loadingMessage = _plotterService.isClassicPlotter 
+              ? 'Plotter physically cutting... (${estimatedSeconds.round()} seconds remaining)'
+              : 'Cutting in Progress...';
           _cutProgress = 0;
         });
       }
 
-      // Listen to real-time progress
       _progressSubscription = _plotterService.progressStream.listen((progress) {
         if (mounted) {
           setState(() {
             _cutProgress = progress;
+            if (_plotterService.isClassicPlotter) {
+              final remaining = ((100 - progress) / 100 * estimatedSeconds).round();
+              _loadingMessage = 'Plotter physically cutting... ($remaining seconds remaining)';
+            } else {
+              _loadingMessage = 'Cutting: $progress%';
+            }
           });
         }
       });
@@ -591,7 +628,7 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
         _progressSubscription = null;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(success ? 'Cut completed successfully!' : 'Plotter error during cutting'),
+            content: Text(success ? 'Cut completed successfully!' : 'Plotter error or cut cancelled/reset'),
             backgroundColor: success ? Colors.green : Colors.red,
             action: success ? null : SnackBarAction(
               label: 'Reset Plotter',

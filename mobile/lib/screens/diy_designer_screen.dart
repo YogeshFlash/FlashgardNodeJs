@@ -10,6 +10,7 @@ import '../services/plotter_service.dart';
 import '../providers/auth_provider.dart';
 import 'package:text_to_path_maker/text_to_path_maker.dart';
 import 'package:flutter/services.dart';
+import '../widgets/plotter_status_action.dart';
 
 enum CutoutType {
   circle,
@@ -198,6 +199,17 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
   final PlotterService _plotterService = PlotterService();
   String? _originalPltContent;
   bool _diyModeEnabled = false;
+
+  // Tiling / Multi-Pattern settings
+  bool _isTilingEnabled = false;
+  bool _isTilingSectionExpanded = false;
+  int _repeatRows = 1;
+  int _repeatCols = 1;
+  double _repeatSpacing = 5.0; // in mm
+  double _filmWidth = 110.0;   // in mm (11 cm)
+  double _filmHeight = 180.0;  // in mm (18 cm)
+  double _filmMargin = 5.0;    // in mm (margin from all sides)
+  String _selectedFilmPreset = '11x18'; // '11x18', '18x29.7', 'custom'
 
   // PLT coordinate tracking for merging back to plotter
   double _originMinX = 0.0;
@@ -1349,16 +1361,6 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         _loadingMessage = 'Sending Vector to Plotter...';
       });
 
-      // Listen to progress
-      _progressSubscription = _plotterService.progressStream.listen((progress) {
-        if (mounted) {
-          setState(() {
-            _cutProgress = progress;
-            _loadingMessage = 'Cutting: $progress%';
-          });
-        }
-      });
-
       // Use already-saved in-memory PLT if available; otherwise rebuild it now
       final contentToCut = _savedPltContent?.isNotEmpty == true
           ? _savedPltContent!
@@ -1367,13 +1369,32 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         throw Exception('Invalid vector cut data.');
       }
 
+      // Listen to progress
+      final double estimatedSeconds = PlotterService.estimateCutDuration(
+        contentToCut,
+        _selectedSpeed,
+      );
+      _progressSubscription = _plotterService.progressStream.listen((progress) {
+        if (mounted) {
+          setState(() {
+            _cutProgress = progress;
+            if (_plotterService.isClassicPlotter) {
+              final remaining = ((100 - progress) / 100 * estimatedSeconds).round();
+              _loadingMessage = 'Plotter physically cutting... ($remaining seconds remaining)';
+            } else {
+              _loadingMessage = 'Cutting: $progress%';
+            }
+          });
+        }
+      });
+
       final success = await _plotterService.cutFile(
         content: contentToCut,
         name: 'DecalSkin',
         speed: _selectedSpeed,
         force: _selectedForce,
-        width: _baseWidth,
-        height: _baseHeight,
+        width: _isTilingEnabled ? _filmWidth : _baseWidth,
+        height: _isTilingEnabled ? _filmHeight : _baseHeight,
       );
 
       if (success) {
@@ -1391,7 +1412,7 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(success ? 'Decal skin cut completed successfully!' : 'Plotter cut failed.'),
+            content: Text(success ? 'Decal skin cut completed successfully!' : 'Plotter cut failed/cancelled.'),
             backgroundColor: success ? Colors.green : Colors.red,
           ),
         );
@@ -1435,27 +1456,30 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
-        actions: _diyModeEnabled ? [
-          IconButton(
-            icon: const Icon(Icons.undo),
-            onPressed: _undoStack.isNotEmpty ? _undo : null,
-            tooltip: 'Undo',
-          ),
-          IconButton(
-            icon: const Icon(Icons.redo),
-            onPressed: _redoStack.isNotEmpty ? _redo : null,
-            tooltip: 'Redo',
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
-            onPressed: _selectedCutout != null
-                ? _deleteSelectedCutout
-                : (_selectedDecal != null
-                    ? _deleteSelectedDecal
-                    : (_selectedText != null ? _deleteSelectedText : null)),
-            tooltip: 'Delete Selected',
-          ),
-        ] : null,
+        actions: [
+          const PlotterStatusAction(),
+          if (_diyModeEnabled) ...[
+            IconButton(
+              icon: const Icon(Icons.undo),
+              onPressed: _undoStack.isNotEmpty ? _undo : null,
+              tooltip: 'Undo',
+            ),
+            IconButton(
+              icon: const Icon(Icons.redo),
+              onPressed: _redoStack.isNotEmpty ? _redo : null,
+              tooltip: 'Redo',
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
+              onPressed: _selectedCutout != null
+                  ? _deleteSelectedCutout
+                  : (_selectedDecal != null
+                      ? _deleteSelectedDecal
+                      : (_selectedText != null ? _deleteSelectedText : null)),
+              tooltip: 'Delete Selected',
+            ),
+          ],
+        ],
       ),
       body: Stack(
         children: [
@@ -1478,14 +1502,16 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                           ? const Center(child: CircularProgressIndicator())
                           : LayoutBuilder(
                               builder: (context, constraints) {
-                                final double requiredW = _baseWidth + 40.0;
-                                final double requiredH = _baseHeight + 40.0;
+                                final double activeWidth = _isTilingEnabled ? _filmWidth : _baseWidth;
+                                final double activeHeight = _isTilingEnabled ? _filmHeight : _baseHeight;
+                                final double requiredW = activeWidth + 40.0;
+                                final double requiredH = activeHeight + 40.0;
                                 final double scaleW = constraints.maxWidth / requiredW;
                                 final double scaleH = constraints.maxHeight / requiredH;
                                 final double previewScale = min(scaleW, scaleH);
 
-                                final double previewLeft = (constraints.maxWidth - _baseWidth * previewScale) / 2;
-                                final double previewTop = (constraints.maxHeight - _baseHeight * previewScale) / 2;
+                                final double previewLeft = (constraints.maxWidth - activeWidth * previewScale) / 2;
+                                final double previewTop = (constraints.maxHeight - activeHeight * previewScale) / 2;
 
                                 return CustomPaint(
                                   size: Size(constraints.maxWidth, constraints.maxHeight),
@@ -1499,6 +1525,13 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                                     scale: previewScale,
                                     canvasLeft: previewLeft,
                                     canvasTop: previewTop,
+                                    isTilingEnabled: _isTilingEnabled,
+                                    filmWidth: _filmWidth,
+                                    filmHeight: _filmHeight,
+                                    filmMargin: _filmMargin,
+                                    repeatRows: _repeatRows,
+                                    repeatCols: _repeatCols,
+                                    repeatSpacing: _repeatSpacing,
                                   ),
                                 );
                               },
@@ -1516,9 +1549,320 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                     ],
                   ),
                   child: SafeArea(
-                    child: Column(
+                                    child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        Card(
+                          elevation: 0,
+                          color: Colors.grey[50],
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(color: Colors.grey[200]!),
+                          ),
+                          margin: const EdgeInsets.only(bottom: 16),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                InkWell(
+                                  onTap: _isTilingEnabled ? () {
+                                    setState(() {
+                                      _isTilingSectionExpanded = !_isTilingSectionExpanded;
+                                    });
+                                  } : null,
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.grid_view_rounded, size: 20, color: Theme.of(context).colorScheme.primary),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Text(
+                                                    'Tiling / Multi-Pattern Cut',
+                                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                                  ),
+                                                  if (_isTilingEnabled && !_isTilingSectionExpanded)
+                                                    Padding(
+                                                      padding: const EdgeInsets.only(top: 2),
+                                                      child: Text(
+                                                        'Active: ${_repeatCols}x${_repeatRows} Grid • Margins: ${_filmMargin.toInt()}mm • Spacing: ${_repeatSpacing.toInt()}mm',
+                                                        style: const TextStyle(fontSize: 10, color: Colors.blueGrey, fontWeight: FontWeight.w600),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Row(
+                                        children: [
+                                          Switch(
+                                            value: _isTilingEnabled,
+                                            activeColor: Theme.of(context).colorScheme.primary,
+                                            onChanged: (val) {
+                                              setState(() {
+                                                _isTilingEnabled = val;
+                                                if (val) {
+                                                  _isTilingSectionExpanded = true;
+                                                } else {
+                                                  _repeatRows = 1;
+                                                  _repeatCols = 1;
+                                                  _isTilingSectionExpanded = false;
+                                                }
+                                              });
+                                            },
+                                          ),
+                                          if (_isTilingEnabled) ...[
+                                            const SizedBox(width: 4),
+                                            Icon(
+                                              _isTilingSectionExpanded ? Icons.expand_less : Icons.expand_more,
+                                              color: Colors.grey[600],
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (_isTilingEnabled && _isTilingSectionExpanded) ...[
+                                  const Divider(height: 24),
+                                  Row(
+                                    children: [
+                                      const Expanded(
+                                        child: Text(
+                                          'Film Size Preset',
+                                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey),
+                                        ),
+                                      ),
+                                      DropdownButton<String>(
+                                        value: _selectedFilmPreset,
+                                        items: const [
+                                          DropdownMenuItem(value: '11x18', child: Text('11 x 18 cm (Standard)')),
+                                          DropdownMenuItem(value: '18x29.7', child: Text('18 x 29.7 cm (Large)')),
+                                          DropdownMenuItem(value: 'custom', child: Text('Custom Size')),
+                                        ],
+                                        onChanged: (val) {
+                                          if (val != null) {
+                                            setState(() {
+                                              _selectedFilmPreset = val;
+                                              if (val == '11x18') {
+                                                _filmWidth = 110.0;
+                                                _filmHeight = 180.0;
+                                              } else if (val == '18x29.7') {
+                                                _filmWidth = 180.0;
+                                                _filmHeight = 297.0;
+                                              }
+                                            });
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                  if (_selectedFilmPreset == 'custom') ...[
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: TextField(
+                                            decoration: const InputDecoration(
+                                              labelText: 'Width (mm)',
+                                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            ),
+                                            keyboardType: TextInputType.number,
+                                            controller: TextEditingController(text: _filmWidth.toStringAsFixed(0)),
+                                            onChanged: (val) {
+                                              final d = double.tryParse(val);
+                                              if (d != null && d > 0) {
+                                                setState(() => _filmWidth = d);
+                                              }
+                                            },
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: TextField(
+                                            decoration: const InputDecoration(
+                                              labelText: 'Height (mm)',
+                                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            ),
+                                            keyboardType: TextInputType.number,
+                                            controller: TextEditingController(text: _filmHeight.toStringAsFixed(0)),
+                                            onChanged: (val) {
+                                              final d = double.tryParse(val);
+                                              if (d != null && d > 0) {
+                                                setState(() => _filmHeight = d);
+                                              }
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text('Rows (Horizontal)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                      Row(
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(Icons.remove_circle_outline),
+                                            onPressed: _repeatRows > 1 ? () => setState(() => _repeatRows--) : null,
+                                          ),
+                                          Text('$_repeatRows', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                          IconButton(
+                                            icon: const Icon(Icons.add_circle_outline),
+                                            onPressed: () => setState(() => _repeatRows++),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text('Columns (Vertical)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                      Row(
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(Icons.remove_circle_outline),
+                                            onPressed: _repeatCols > 1 ? () => setState(() => _repeatCols--) : null,
+                                          ),
+                                          Text('$_repeatCols', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                          IconButton(
+                                            icon: const Icon(Icons.add_circle_outline),
+                                            onPressed: () => setState(() => _repeatCols++),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  Column(
+                                    children: [
+                                      Row(
+                                       children: [
+                                         const Text('Gap Spacing', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                         const SizedBox(width: 8),
+                                         IconButton(
+                                           icon: const Icon(Icons.remove, size: 14),
+                                           visualDensity: VisualDensity.compact,
+                                           padding: EdgeInsets.zero,
+                                           constraints: const BoxConstraints(),
+                                           onPressed: _repeatSpacing > 1.0 ? () => setState(() => _repeatSpacing = (_repeatSpacing - 1.0).clamp(1.0, 20.0)) : null,
+                                         ),
+                                         Expanded(
+                                           child: Slider(
+                                             value: _repeatSpacing,
+                                             min: 1.0,
+                                             max: 20.0,
+                                             divisions: 19,
+                                             label: '${_repeatSpacing.toInt()} mm',
+                                             onChanged: (val) => setState(() => _repeatSpacing = val),
+                                           ),
+                                         ),
+                                         IconButton(
+                                           icon: const Icon(Icons.add, size: 14),
+                                           visualDensity: VisualDensity.compact,
+                                           padding: EdgeInsets.zero,
+                                           constraints: const BoxConstraints(),
+                                           onPressed: _repeatSpacing < 20.0 ? () => setState(() => _repeatSpacing = (_repeatSpacing + 1.0).clamp(1.0, 20.0)) : null,
+                                         ),
+                                         const SizedBox(width: 8),
+                                         Text('${_repeatSpacing.toInt()} mm', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                       ],
+                                     ),
+                                     Row(
+                                       children: [
+                                         const Text('Film Margin', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                         const SizedBox(width: 8),
+                                         IconButton(
+                                           icon: const Icon(Icons.remove, size: 14),
+                                           visualDensity: VisualDensity.compact,
+                                           padding: EdgeInsets.zero,
+                                           constraints: const BoxConstraints(),
+                                           onPressed: _filmMargin > 0.0 ? () => setState(() => _filmMargin = (_filmMargin - 1.0).clamp(0.0, 30.0)) : null,
+                                         ),
+                                         Expanded(
+                                           child: Slider(
+                                             value: _filmMargin,
+                                             min: 0.0,
+                                             max: 30.0,
+                                             divisions: 30,
+                                             label: '${_filmMargin.toInt()} mm',
+                                             onChanged: (val) => setState(() => _filmMargin = val),
+                                           ),
+                                         ),
+                                         IconButton(
+                                           icon: const Icon(Icons.add, size: 14),
+                                           visualDensity: VisualDensity.compact,
+                                           padding: EdgeInsets.zero,
+                                           constraints: const BoxConstraints(),
+                                           onPressed: _filmMargin < 30.0 ? () => setState(() => _filmMargin = (_filmMargin + 1.0).clamp(0.0, 30.0)) : null,
+                                         ),
+                                         const SizedBox(width: 8),
+                                         Text('${_filmMargin.toInt()} mm', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                       ],
+                                     ),
+                                      Builder(
+                                        builder: (context) {
+                                          final double totalW = _filmMargin * 2 + _repeatCols * _baseWidth + (_repeatCols - 1) * _repeatSpacing;
+                                          final double totalH = _filmMargin * 2 + _repeatRows * _baseHeight + (_repeatRows - 1) * _repeatSpacing;
+                                          final bool fits = totalW <= _filmWidth && totalH <= _filmHeight;
+
+                                          if (!fits) {
+                                            return Container(
+                                              margin: const EdgeInsets.only(top: 8),
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.red[50],
+                                                borderRadius: BorderRadius.circular(8),
+                                                border: Border.all(color: Colors.red[200]!),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 18),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: Text(
+                                                      'Warning: Tiled patterns (${totalW.toInt()}x${totalH.toInt()} mm) exceed the film sheet boundary (${_filmWidth.toInt()}x${_filmHeight.toInt()} mm).',
+                                                      style: const TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          }
+                                          return Container(
+                                            margin: const EdgeInsets.only(top: 8),
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green[50],
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: Colors.green[200]!),
+                                            ),
+                                            child: Text(
+                                              'Tiled Layout Fits! Total area: ${totalW.toInt()} x ${totalH.toInt()} mm (Film size: ${_filmWidth.toInt()} x ${_filmHeight.toInt()} mm).',
+                                              style: TextStyle(color: Colors.green[900], fontSize: 10, fontWeight: FontWeight.bold),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
@@ -1534,23 +1878,56 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: _isLoading ? null : () {
-                              setState(() {
-                                _diyModeEnabled = true;
-                              });
-                            },
-                            icon: const Icon(Icons.palette_outlined, size: 20),
-                            label: const Text('ADD DECALS (DIY)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.indigo,
-                              side: const BorderSide(color: Colors.indigo, width: 2),
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: (_isLoading || _isTilingEnabled) ? null : () {
+                                  setState(() {
+                                    _diyModeEnabled = true;
+                                    _showDecalsList = true;
+                                  });
+                                },
+                                icon: const Icon(Icons.palette_outlined, size: 18),
+                                label: Text(
+                                  _isTilingEnabled ? 'DECALS (OFF)' : 'ADD DECALS',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: _isTilingEnabled ? Colors.grey : Colors.indigo,
+                                  side: BorderSide(color: _isTilingEnabled ? Colors.grey[300]! : Colors.indigo, width: 2),
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                ),
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: (_isLoading || _isTilingEnabled) ? null : () {
+                                  setState(() {
+                                    _diyModeEnabled = true;
+                                    _showDecalsList = false;
+                                  });
+                                },
+                                icon: const Icon(Icons.design_services_outlined, size: 18),
+                                label: Text(
+                                  _isTilingEnabled ? 'DIY (OFF)' : 'DIY',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: _isTilingEnabled ? Colors.grey : Colors.indigo,
+                                  side: BorderSide(color: _isTilingEnabled ? Colors.grey[300]! : Colors.indigo, width: 2),
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -2475,19 +2852,45 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
             Text('${safeVal.toInt()} mm', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isEnabled ? Colors.black87 : Colors.grey)),
           ],
         ),
-        SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            trackHeight: 2,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-            overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-          ),
-          child: Slider(
-            value: safeVal,
-            min: minVal,
-            max: safeMax,
-            onChangeStart: isEnabled ? (v) => _saveToHistory() : null,
-            onChanged: isEnabled ? onChanged : null,
-          ),
+        Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.remove, size: 14),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: (isEnabled && safeVal > minVal) ? () {
+                _saveToHistory();
+                onChanged(val - 1.0);
+              } : null,
+            ),
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 2,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                ),
+                child: Slider(
+                  value: safeVal,
+                  min: minVal,
+                  max: safeMax,
+                  onChangeStart: isEnabled ? (v) => _saveToHistory() : null,
+                  onChanged: isEnabled ? onChanged : null,
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.add, size: 14),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: (isEnabled && safeVal < safeMax) ? () {
+                _saveToHistory();
+                onChanged(val + 1.0);
+              } : null,
+            ),
+          ],
         ),
       ],
     );
@@ -2776,9 +3179,70 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     }
   }
 
+  String _getTiledPltContent(String originalPlt) {
+    if (!_isTilingEnabled || (_repeatRows == 1 && _repeatCols == 1)) {
+      return originalPlt;
+    }
+
+    final List<String> instructions = originalPlt.split(';');
+    final List<String> headers = [];
+    final List<String> drawingInstructions = [];
+
+    final coordRegex = RegExp(r'^([A-Za-z]{2})\s*(-?\d+(?:\.\d+)?)\s*[\s,]\s*(-?\d+(?:\.\d+)?)');
+
+    for (final inst in instructions) {
+      final trimmed = inst.trim();
+      if (trimmed.isEmpty) continue;
+
+      if (coordRegex.hasMatch(trimmed)) {
+        drawingInstructions.add(trimmed);
+      } else {
+        if (drawingInstructions.isEmpty) {
+          headers.add(trimmed);
+        } else {
+          drawingInstructions.add(trimmed);
+        }
+      }
+    }
+
+    final StringBuffer tiledPlt = StringBuffer();
+    for (final h in headers) {
+      tiledPlt.write('$h;');
+    }
+
+    for (int r = 0; r < _repeatRows; r++) {
+      for (int c = 0; c < _repeatCols; c++) {
+        final double xOffsetSteps = (_filmMargin + c * (_baseWidth + _repeatSpacing)) * 40.0;
+        final double yOffsetSteps = (_filmMargin + r * (_baseHeight + _repeatSpacing)) * 40.0;
+
+        for (final inst in drawingInstructions) {
+          final match = coordRegex.firstMatch(inst);
+          if (match != null) {
+            final cmd = match.group(1);
+            final double x = double.tryParse(match.group(2) ?? '0') ?? 0.0;
+            final double y = double.tryParse(match.group(3) ?? '0') ?? 0.0;
+
+            final int newX = (x + xOffsetSteps).round();
+            final int newY = (y + yOffsetSteps).round();
+
+            tiledPlt.write('$cmd$newX,$newY;');
+          } else {
+            tiledPlt.write('$inst;');
+          }
+        }
+      }
+    }
+
+    return tiledPlt.toString();
+  }
+
   Future<String> _getMergedPltContent() async {
     String mergedPlt = _originalPltContent ?? '';
     if (mergedPlt.isEmpty) return '';
+
+    if (_isTilingEnabled) {
+      mergedPlt = _getTiledPltContent(mergedPlt);
+    }
 
     if (!mergedPlt.endsWith(';')) {
       mergedPlt += ';';
@@ -3082,6 +3546,15 @@ class CanvasGridPainter extends CustomPainter {
   final double canvasLeft;
   final double canvasTop;
 
+  // New variables for tiling support
+  final bool isTilingEnabled;
+  final double filmWidth;
+  final double filmHeight;
+  final double filmMargin;
+  final int repeatRows;
+  final int repeatCols;
+  final double repeatSpacing;
+
   CanvasGridPainter({
     required this.baseWidth,
     required this.baseHeight,
@@ -3092,6 +3565,13 @@ class CanvasGridPainter extends CustomPainter {
     required this.scale,
     required this.canvasLeft,
     required this.canvasTop,
+    this.isTilingEnabled = false,
+    this.filmWidth = 110.0,
+    this.filmHeight = 180.0,
+    this.filmMargin = 5.0,
+    this.repeatRows = 1,
+    this.repeatCols = 1,
+    this.repeatSpacing = 5.0,
   });
 
   @override
@@ -3114,78 +3594,133 @@ class CanvasGridPainter extends CustomPainter {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), y % (gridStepMm * 2 * scale) == 0 ? majorGridPaint : gridPaint);
     }
 
-    // 2. Draw Base Outline
-    final basePaint = Paint()
-      ..color = Colors.black87
-      ..strokeWidth = 2.0
-      ..strokeJoin = StrokeJoin.round
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    final baseOutlinePath = Path();
-    if (customBaseOutline.isNotEmpty) {
-      final start = customBaseOutline.first;
-      baseOutlinePath.moveTo(canvasLeft + start.dx * scale, canvasTop + start.dy * scale);
-      for (int i = 1; i < customBaseOutline.length; i++) {
-        final pt = customBaseOutline[i];
-        baseOutlinePath.lineTo(canvasLeft + pt.dx * scale, canvasTop + pt.dy * scale);
-      }
-      baseOutlinePath.close();
-      canvas.drawPath(baseOutlinePath, basePaint);
-    } else {
-      final baseRect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(canvasLeft, canvasTop, baseWidth * scale, baseHeight * scale),
-        Radius.circular(baseCornerRadius * scale),
-      );
-      canvas.drawRRect(baseRect, basePaint);
-    }
-
-    if (isBaseSelected) {
-      final selectPaint = Paint()
-        ..color = Colors.blue.withOpacity(0.3)
-        ..strokeWidth = 3.0
-        ..strokeJoin = StrokeJoin.round
-        ..strokeCap = StrokeCap.round
+    // 2. Draw Film Sheet Boundary
+    if (isTilingEnabled) {
+      final filmBackgroundPaint = Paint()
+        ..color = const Color(0xFFF1F5F9).withOpacity(0.85) // Slate-100 frosted background
+        ..style = PaintingStyle.fill;
+      
+      final filmBorderPaint = Paint()
+        ..color = const Color(0xFF64748B) // Slate-500
+        ..strokeWidth = 2.0
         ..style = PaintingStyle.stroke;
 
-      if (customBaseOutline.isNotEmpty) {
-        canvas.drawPath(baseOutlinePath, selectPaint);
-      } else {
-        final baseRect = RRect.fromRectAndRadius(
-          Rect.fromLTWH(canvasLeft, canvasTop, baseWidth * scale, baseHeight * scale),
-          Radius.circular(baseCornerRadius * scale),
+      final filmRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(canvasLeft, canvasTop, filmWidth * scale, filmHeight * scale),
+        Radius.circular(8 * scale),
+      );
+      
+      canvas.drawRRect(filmRect, filmBackgroundPaint);
+      canvas.drawRRect(filmRect, filmBorderPaint);
+
+      // Draw inner margin bounds
+      if (filmMargin > 0) {
+        final marginPaint = Paint()
+          ..color = const Color(0xFF94A3B8)
+          ..strokeWidth = 1.0
+          ..style = PaintingStyle.stroke;
+
+        final marginRect = Rect.fromLTWH(
+          canvasLeft + filmMargin * scale,
+          canvasTop + filmMargin * scale,
+          (filmWidth - filmMargin * 2) * scale,
+          (filmHeight - filmMargin * 2) * scale,
         );
-        canvas.drawRRect(baseRect, selectPaint);
-
-        final handlePaint = Paint()
-          ..color = Colors.indigo
-          ..style = PaintingStyle.fill;
-
-        canvas.drawCircle(Offset(canvasLeft + baseWidth * scale, canvasTop + (baseHeight / 2) * scale), 8, handlePaint);
-        canvas.drawCircle(Offset(canvasLeft + (baseWidth / 2) * scale, canvasTop + baseHeight * scale), 8, handlePaint);
+        canvas.drawRect(marginRect, marginPaint);
       }
     }
 
-    // 3. Draw Cutouts using exact vector lines
-    final cutoutPaint = Paint()
-      ..color = Colors.red
-      ..strokeWidth = 1.5
-      ..strokeJoin = StrokeJoin.round
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
+    // 3. Draw Repeated Base Outlines and Cutouts
+    final int rows = isTilingEnabled ? repeatRows : 1;
+    final int cols = isTilingEnabled ? repeatCols : 1;
 
-    for (final path in normalizedCutoutPaths) {
-      if (path.isEmpty) continue;
-      final cutoutPath = Path();
-      final start = path.first;
-      cutoutPath.moveTo(canvasLeft + start.dx * scale, canvasTop + start.dy * scale);
-      for (int i = 1; i < path.length; i++) {
-        final pt = path[i];
-        cutoutPath.lineTo(canvasLeft + pt.dx * scale, canvasTop + pt.dy * scale);
+    for (int r = 0; r < rows; r++) {
+      for (int c = 0; c < cols; c++) {
+        final double xOffset = isTilingEnabled ? (filmMargin + c * (baseWidth + repeatSpacing)) * scale : 0.0;
+        final double yOffset = isTilingEnabled ? (filmMargin + r * (baseHeight + repeatSpacing)) * scale : 0.0;
+
+        bool fits = true;
+        if (isTilingEnabled) {
+          final double rightBoundary = filmMargin + c * (baseWidth + repeatSpacing) + baseWidth;
+          final double bottomBoundary = filmMargin + r * (baseHeight + repeatSpacing) + baseHeight;
+          if (rightBoundary > (filmWidth - filmMargin) || bottomBoundary > (filmHeight - filmMargin)) {
+            fits = false;
+          }
+        }
+
+        // Draw Base Outline
+        final basePaint = Paint()
+          ..color = fits ? Colors.black87 : Colors.red
+          ..strokeWidth = 2.0
+          ..strokeJoin = StrokeJoin.round
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke;
+
+        final baseOutlinePath = Path();
+        if (customBaseOutline.isNotEmpty) {
+          final start = customBaseOutline.first;
+          baseOutlinePath.moveTo(canvasLeft + xOffset + start.dx * scale, canvasTop + yOffset + start.dy * scale);
+          for (int i = 1; i < customBaseOutline.length; i++) {
+            final pt = customBaseOutline[i];
+            baseOutlinePath.lineTo(canvasLeft + xOffset + pt.dx * scale, canvasTop + yOffset + pt.dy * scale);
+          }
+          baseOutlinePath.close();
+          canvas.drawPath(baseOutlinePath, basePaint);
+        } else {
+          final baseRect = RRect.fromRectAndRadius(
+            Rect.fromLTWH(canvasLeft + xOffset, canvasTop + yOffset, baseWidth * scale, baseHeight * scale),
+            Radius.circular(baseCornerRadius * scale),
+          );
+          canvas.drawRRect(baseRect, basePaint);
+        }
+
+        if (isBaseSelected && !isTilingEnabled) {
+          final selectPaint = Paint()
+            ..color = Colors.blue.withOpacity(0.3)
+            ..strokeWidth = 3.0
+            ..strokeJoin = StrokeJoin.round
+            ..strokeCap = StrokeCap.round
+            ..style = PaintingStyle.stroke;
+
+          if (customBaseOutline.isNotEmpty) {
+            canvas.drawPath(baseOutlinePath, selectPaint);
+          } else {
+            final baseRect = RRect.fromRectAndRadius(
+              Rect.fromLTWH(canvasLeft, canvasTop, baseWidth * scale, baseHeight * scale),
+              Radius.circular(baseCornerRadius * scale),
+            );
+            canvas.drawRRect(baseRect, selectPaint);
+
+            final handlePaint = Paint()
+              ..color = Colors.indigo
+              ..style = PaintingStyle.fill;
+
+            canvas.drawCircle(Offset(canvasLeft + baseWidth * scale, canvasTop + (baseHeight / 2) * scale), 8, handlePaint);
+            canvas.drawCircle(Offset(canvasLeft + (baseWidth / 2) * scale, canvasTop + baseHeight * scale), 8, handlePaint);
+          }
+        }
+
+        // Draw Cutouts
+        final cutoutPaint = Paint()
+          ..color = fits ? Colors.red : Colors.red.withOpacity(0.4)
+          ..strokeWidth = 1.5
+          ..strokeJoin = StrokeJoin.round
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke;
+
+        for (final path in normalizedCutoutPaths) {
+          if (path.isEmpty) continue;
+          final cutoutPath = Path();
+          final start = path.first;
+          cutoutPath.moveTo(canvasLeft + xOffset + start.dx * scale, canvasTop + yOffset + start.dy * scale);
+          for (int i = 1; i < path.length; i++) {
+            final pt = path[i];
+            cutoutPath.lineTo(canvasLeft + xOffset + pt.dx * scale, canvasTop + yOffset + pt.dy * scale);
+          }
+          cutoutPath.close();
+          canvas.drawPath(cutoutPath, cutoutPaint);
+        }
       }
-      // Note: We close the path since these represent closed cuts
-      cutoutPath.close();
-      canvas.drawPath(cutoutPath, cutoutPaint);
     }
   }
 

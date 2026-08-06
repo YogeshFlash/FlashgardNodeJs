@@ -1,19 +1,20 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  Edit2, 
-  Trash2, 
-  ChevronRight, 
+import XLSX from 'xlsx-js-style';
+import {
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  ChevronRight,
   ChevronLeft,
-  Smartphone, 
-  Box, 
-  Boxes, 
+  Smartphone,
+  Box,
+  Boxes,
   Scissors,
   X,
   FileCode,
   Upload,
+  Download,
   RefreshCw,
   Image,
   Wand2,
@@ -21,10 +22,10 @@ import {
   Check,
   RotateCcw
 } from 'lucide-react';
-import { 
-  modelsApi, 
-  brandsApi, 
-  modelCategoriesApi, 
+import {
+  modelsApi,
+  brandsApi,
+  modelCategoriesApi,
   cutPatternsApi,
   modelCutFilesApi,
   migrationApi
@@ -38,7 +39,7 @@ import PreviewModal from '../components/models/PreviewModal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { HasPermission } from '../components/HasPermission';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000/api';
+import { getApiBase } from '../lib/api';
 
 type TabType = 'catalog' | 'categories' | 'brands' | 'patterns' | 'designs';
 
@@ -46,7 +47,7 @@ const ModelsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('categories');
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<any>(null);
-  
+
   const [categories, setCategories] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
   const [models, setModels] = useState<any[]>([]);
@@ -56,8 +57,8 @@ const ModelsPage: React.FC = () => {
   const [allDesigns, setAllDesigns] = useState<any[]>([]);
   const [designsTotal, setDesignsTotal] = useState(0);
   const [designsPage, setDesignsPage] = useState(1);
-  const [activeCombinations, setActiveCombinations] = useState<{categoryId: string, brandId: string}[]>([]);
-  
+  const [activeCombinations, setActiveCombinations] = useState<{ categoryId: string, brandId: string }[]>([]);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
@@ -67,6 +68,9 @@ const ModelsPage: React.FC = () => {
 
   const [modal, setModal] = useState<{ type: string; data: any } | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [treeSearchTerm, setTreeSearchTerm] = useState('');
+  const [isRefreshingTree, setIsRefreshingTree] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<any>({ isOpen: false });
   const [normalizingId, setNormalizingId] = useState<string | null>(null);
@@ -87,7 +91,7 @@ const ModelsPage: React.FC = () => {
     if (!url.includes('/')) return `${S3_CATALOG_BASE}/${url}`;
     // Remove leading slash if present to prevent double slashes with API_BASE
     const cleanUrl = url.startsWith('/') ? url.substring(1) : url;
-    return `${API_BASE.replace('/api', '')}/${cleanUrl}`;
+    return `${getApiBase().replace('/api', '')}/${cleanUrl}`;
   };
 
   const fetchMasterData = useCallback(async () => {
@@ -124,10 +128,10 @@ const ModelsPage: React.FC = () => {
     try {
       const skip = (currentPage - 1) * itemsPerPage;
       const { items, total } = await modelsApi.getAll(
-        selectedBrandId || undefined, 
-        selectedCategoryId || undefined, 
-        searchTerm, 
-        skip, 
+        selectedBrandId || undefined,
+        selectedCategoryId || undefined,
+        searchTerm,
+        skip,
         itemsPerPage
       );
       setModels(items);
@@ -345,19 +349,19 @@ const ModelsPage: React.FC = () => {
       const children = categories
         .filter(c => c.parentId === parentId)
         .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-      
+
       children.forEach(cat => {
         rows.push({ type: 'category', data: cat, depth });
         if (expandedIds.has(cat.id)) {
           buildTree(cat.id, depth + 1);
-          if (depth >= 0) { 
-             const activeBrandIds = activeCombinations.filter(ac => ac.categoryId === cat.id).map(ac => ac.brandId);
-             brands
-               .filter(b => activeBrandIds.includes(b.id))
-               .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-               .forEach(brand => {
-                  rows.push({ type: 'brand', data: brand, depth: depth + 1, categoryId: cat.id });
-               });
+          if (depth >= 0) {
+            const activeBrandIds = activeCombinations.filter(ac => ac.categoryId === cat.id).map(ac => ac.brandId);
+            brands
+              .filter(b => activeBrandIds.includes(b.id))
+              .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+              .forEach(brand => {
+                rows.push({ type: 'brand', data: brand, depth: depth + 1, categoryId: cat.id });
+              });
           }
         }
       });
@@ -365,6 +369,242 @@ const ModelsPage: React.FC = () => {
     buildTree(startParentId, 0);
     return rows;
   }, [categories, brands, expandedIds, activeCombinations]);
+
+  const filteredTreeRows = useMemo(() => {
+    if (!treeSearchTerm.trim()) return treeRows;
+    const term = treeSearchTerm.toLowerCase();
+    return treeRows.filter(r => r.data?.name?.toLowerCase().includes(term));
+  }, [treeRows, treeSearchTerm]);
+
+  const handleExportTreeExcel = async () => {
+    if (!categories || categories.length === 0) {
+      alert('No catalog categories available to export.');
+      return;
+    }
+
+    setIsExportingExcel(true);
+    try {
+      // 1. Fetch ALL models across all pages
+      const { items: allModels } = await modelsApi.getAll(undefined, undefined, undefined, 0, 100000);
+      const modelList = allModels || [];
+
+      // Map models by "categoryId_brandId" for instant, efficient lookup
+      const modelsByCatBrand = new Map<string, any[]>();
+      modelList.forEach(m => {
+        const key = `${m.categoryId}_${m.brandId}`;
+        const list = modelsByCatBrand.get(key) || [];
+        list.push(m);
+        modelsByCatBrand.set(key, list);
+      });
+
+      const headers = [
+        'Tree Structure Hierarchy',
+        'Level / Type',
+        'Category Name',
+        'Brand Name',
+        'Model Name',
+        'Status',
+        'Cut Files Count',
+        'Created Date'
+      ];
+
+      const sheetData: any[][] = [headers];
+      const rowTypes: { type: 'ROOT' | 'CATEGORY' | 'BRAND' | 'MODEL'; depth: number }[] = [];
+
+      const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+
+      const buildFullHierarchy = (parentId: string | null, depth: number, prefix: string) => {
+        const childCats = categories
+          .filter(c => c.parentId === parentId)
+          .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+        childCats.forEach((cat, cIdx) => {
+          const isLastCat = cIdx === childCats.length - 1;
+          const catSymbol = depth === 0 ? '📁 ' : (isLastCat ? '└── 📁 ' : '├── 📁 ');
+          const catIndent = prefix + catSymbol;
+
+          const isRoot = depth === 0;
+          sheetData.push([
+            `${catIndent}${cat.name}`,
+            isRoot ? 'ROOT CATEGORY' : 'SUB-CATEGORY',
+            cat.name,
+            cat.parentId ? (categoryMap.get(cat.parentId) || '') : 'Top Level',
+            '—',
+            cat.isActive !== false ? 'ACTIVE' : 'INACTIVE',
+            '—',
+            cat.createdAt ? new Date(cat.createdAt).toLocaleDateString() : ''
+          ]);
+          rowTypes.push({ type: isRoot ? 'ROOT' : 'CATEGORY', depth });
+
+          const newPrefix = prefix + (depth === 0 ? '' : (isLastCat ? '    ' : '│   '));
+
+          // Find brands associated with this category via models OR activeCombinations
+          const brandIdsInCat = new Set<string>();
+          activeCombinations.filter(ac => ac.categoryId === cat.id).forEach(ac => brandIdsInCat.add(ac.brandId));
+          modelList.filter(m => m.categoryId === cat.id && m.brandId).forEach(m => brandIdsInCat.add(m.brandId));
+
+          const catBrands = brands.filter(b => brandIdsInCat.has(b.id)).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+          catBrands.forEach((brand, bIdx) => {
+            const isLastBrand = bIdx === catBrands.length - 1;
+            const brandSymbol = isLastBrand ? '└── 🏷️ ' : '├── 🏷️ ';
+            const brandIndent = newPrefix + brandSymbol;
+
+            sheetData.push([
+              `${brandIndent}${brand.name}`,
+              'BRAND',
+              cat.name,
+              brand.name,
+              '—',
+              brand.isActive !== false ? 'ACTIVE' : 'INACTIVE',
+              '—',
+              brand.createdAt ? new Date(brand.createdAt).toLocaleDateString() : ''
+            ]);
+            rowTypes.push({ type: 'BRAND', depth: depth + 1 });
+
+            const brandPrefix = newPrefix + (isLastBrand ? '    ' : '│   ');
+
+            // Models under this category + brand
+            const key = `${cat.id}_${brand.id}`;
+            const catBrandModels = (modelsByCatBrand.get(key) || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+            catBrandModels.forEach((m, mIdx) => {
+              const isLastModel = mIdx === catBrandModels.length - 1;
+              const modelSymbol = isLastModel ? '└── 📱 ' : '├── 📱 ';
+              const modelIndent = brandPrefix + modelSymbol;
+              const cutCount = m.cutFilesCount || m.cutFiles?.length || 0;
+
+              sheetData.push([
+                `${modelIndent}${m.name}`,
+                'MODEL',
+                cat.name,
+                brand.name,
+                m.name,
+                m.isActive !== false ? 'ACTIVE' : 'INACTIVE',
+                cutCount,
+                m.createdAt ? new Date(m.createdAt).toLocaleDateString() : ''
+              ]);
+              rowTypes.push({ type: 'MODEL', depth: depth + 2 });
+            });
+          });
+
+          // Recurse subcategories
+          buildFullHierarchy(cat.id, depth + 1, newPrefix);
+        });
+      };
+
+      const mainModelCat = categories.find(c => c.name === 'Main Model' && c.parentId === null);
+      buildFullHierarchy(mainModelCat ? mainModelCat.id : null, 0, '');
+
+      const worksheet = XLSX.utils.aoa_to_sheet(sheetData);
+      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+
+      // ─── Professional Excel Formatting & Color Styles ───
+      const headerStyle = {
+        font: { name: 'Segoe UI', sz: 11, bold: true, color: { rgb: 'FFFFFF' } },
+        fill: { fgColor: { rgb: '0F172A' } }, // Deep Navy
+        alignment: { vertical: 'center', horizontal: 'left', wrapText: true },
+        border: {
+          top: { style: 'medium', color: { rgb: '0F172A' } },
+          bottom: { style: 'medium', color: { rgb: '0F172A' } },
+          left: { style: 'thin', color: { rgb: '334155' } },
+          right: { style: 'thin', color: { rgb: '334155' } }
+        }
+      };
+
+      const rootStyle = {
+        font: { name: 'Segoe UI', sz: 11, bold: true, color: { rgb: 'FFFFFF' } },
+        fill: { fgColor: { rgb: '1E1B4B' } }, // Dark Indigo
+        alignment: { vertical: 'center', horizontal: 'left' },
+        border: {
+          top: { style: 'thin', color: { rgb: '312E81' } },
+          bottom: { style: 'thin', color: { rgb: '312E81' } },
+          left: { style: 'thin', color: { rgb: '312E81' } },
+          right: { style: 'thin', color: { rgb: '312E81' } }
+        }
+      };
+
+      const categoryStyle = {
+        font: { name: 'Segoe UI', sz: 10.5, bold: true, color: { rgb: 'FFFFFF' } },
+        fill: { fgColor: { rgb: '4338CA' } }, // Indigo Accent
+        alignment: { vertical: 'center', horizontal: 'left' },
+        border: {
+          top: { style: 'thin', color: { rgb: '3730A3' } },
+          bottom: { style: 'thin', color: { rgb: '3730A3' } },
+          left: { style: 'thin', color: { rgb: '3730A3' } },
+          right: { style: 'thin', color: { rgb: '3730A3' } }
+        }
+      };
+
+      const brandStyle = {
+        font: { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: '1E1B4B' } },
+        fill: { fgColor: { rgb: 'E0E7FF' } }, // Soft Light Indigo Tint
+        alignment: { vertical: 'center', horizontal: 'left' },
+        border: {
+          top: { style: 'thin', color: { rgb: 'C7D2FE' } },
+          bottom: { style: 'thin', color: { rgb: 'C7D2FE' } },
+          left: { style: 'thin', color: { rgb: 'C7D2FE' } },
+          right: { style: 'thin', color: { rgb: 'C7D2FE' } }
+        }
+      };
+
+      const modelStyle = {
+        font: { name: 'Segoe UI', sz: 10, color: { rgb: '334155' } },
+        fill: { fgColor: { rgb: 'FFFFFF' } }, // Clean White
+        alignment: { vertical: 'center', horizontal: 'left' },
+        border: {
+          top: { style: 'thin', color: { rgb: 'F1F5F9' } },
+          bottom: { style: 'thin', color: { rgb: 'F1F5F9' } },
+          left: { style: 'thin', color: { rgb: 'F1F5F9' } },
+          right: { style: 'thin', color: { rgb: 'F1F5F9' } }
+        }
+      };
+
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        const isHeader = R === 0;
+        const rItem = !isHeader ? rowTypes[R - 1] : null;
+
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!worksheet[cellRef]) continue;
+
+          if (isHeader) {
+            worksheet[cellRef].s = headerStyle;
+          } else if (rItem?.type === 'ROOT') {
+            worksheet[cellRef].s = rootStyle;
+          } else if (rItem?.type === 'CATEGORY') {
+            worksheet[cellRef].s = categoryStyle;
+          } else if (rItem?.type === 'BRAND') {
+            worksheet[cellRef].s = brandStyle;
+          } else {
+            worksheet[cellRef].s = modelStyle;
+          }
+        }
+      }
+
+      worksheet['!cols'] = [
+        { wch: 45 }, // Tree Structure Hierarchy
+        { wch: 18 }, // Level / Type
+        { wch: 25 }, // Category Name
+        { wch: 20 }, // Brand Name
+        { wch: 32 }, // Model Name
+        { wch: 12 }, // Status
+        { wch: 15 }, // Cut Files Count
+        { wch: 15 }  // Created Date
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Catalog Models Tree');
+
+      const dateStr = new Date().toISOString().substring(0, 10);
+      XLSX.writeFile(workbook, `Catalog_Models_Full_Tree_${dateStr}.xlsx`);
+    } catch (err: any) {
+      console.error('Export failed:', err);
+      alert('Failed to export catalog models tree: ' + (err.message || err));
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
 
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
@@ -380,11 +620,11 @@ const ModelsPage: React.FC = () => {
   ];
 
   const filteredItems = useMemo(() => {
-    if (activeTab === 'catalog') return models; 
-    const list = 
-      activeTab === 'categories' ? categories : 
-      activeTab === 'brands' ? brands : 
-      cutPatterns;
+    if (activeTab === 'catalog') return models;
+    const list =
+      activeTab === 'categories' ? categories :
+        activeTab === 'brands' ? brands :
+          cutPatterns;
     if (!searchTerm) return list;
     return list.filter((item: any) => item.name?.toLowerCase().includes(searchTerm.toLowerCase()));
   }, [activeTab, categories, brands, models, cutPatterns, searchTerm]);
@@ -395,7 +635,7 @@ const ModelsPage: React.FC = () => {
   }, [activeTab, totalModels, filteredItems.length, itemsPerPage]);
 
   const paginatedItems = useMemo(() => {
-    if (activeTab === 'catalog') return filteredItems; 
+    if (activeTab === 'catalog') return filteredItems;
     const start = (currentPage - 1) * itemsPerPage;
     return filteredItems.slice(start, start + itemsPerPage);
   }, [activeTab, filteredItems, currentPage, itemsPerPage]);
@@ -443,21 +683,75 @@ const ModelsPage: React.FC = () => {
         <div className="p-3 border-b border-slate-200 bg-white flex items-center justify-between">
           {!isSidebarCollapsed && (
             <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 truncate">
-              <Filter className="w-3.5 h-3.5 text-[var(--color-accent)]" /> Catalog Tree
+              <Boxes className="w-3.5 h-3.5 text-[var(--color-accent)]" /> Catalog Tree
             </h2>
           )}
-          <button 
+          <button
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 transition-colors mx-auto lg:mx-0"
+            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
           >
             {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
         </div>
-        
+
+        {!isSidebarCollapsed && (
+          <div className="p-3 border-b border-slate-100 bg-white flex items-center justify-between gap-2">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                className="w-full pl-8 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/20 focus:bg-white transition-all"
+                placeholder="Search tree..."
+                value={treeSearchTerm}
+                onChange={e => setTreeSearchTerm(e.target.value)}
+              />
+              {treeSearchTerm && (
+                <button
+                  onClick={() => setTreeSearchTerm('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200/50"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={async () => {
+                setIsRefreshingTree(true);
+                await fetchMasterData();
+                if (activeTab === 'catalog') await fetchModels();
+                setIsRefreshingTree(false);
+              }}
+              disabled={isRefreshingTree}
+              className="w-7 h-7 shrink-0 rounded-lg border border-slate-200 text-slate-500 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-xs disabled:opacity-50"
+              title="Refresh Tree"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isRefreshingTree ? 'animate-spin text-[var(--color-accent)]' : ''}`} />
+            </button>
+            <button
+              onClick={handleExportTreeExcel}
+              disabled={isExportingExcel}
+              className="w-7 h-7 shrink-0 rounded-lg border border-slate-200 text-slate-500 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-xs disabled:opacity-50"
+              title="Export Full Catalog Tree Excel"
+            >
+              {isExportingExcel ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--color-accent)]" /> : <Download className="w-3.5 h-3.5" />}
+            </button>
+            <HasPermission permission="catalog:write">
+              <button
+                onClick={() => setModal({ type: 'categories', data: null })}
+                className="w-7 h-7 shrink-0 rounded-lg bg-[var(--color-accent)] text-white flex items-center justify-center hover:bg-[var(--color-accent-dark)] transition-colors shadow-xs"
+                title="New Category"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </HasPermission>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto p-2">
           <div className="space-y-1">
-            {treeRows.map((row, idx) => (
-              <div 
+            {filteredTreeRows.map((row, idx) => (
+              <div
                 key={`${row.type}-${row.data.id}-${idx}`}
                 style={{ paddingLeft: `${row.depth * 1}rem` }}
                 onClick={() => {
@@ -475,12 +769,11 @@ const ModelsPage: React.FC = () => {
                     setSelected(null);
                   }
                 }}
-                className={`group flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all ${
-                  ((row.type === 'brand' && selectedBrandId === row.data.id && selectedCategoryId === row.categoryId) ||
-                   (row.type === 'category' && selectedCategoryId === row.data.id && !selectedBrandId))
-                  ? 'bg-indigo-50 text-[var(--color-accent)]' 
+                className={`group flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all ${((row.type === 'brand' && selectedBrandId === row.data.id && selectedCategoryId === row.categoryId) ||
+                  (row.type === 'category' && selectedCategoryId === row.data.id && !selectedBrandId))
+                  ? 'bg-indigo-50 text-[var(--color-accent)]'
                   : 'hover:bg-white text-slate-600'
-                } ${isSidebarCollapsed ? 'justify-center' : ''}`}
+                  } ${isSidebarCollapsed ? 'justify-center' : ''}`}
                 title={isSidebarCollapsed ? row.data.name : ''}
               >
                 {row.type === 'category' ? (
@@ -500,13 +793,13 @@ const ModelsPage: React.FC = () => {
                 )}
               </div>
             ))}
-            
+
             {!isSidebarCollapsed && (selectedBrandId || selectedCategoryId) && (
-              <button 
+              <button
                 onClick={() => {
-                    setSelectedCategoryId(null);
-                    setSelectedBrandId(null);
-                    setSearchTerm('');
+                  setSelectedCategoryId(null);
+                  setSelectedBrandId(null);
+                  setSearchTerm('');
                 }}
                 className="w-full mt-4 p-2 text-[10px] font-bold uppercase text-slate-400 hover:text-slate-600 border border-dashed border-slate-200 rounded-lg transition-colors"
               >
@@ -519,7 +812,7 @@ const ModelsPage: React.FC = () => {
         {!isSidebarCollapsed && (
           <div className="p-4 border-t border-slate-200 bg-white">
             <HasPermission permission="catalog:write">
-              <button 
+              <button
                 onClick={() => setModal({ type: 'categories', data: null })}
                 className="w-full py-2.5 bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all"
               >
@@ -538,7 +831,7 @@ const ModelsPage: React.FC = () => {
               <div className="flex items-center gap-4 flex-1 justify-end">
                 <div className="relative w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input 
+                  <input
                     type="text"
                     placeholder={`Search ${activeTab}...`}
                     className="w-full pl-9 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/20"
@@ -551,7 +844,7 @@ const ModelsPage: React.FC = () => {
                 </button>
                 {activeTab !== 'designs' && (
                   <HasPermission permission="catalog:write">
-                    <button 
+                    <button
                       onClick={() => setModal({ type: activeTab, data: null })}
                       className="px-4 py-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 whitespace-nowrap"
                     >
@@ -630,423 +923,415 @@ const ModelsPage: React.FC = () => {
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <th className="px-8 py-4">Preview</th>
-                      <th className="px-8 py-4">Pattern Name</th>
-                      <th className="px-8 py-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                      {cutFiles.map(file => (
-                        <tr key={file.id} className="hover:bg-slate-50/30 transition-colors group">
-                          <td className="px-8 py-4">
-                            {file.designFilePath ? (
-                              <div className="w-16 h-16 bg-slate-50 rounded-xl border border-slate-100 overflow-hidden cursor-pointer" onClick={() => setPreviewImage(getImageUrl(file.designFilePath))}>
-                                <img src={getImageUrl(file.designFilePath)} alt="Preview" className="w-full h-full object-contain p-2" />
-                              </div>
-                            ) : (
-                              <div className="w-16 h-16 bg-slate-50 rounded-xl border border-dashed border-slate-200 flex items-center justify-center"><Scissors className="w-4 h-4 text-slate-200" /></div>
-                            )}
-                          </td>
-                          <td className="px-8 py-4">
-                            <p className="font-black text-slate-900 uppercase tracking-wider">{file.cutPattern?.name}</p>
-                            <p className="text-[10px] text-slate-400 font-bold mt-0.5">LEGACY ID: {file.legacyId}</p>
-                          </td>
-                          <td className="px-8 py-4 text-right">
-                            <HasPermission permission="catalog:write">
-                              <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button 
-                                  onClick={(e) => handleGenerateCutFilePreview(file.id, selected.id, e)} 
-                                  title="Generate Preview"
-                                  className="p-1.5 text-slate-400 hover:text-indigo-600"
-                                >
-                                  <Image className="w-4 h-4" />
-                                </button>
-                                <button 
-                                  onClick={() => handleNormalize(file.id, selected.id)} 
-                                  disabled={normalizingId === file.id}
-                                  title="Correct PLT (Normalize)"
-                                  className={`p-1.5 transition-all duration-200 ${
-                                    normalizedId === file.id 
-                                      ? 'text-emerald-600' 
-                                      : 'text-slate-400 hover:text-amber-600'
-                                  }`}
-                                >
-                                  {normalizingId === file.id ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                  ) : normalizedId === file.id ? (
-                                    <Check className="w-4 h-4" />
-                                  ) : (
-                                    <Wand2 className="w-4 h-4" />
-                                  )}
-                                </button>
-                                <button onClick={() => handleDelete('Delete Cut File', 'Are you sure?', async () => { await modelCutFilesApi.remove(file.id); fetchModelDetails(selected.id); })} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
-
-                              </div>
-                            </HasPermission>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="space-y-6">
-              {/* Designs Tab */}
-              {activeTab === 'designs' && (
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4">
-                  <div className="px-6 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">
-                      Showing {Math.min(designsTotal, (designsPage - 1) * itemsPerPage + 1)} - {Math.min(designsTotal, designsPage * itemsPerPage)} of {designsTotal}
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setDesignsPage(p => Math.max(1, p - 1))}
-                        disabled={designsPage === 1}
-                        className="p-1.5 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all"
-                      >
-                        <ChevronLeft className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setDesignsPage(p => p + 1)}
-                        disabled={designsPage * itemsPerPage >= designsTotal}
-                        className="p-1.5 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all"
-                      >
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead className="bg-slate-50/50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                        <tr>
-                          <th className="px-6 py-4">Model & Brand</th>
-                          <th className="px-6 py-4">Category</th>
-                          <th className="px-6 py-4">Cut Pattern</th>
-                          <th className="px-6 py-4">Order</th>
-                          <th className="px-6 py-4">Legacy ID</th>
-                          <th className="px-6 py-4">Created At</th>
+                      <thead>
+                        <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          <th className="px-8 py-4">Preview</th>
+                          <th className="px-8 py-4">Pattern Name</th>
+                          <th className="px-8 py-4 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {loading ? (
-                          <tr><td colSpan={10} className="p-10 text-center"><RefreshCw className="w-6 h-6 animate-spin mx-auto text-slate-300" /></td></tr>
-                        ) : allDesigns.length === 0 ? (
-                          <tr><td colSpan={10} className="p-10 text-center text-slate-400">No items found.</td></tr>
-                        ) : (
-                          allDesigns.map((design) => (
-                            <tr key={design.id} className="hover:bg-slate-50/50 transition-colors group">
-                              <td className="px-6 py-4">
-                                <div className="flex items-center gap-4">
-                                  <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400">
-                                    <Smartphone className="w-5 h-5" />
-                                  </div>
-                                  <div>
-                                    <p className="font-bold text-slate-900">{design.model?.name}</p>
-                                    <p className="text-xs text-slate-500">{design.model?.brand?.name}</p>
-                                  </div>
+                        {cutFiles.map(file => (
+                          <tr key={file.id} className="hover:bg-slate-50/30 transition-colors group">
+                            <td className="px-8 py-4">
+                              {file.designFilePath ? (
+                                <div className="w-16 h-16 bg-slate-50 rounded-xl border border-slate-100 overflow-hidden cursor-pointer" onClick={() => setPreviewImage(getImageUrl(file.designFilePath))}>
+                                  <img src={getImageUrl(file.designFilePath)} alt="Preview" className="w-full h-full object-contain p-2" />
                                 </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold">
-                                  {design.model?.category?.name}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="flex items-center gap-2 text-indigo-600 font-bold">
-                                  <Scissors className="w-3 h-3" />
-                                  {design.cutPattern?.name}
+                              ) : (
+                                <div className="w-16 h-16 bg-slate-50 rounded-xl border border-dashed border-slate-200 flex items-center justify-center"><Scissors className="w-4 h-4 text-slate-200" /></div>
+                              )}
+                            </td>
+                            <td className="px-8 py-4">
+                              <p className="font-black text-slate-900 uppercase tracking-wider">{file.cutPattern?.name}</p>
+                              <p className="text-[10px] text-slate-400 font-bold mt-0.5">LEGACY ID: {file.legacyId}</p>
+                            </td>
+                            <td className="px-8 py-4 text-right">
+                              <HasPermission permission="catalog:write">
+                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={(e) => handleGenerateCutFilePreview(file.id, selected.id, e)}
+                                    title="Generate Preview"
+                                    className="p-1.5 text-slate-400 hover:text-indigo-600"
+                                  >
+                                    <Image className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleNormalize(file.id, selected.id)}
+                                    disabled={normalizingId === file.id}
+                                    title="Correct PLT (Normalize)"
+                                    className={`p-1.5 transition-all duration-200 ${normalizedId === file.id
+                                      ? 'text-emerald-600'
+                                      : 'text-slate-400 hover:text-amber-600'
+                                      }`}
+                                  >
+                                    {normalizingId === file.id ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : normalizedId === file.id ? (
+                                      <Check className="w-4 h-4" />
+                                    ) : (
+                                      <Wand2 className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                  <button onClick={() => handleDelete('Delete Cut File', 'Are you sure?', async () => { await modelCutFilesApi.remove(file.id); fetchModelDetails(selected.id); })} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+
                                 </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <span className="px-2 py-0.5 bg-slate-100 text-slate-400 rounded text-[10px] font-bold">
-                                  {design.cutPattern?.sortOrder || 0}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 font-mono text-xs text-slate-400">
-                                {design.legacyId}
-                              </td>
-                              <td className="px-6 py-4 text-slate-500">
-                                {new Date(design.createdAt).toLocaleDateString()}
-                              </td>
-                            </tr>
-                          ))
-                        )}
+                              </HasPermission>
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
-                  
-                  {/* Designs Pagination */}
-                  <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/30">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">
-                      Showing {Math.min(designsTotal, (designsPage - 1) * itemsPerPage + 1)} to{' '}
-                      {Math.min(designsTotal, designsPage * itemsPerPage)} of{' '}
-                      {designsTotal} designs
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setDesignsPage(p => Math.max(1, p - 1))}
-                        disabled={designsPage === 1}
-                        className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setDesignsPage(p => p + 1)}
-                        disabled={designsPage * itemsPerPage >= designsTotal}
-                        className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
                 </div>
-              )}
-
-              {activeTab !== 'designs' && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-bold text-slate-900">Manage {activeTab}</h2>
-                    {(selectedBrandId || selectedCategoryId) && (
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="space-y-6">
+                {/* Designs Tab */}
+                {activeTab === 'designs' && (
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4">
+                    <div className="px-6 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">
+                        Showing {Math.min(designsTotal, (designsPage - 1) * itemsPerPage + 1)} - {Math.min(designsTotal, designsPage * itemsPerPage)} of {designsTotal}
+                      </p>
                       <div className="flex gap-2">
-                        <span className="px-3 py-1 bg-indigo-50 text-[var(--color-accent)] rounded-full text-xs font-bold flex items-center gap-2">
-                          Filtered <X className="w-3 h-3 cursor-pointer" onClick={() => { setSelectedBrandId(null); setSelectedCategoryId(null); }} />
-                        </span>
+                        <button
+                          onClick={() => setDesignsPage(p => Math.max(1, p - 1))}
+                          disabled={designsPage === 1}
+                          className="p-1.5 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDesignsPage(p => p + 1)}
+                          disabled={designsPage * itemsPerPage >= designsTotal}
+                          className="p-1.5 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    )}
-                  </div>
-
-                  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    {totalPages > 1 && (
-                      <div className="px-6 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Page {currentPage} of {totalPages}</p>
-                        <div className="flex gap-2">
-                          <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 border rounded-lg disabled:opacity-50 bg-white hover:bg-slate-50"><ChevronLeft className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 border rounded-lg disabled:opacity-50 bg-white hover:bg-slate-50"><ChevronRight className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </div>
-                    )}
+                    </div>
                     <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
+                      <table className="w-full text-left border-collapse text-xs">
                         <thead className="bg-slate-50/50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                           <tr>
-                            {activeTab !== 'patterns' && <th className="px-6 py-4">Image</th>}
-                            <th className="px-6 py-4">Name</th>
-                            {activeTab === 'catalog' && <th className="px-6 py-4">Brand</th>}
-                            {activeTab === 'patterns' && <th className="px-6 py-4">Cut For</th>}
-                            {['categories', 'brands', 'patterns', 'catalog'].includes(activeTab) && <th className="px-6 py-4">Order</th>}
-                            <th className="px-6 py-4">Status</th>
-                            <th className="px-6 py-4 text-right">Actions</th>
+                            <th className="px-6 py-4">Model & Brand</th>
+                            <th className="px-6 py-4">Category</th>
+                            <th className="px-6 py-4">Cut Pattern</th>
+                            <th className="px-6 py-4">Order</th>
+                            <th className="px-6 py-4">Legacy ID</th>
+                            <th className="px-6 py-4">Created At</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {loading ? (
                             <tr><td colSpan={10} className="p-10 text-center"><RefreshCw className="w-6 h-6 animate-spin mx-auto text-slate-300" /></td></tr>
-                          ) : paginatedItems.length === 0 ? (
+                          ) : allDesigns.length === 0 ? (
                             <tr><td colSpan={10} className="p-10 text-center text-slate-400">No items found.</td></tr>
-                          ) : paginatedItems.map((item: any) => (
-                            <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
-                              {activeTab !== 'patterns' && (
+                          ) : (
+                            allDesigns.map((design) => (
+                              <tr key={design.id} className="hover:bg-slate-50/50 transition-colors group">
                                 <td className="px-6 py-4">
-                                  <div className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => setPreviewImage(getImageUrl(item.imageUrl, item.name))}>
-                                    <img 
-                                      src={getImageUrl(item.imageUrl, item.name)} 
-                                      alt={item.name} 
-                                      className="w-full h-full object-contain p-1"
-                                      onError={(e) => {
-                                        (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                        const sibling = e.currentTarget.nextElementSibling;
-                                        if (sibling) (sibling as HTMLElement).style.display = 'flex';
-                                      }}
-                                    />
-                                    <div style={{ display: 'none' }} className="w-full h-full items-center justify-center text-slate-300">
-                                      {activeTab === 'catalog' ? <Smartphone className="w-5 h-5" /> : <Box className="w-5 h-5" />}
+                                  <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400">
+                                      <Smartphone className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                      <p className="font-bold text-slate-900">{design.model?.name}</p>
+                                      <p className="text-xs text-slate-500">{design.model?.brand?.name}</p>
                                     </div>
                                   </div>
                                 </td>
-                              )}
-                              <td className="px-6 py-4 font-bold">
-                                {activeTab === 'catalog' ? (
-                                  <button onClick={() => fetchModelDetails(item.id)} className="hover:text-[var(--color-accent)] text-left">{item.name}</button>
-                                ) : <span>{item.name}</span>}
-                              </td>
-                              {activeTab === 'catalog' && <td className="px-6 py-4 text-slate-500">{item.brand?.name || '-'}</td>}
-                              {activeTab === 'patterns' && <td className="px-6 py-4 text-slate-500">{item.cutFor === 1 ? 'Mobile' : 'Other'}</td>}
-                              {['categories', 'brands', 'patterns', 'catalog'].includes(activeTab) && (
                                 <td className="px-6 py-4">
-                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-400 rounded text-[10px] font-bold">
-                                    {item.sortOrder || 0}
+                                  <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold">
+                                    {design.model?.category?.name}
                                   </span>
                                 </td>
-                              )}
-                              <td className="px-6 py-4">
-                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                                  item.isActive === false 
-                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400' 
-                                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                }`}>
-                                  {item.isActive === false ? 'Inactive' : 'Active'}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 text-right">
-                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  {activeTab === 'categories' && (
-                                    <>
-                                      <button 
-                                        onClick={(e) => handleGenerateCategoryPreview(item.id, e)} 
-                                        title="Generate Previews"
-                                        disabled={loadingActionId !== null}
-                                        className={`p-1.5 transition-colors ${
-                                          successActionId === `gen-cat-${item.id}`
-                                            ? 'text-emerald-600'
-                                            : 'text-slate-400 hover:text-indigo-600'
-                                        }`}
-                                      >
-                                        {loadingActionId === `gen-cat-${item.id}` ? (
-                                          <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : successActionId === `gen-cat-${item.id}` ? (
-                                          <Check className="w-4 h-4" />
-                                        ) : (
-                                          <Image className="w-4 h-4" />
-                                        )}
-                                      </button>
-                                      <button 
-                                        onClick={(e) => handleNormalizeCategory(item.id, e)} 
-                                        title="Correct PLT (Normalize)"
-                                        disabled={loadingActionId !== null}
-                                        className={`p-1.5 transition-colors ${
-                                          successActionId === `norm-cat-${item.id}`
-                                            ? 'text-emerald-600'
-                                            : 'text-slate-400 hover:text-amber-600'
-                                        }`}
-                                      >
-                                        {loadingActionId === `norm-cat-${item.id}` ? (
-                                          <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : successActionId === `norm-cat-${item.id}` ? (
-                                          <Check className="w-4 h-4" />
-                                        ) : (
-                                          <Wand2 className="w-4 h-4" />
-                                        )}
-                                      </button>
-                                    </>
-                                  )}
-                                  {activeTab === 'brands' && (
-                                    <>
-                                      <button 
-                                        onClick={(e) => handleGenerateBrandPreview(item.id, e)} 
-                                        title="Generate Previews"
-                                        disabled={loadingActionId !== null}
-                                        className={`p-1.5 transition-colors ${
-                                          successActionId === `gen-brand-${item.id}`
-                                            ? 'text-emerald-600'
-                                            : 'text-slate-400 hover:text-indigo-600'
-                                        }`}
-                                      >
-                                        {loadingActionId === `gen-brand-${item.id}` ? (
-                                          <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : successActionId === `gen-brand-${item.id}` ? (
-                                          <Check className="w-4 h-4" />
-                                        ) : (
-                                          <Image className="w-4 h-4" />
-                                        )}
-                                      </button>
-                                      <button 
-                                        onClick={(e) => handleNormalizeBrand(item.id, e)} 
-                                        title="Correct PLT (Normalize)"
-                                        disabled={loadingActionId !== null}
-                                        className={`p-1.5 transition-colors ${
-                                          successActionId === `norm-brand-${item.id}`
-                                            ? 'text-emerald-600'
-                                            : 'text-slate-400 hover:text-amber-600'
-                                        }`}
-                                      >
-                                        {loadingActionId === `norm-brand-${item.id}` ? (
-                                          <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : successActionId === `norm-brand-${item.id}` ? (
-                                          <Check className="w-4 h-4" />
-                                        ) : (
-                                          <Wand2 className="w-4 h-4" />
-                                        )}
-                                      </button>
-                                    </>
-                                  )}
-                                  {activeTab === 'catalog' && (
-                                    <>
-                                      <button 
-                                        onClick={(e) => handleGenerateModelPreview(item.id, e)} 
-                                        title="Generate Previews"
-                                        disabled={loadingActionId !== null}
-                                        className={`p-1.5 transition-colors ${
-                                          successActionId === `gen-model-${item.id}`
-                                            ? 'text-emerald-600'
-                                            : 'text-slate-400 hover:text-indigo-600'
-                                        }`}
-                                      >
-                                        {loadingActionId === `gen-model-${item.id}` ? (
-                                          <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : successActionId === `gen-model-${item.id}` ? (
-                                          <Check className="w-4 h-4" />
-                                        ) : (
-                                          <Image className="w-4 h-4" />
-                                        )}
-                                      </button>
-                                      <button 
-                                        onClick={(e) => handleNormalizeModel(item.id, e)} 
-                                        title="Correct PLT (Normalize)"
-                                        disabled={loadingActionId !== null}
-                                        className={`p-1.5 transition-colors ${
-                                          successActionId === `norm-model-${item.id}`
-                                            ? 'text-emerald-600'
-                                            : 'text-slate-400 hover:text-amber-600'
-                                        }`}
-                                      >
-                                        {loadingActionId === `norm-model-${item.id}` ? (
-                                          <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : successActionId === `norm-model-${item.id}` ? (
-                                          <Check className="w-4 h-4" />
-                                        ) : (
-                                          <Wand2 className="w-4 h-4" />
-                                        )}
-                                      </button>
-                                    </>
-                                  )}
-                                  <button onClick={() => setModal({ type: activeTab, data: item })} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
-                                  <button onClick={() => handleDelete('Delete', 'Are you sure?', async () => { 
-                                    if (activeTab === 'categories') await modelCategoriesApi.remove(item.id);
-                                    else if (activeTab === 'brands') await brandsApi.remove(item.id);
-                                    else if (activeTab === 'catalog') await modelsApi.remove(item.id);
-                                    else await cutPatternsApi.remove(item.id);
-                                  })} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-2 text-indigo-600 font-bold">
+                                    <Scissors className="w-3 h-3" />
+                                    {design.cutPattern?.name}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-400 rounded text-[10px] font-bold">
+                                    {design.cutPattern?.sortOrder || 0}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 font-mono text-xs text-slate-400">
+                                  {design.legacyId}
+                                </td>
+                                <td className="px-6 py-4 text-slate-500">
+                                  {new Date(design.createdAt).toLocaleDateString()}
+                                </td>
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
                     </div>
-                    
-                    {totalPages > 1 && (
-                      <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/30">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Page {currentPage} of {totalPages}</p>
-                        <div className="flex gap-2">
-                          <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 border rounded-lg disabled:opacity-50"><ChevronLeft className="w-4 h-4" /></button>
-                          <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-2 border rounded-lg disabled:opacity-50"><ChevronRight className="w-4 h-4" /></button>
-                        </div>
+
+                    {/* Designs Pagination */}
+                    <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/30">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">
+                        Showing {Math.min(designsTotal, (designsPage - 1) * itemsPerPage + 1)} to{' '}
+                        {Math.min(designsTotal, designsPage * itemsPerPage)} of{' '}
+                        {designsTotal} designs
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setDesignsPage(p => Math.max(1, p - 1))}
+                          disabled={designsPage === 1}
+                          className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setDesignsPage(p => p + 1)}
+                          disabled={designsPage * itemsPerPage >= designsTotal}
+                          className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
                       </div>
-                    )}
+                    </div>
                   </div>
-                </>
-              )}
+                )}
+
+                {activeTab !== 'designs' && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-xl font-bold text-slate-900">Manage {activeTab}</h2>
+                      {(selectedBrandId || selectedCategoryId) && (
+                        <div className="flex gap-2">
+                          <span className="px-3 py-1 bg-indigo-50 text-[var(--color-accent)] rounded-full text-xs font-bold flex items-center gap-2">
+                            Filtered <X className="w-3 h-3 cursor-pointer" onClick={() => { setSelectedBrandId(null); setSelectedCategoryId(null); }} />
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                      {totalPages > 1 && (
+                        <div className="px-6 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">Page {currentPage} of {totalPages}</p>
+                          <div className="flex gap-2">
+                            <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 border rounded-lg disabled:opacity-50 bg-white hover:bg-slate-50"><ChevronLeft className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 border rounded-lg disabled:opacity-50 bg-white hover:bg-slate-50"><ChevronRight className="w-3.5 h-3.5" /></button>
+                          </div>
+                        </div>
+                      )}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-50/50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            <tr>
+                              {activeTab !== 'patterns' && <th className="px-6 py-4">Image</th>}
+                              <th className="px-6 py-4">Name</th>
+                              {activeTab === 'catalog' && <th className="px-6 py-4">Brand</th>}
+                              {activeTab === 'patterns' && <th className="px-6 py-4">Cut For</th>}
+                              {['categories', 'brands', 'patterns', 'catalog'].includes(activeTab) && <th className="px-6 py-4">Order</th>}
+                              <th className="px-6 py-4">Status</th>
+                              <th className="px-6 py-4 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {loading ? (
+                              <tr><td colSpan={10} className="p-10 text-center"><RefreshCw className="w-6 h-6 animate-spin mx-auto text-slate-300" /></td></tr>
+                            ) : paginatedItems.length === 0 ? (
+                              <tr><td colSpan={10} className="p-10 text-center text-slate-400">No items found.</td></tr>
+                            ) : paginatedItems.map((item: any) => (
+                              <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                                {activeTab !== 'patterns' && (
+                                  <td className="px-6 py-4">
+                                    <div className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => setPreviewImage(getImageUrl(item.imageUrl, item.name))}>
+                                      <img
+                                        src={getImageUrl(item.imageUrl, item.name)}
+                                        alt={item.name}
+                                        className="w-full h-full object-contain p-1"
+                                        onError={(e) => {
+                                          (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                          const sibling = e.currentTarget.nextElementSibling;
+                                          if (sibling) (sibling as HTMLElement).style.display = 'flex';
+                                        }}
+                                      />
+                                      <div style={{ display: 'none' }} className="w-full h-full items-center justify-center text-slate-300">
+                                        {activeTab === 'catalog' ? <Smartphone className="w-5 h-5" /> : <Box className="w-5 h-5" />}
+                                      </div>
+                                    </div>
+                                  </td>
+                                )}
+                                <td className="px-6 py-4 font-bold">
+                                  {activeTab === 'catalog' ? (
+                                    <button onClick={() => fetchModelDetails(item.id)} className="hover:text-[var(--color-accent)] text-left">{item.name}</button>
+                                  ) : <span>{item.name}</span>}
+                                </td>
+                                {activeTab === 'catalog' && <td className="px-6 py-4 text-slate-500">{item.brand?.name || '-'}</td>}
+                                {activeTab === 'patterns' && <td className="px-6 py-4 text-slate-500">{item.cutFor === 1 ? 'Mobile' : 'Other'}</td>}
+                                {['categories', 'brands', 'patterns', 'catalog'].includes(activeTab) && (
+                                  <td className="px-6 py-4">
+                                    <span className="px-2 py-0.5 bg-slate-100 text-slate-400 rounded text-[10px] font-bold">
+                                      {item.sortOrder || 0}
+                                    </span>
+                                  </td>
+                                )}
+                                <td className="px-6 py-4">
+                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${item.isActive === false
+                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400'
+                                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                    }`}>
+                                    {item.isActive === false ? 'Inactive' : 'Active'}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {activeTab === 'categories' && (
+                                      <>
+                                        <button
+                                          onClick={(e) => handleGenerateCategoryPreview(item.id, e)}
+                                          title="Generate Previews"
+                                          disabled={loadingActionId !== null}
+                                          className={`p-1.5 transition-colors ${successActionId === `gen-cat-${item.id}`
+                                            ? 'text-emerald-600'
+                                            : 'text-slate-400 hover:text-indigo-600'
+                                            }`}
+                                        >
+                                          {loadingActionId === `gen-cat-${item.id}` ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                          ) : successActionId === `gen-cat-${item.id}` ? (
+                                            <Check className="w-4 h-4" />
+                                          ) : (
+                                            <Image className="w-4 h-4" />
+                                          )}
+                                        </button>
+                                        <button
+                                          onClick={(e) => handleNormalizeCategory(item.id, e)}
+                                          title="Correct PLT (Normalize)"
+                                          disabled={loadingActionId !== null}
+                                          className={`p-1.5 transition-colors ${successActionId === `norm-cat-${item.id}`
+                                            ? 'text-emerald-600'
+                                            : 'text-slate-400 hover:text-amber-600'
+                                            }`}
+                                        >
+                                          {loadingActionId === `norm-cat-${item.id}` ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                          ) : successActionId === `norm-cat-${item.id}` ? (
+                                            <Check className="w-4 h-4" />
+                                          ) : (
+                                            <Wand2 className="w-4 h-4" />
+                                          )}
+                                        </button>
+                                      </>
+                                    )}
+                                    {activeTab === 'brands' && (
+                                      <>
+                                        <button
+                                          onClick={(e) => handleGenerateBrandPreview(item.id, e)}
+                                          title="Generate Previews"
+                                          disabled={loadingActionId !== null}
+                                          className={`p-1.5 transition-colors ${successActionId === `gen-brand-${item.id}`
+                                            ? 'text-emerald-600'
+                                            : 'text-slate-400 hover:text-indigo-600'
+                                            }`}
+                                        >
+                                          {loadingActionId === `gen-brand-${item.id}` ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                          ) : successActionId === `gen-brand-${item.id}` ? (
+                                            <Check className="w-4 h-4" />
+                                          ) : (
+                                            <Image className="w-4 h-4" />
+                                          )}
+                                        </button>
+                                        <button
+                                          onClick={(e) => handleNormalizeBrand(item.id, e)}
+                                          title="Correct PLT (Normalize)"
+                                          disabled={loadingActionId !== null}
+                                          className={`p-1.5 transition-colors ${successActionId === `norm-brand-${item.id}`
+                                            ? 'text-emerald-600'
+                                            : 'text-slate-400 hover:text-amber-600'
+                                            }`}
+                                        >
+                                          {loadingActionId === `norm-brand-${item.id}` ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                          ) : successActionId === `norm-brand-${item.id}` ? (
+                                            <Check className="w-4 h-4" />
+                                          ) : (
+                                            <Wand2 className="w-4 h-4" />
+                                          )}
+                                        </button>
+                                      </>
+                                    )}
+                                    {activeTab === 'catalog' && (
+                                      <>
+                                        <button
+                                          onClick={(e) => handleGenerateModelPreview(item.id, e)}
+                                          title="Generate Previews"
+                                          disabled={loadingActionId !== null}
+                                          className={`p-1.5 transition-colors ${successActionId === `gen-model-${item.id}`
+                                            ? 'text-emerald-600'
+                                            : 'text-slate-400 hover:text-indigo-600'
+                                            }`}
+                                        >
+                                          {loadingActionId === `gen-model-${item.id}` ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                          ) : successActionId === `gen-model-${item.id}` ? (
+                                            <Check className="w-4 h-4" />
+                                          ) : (
+                                            <Image className="w-4 h-4" />
+                                          )}
+                                        </button>
+                                        <button
+                                          onClick={(e) => handleNormalizeModel(item.id, e)}
+                                          title="Correct PLT (Normalize)"
+                                          disabled={loadingActionId !== null}
+                                          className={`p-1.5 transition-colors ${successActionId === `norm-model-${item.id}`
+                                            ? 'text-emerald-600'
+                                            : 'text-slate-400 hover:text-amber-600'
+                                            }`}
+                                        >
+                                          {loadingActionId === `norm-model-${item.id}` ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                          ) : successActionId === `norm-model-${item.id}` ? (
+                                            <Check className="w-4 h-4" />
+                                          ) : (
+                                            <Wand2 className="w-4 h-4" />
+                                          )}
+                                        </button>
+                                      </>
+                                    )}
+                                    <button onClick={() => setModal({ type: activeTab, data: item })} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDelete('Delete', 'Are you sure?', async () => {
+                                      if (activeTab === 'categories') await modelCategoriesApi.remove(item.id);
+                                      else if (activeTab === 'brands') await brandsApi.remove(item.id);
+                                      else if (activeTab === 'catalog') await modelsApi.remove(item.id);
+                                      else await cutPatternsApi.remove(item.id);
+                                    })} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {totalPages > 1 && (
+                        <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/30">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">Page {currentPage} of {totalPages}</p>
+                          <div className="flex gap-2">
+                            <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 border rounded-lg disabled:opacity-50"><ChevronLeft className="w-4 h-4" /></button>
+                            <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-2 border rounded-lg disabled:opacity-50"><ChevronRight className="w-4 h-4" /></button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
 
       <ConfirmDialog isOpen={confirm.isOpen} title={confirm.title} message={confirm.message} isLoading={confirm.isLoading} onConfirm={confirm.onConfirm} onClose={() => setConfirm({ isOpen: false })} />
     </div>

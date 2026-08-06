@@ -9,6 +9,12 @@ async function main() {
     // Identity & Access
     { action: 'orgs:read', description: 'View organizations' },
     { action: 'orgs:write', description: 'Create/Edit organizations' },
+    { action: 'contacts:read', description: 'View organization contacts' },
+    { action: 'contacts:write', description: 'Create/Edit organization contacts' },
+    { action: 'contacts:delete', description: 'Delete organization contacts' },
+    { action: 'addresses:read', description: 'View organization addresses' },
+    { action: 'addresses:write', description: 'Create/Edit organization addresses' },
+    { action: 'addresses:delete', description: 'Delete organization addresses' },
     { action: 'users:read', description: 'View users' },
     { action: 'users:write', description: 'Manage users' },
     { action: 'roles:read', description: 'View roles' },
@@ -69,7 +75,8 @@ async function main() {
       description: 'Manages distributor network, inventory, and licensing',
       isSystemRole: true,
       rolePermissions: [
-        'orgs:read', 'users:read', 'users:write', 'catalog:read', 
+        'orgs:read', 'contacts:read', 'contacts:write', 'contacts:delete', 'addresses:read', 'addresses:write', 'addresses:delete',
+        'users:read', 'users:write', 'catalog:read', 
         'inventory:read', 'inventory:write', 'dispatch:read', 'dispatch:write',
         'licenses:read', 'licenses:write', 'credits:read', 'credits:write', 'reports:read'
       ].map(action => ({
@@ -82,6 +89,7 @@ async function main() {
       description: 'Manages dealer location and machine allocations',
       isSystemRole: true,
       rolePermissions: [
+        'contacts:read', 'contacts:write', 'contacts:delete', 'addresses:read', 'addresses:write', 'addresses:delete',
         'users:read', 'users:write', 'catalog:read', 'inventory:read',
         'licenses:read', 'licenses:write', 'credits:read', 'credits:write'
       ].map(action => ({
@@ -105,6 +113,7 @@ async function main() {
       description: 'Manages retailer location and machine activations',
       isSystemRole: true,
       rolePermissions: [
+        'contacts:read', 'contacts:write', 'contacts:delete', 'addresses:read', 'addresses:write', 'addresses:delete',
         'users:read', 'users:write', 'catalog:read', 'licenses:read', 'licenses:write', 'credits:read', 'credits:write', 'orgs:read'
       ].map(action => ({
         permissionId: permissions[action].id,

@@ -5,7 +5,24 @@ import { PrismaService } from '../prisma/prisma.service';
 export class PermissionsService {
   constructor(private prisma: PrismaService) {}
 
-  findAll(includeDeleted?: boolean) {
+  async findAll(includeDeleted?: boolean) {
+    const defaultPerms = [
+      { action: 'contacts:read', description: 'View organization contacts' },
+      { action: 'contacts:write', description: 'Create/Edit organization contacts' },
+      { action: 'contacts:delete', description: 'Delete organization contacts' },
+      { action: 'addresses:read', description: 'View organization addresses' },
+      { action: 'addresses:write', description: 'Create/Edit organization addresses' },
+      { action: 'addresses:delete', description: 'Delete organization addresses' },
+    ];
+
+    for (const p of defaultPerms) {
+      await this.prisma.permission.upsert({
+        where: { action: p.action },
+        update: {},
+        create: p,
+      }).catch(() => {});
+    }
+
     return this.prisma.permission.findMany({
       where: includeDeleted ? undefined : { isDeleted: false },
       orderBy: { action: 'asc' },

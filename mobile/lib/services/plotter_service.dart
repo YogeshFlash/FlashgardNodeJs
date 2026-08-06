@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -32,10 +34,22 @@ class PlotterDevice {
 class PlotterService extends ChangeNotifier {
   static final PlotterService _instance = PlotterService._internal();
   factory PlotterService() => _instance;
-  PlotterService._internal();
+  PlotterService._internal() {
+    // Forward native progress to our custom stream controller
+    _nativeProgressSub = _eventChannel.receiveBroadcastStream().listen((event) {
+      if (_connectionType == 'sdk') {
+        _progressController.add(event as int);
+      }
+    });
+  }
 
   static const MethodChannel _channel = MethodChannel('com.flashgard.plotter/api');
   static const EventChannel _eventChannel = EventChannel('com.flashgard.plotter/progress');
+
+  final StreamController<int> _progressController = StreamController<int>.broadcast();
+  late final StreamSubscription<dynamic> _nativeProgressSub;
+  Timer? _classicCutTimer;
+  bool _isCutCancelled = false;
 
   /// The type of the currently connected plotter ("sdk", "classic", or null)
   String? _connectedAddress;
@@ -48,7 +62,7 @@ class PlotterService extends ChangeNotifier {
   String? get connectedAddress => _connectedAddress;
 
   /// Stream of cutting progress (0-100)
-  Stream<int> get progressStream => _eventChannel.receiveBroadcastStream().map((event) => event as int);
+  Stream<int> get progressStream => _progressController.stream;
 
   /// Searches for nearby Bluetooth plotter devices (both BLE and Classic).
   Future<List<PlotterDevice>> search({int timeout = 5000}) async {
@@ -217,6 +231,69 @@ class PlotterService extends ChangeNotifier {
     return null;
   }
 
+  /// Parses the PLT/HPGL commands to estimate the physical cutting time.
+  /// Coordinates are in 40 units = 1 mm.
+  /// [speed] is in mm/s (usually between 10 and 1000).
+  static double estimateCutDuration(String content, int speed, {bool isClassic = false}) {
+    if (content.trim().isEmpty) return 5.0;
+    
+    // Map selected speed (10..1000) to Portrait's peak speed (10..100 mm/s)
+    final double portraitPeakSpeed = (speed / 10.0).clamp(1.0, 10.0) * 10.0;
+    
+    // Calculate a realistic average cutting speed accounting for acceleration/deceleration.
+    // Classic plotters (Portrait 2 in GPGL mode) average ~50% of their peak speed.
+    // SDK BLE plotters average ~25% of their selected peak speed, capped at a realistic 150 mm/s.
+    final double activeSpeed = isClassic 
+        ? (portraitPeakSpeed * 0.5) 
+        : (speed.toDouble() * 0.25).clamp(10.0, 150.0);
+        
+    const double travelSpeed = 150.0; // Travel speed when pen is up (mm/s)
+    final double penOverhead = isClassic ? 0.08 : 0.15;  // Carriage lift/drop and blade rotation delay per PU command
+    
+    final regex = RegExp(r'(PU|PD)\s*(-?\d+(?:\.\d+)?)[\s,]+\s*(-?\d+(?:\.\d+)?)', caseSensitive: false);
+    final matches = regex.allMatches(content);
+    
+    double cutDistanceUnits = 0.0;
+    double travelDistanceUnits = 0.0;
+    int puCount = 0;
+    
+    double? lastX;
+    double? lastY;
+    
+    for (final match in matches) {
+      final cmd = match.group(1)!.toUpperCase();
+      final double x = double.tryParse(match.group(2) ?? '0') ?? 0.0;
+      final double y = double.tryParse(match.group(3) ?? '0') ?? 0.0;
+      
+      if (lastX != null && lastY != null) {
+        // Calculate distance
+        final dx = x - lastX;
+        final dy = y - lastY;
+        final distance = math.sqrt(dx * dx + dy * dy);
+        
+        if (cmd == 'PD') {
+          cutDistanceUnits += distance;
+        } else {
+          travelDistanceUnits += distance;
+        }
+      }
+      
+      if (cmd == 'PU') {
+        puCount++;
+      }
+      
+      lastX = x;
+      lastY = y;
+    }
+    
+    final double cutMm = cutDistanceUnits / 40.0;
+    final double travelMm = travelDistanceUnits / 40.0;
+    
+    final double time = (cutMm / activeSpeed) + (travelMm / travelSpeed) + (puCount * penOverhead);
+    // Return estimated time in seconds, minimum 3.0 seconds
+    return time.clamp(3.0, 600.0);
+  }
+
   /// Sends file content to the plotter to be cut.
   /// Automatically uses the correct method based on connection type.
   Future<bool> cutFile({
@@ -236,6 +313,19 @@ class PlotterService extends ChangeNotifier {
       final mirrorX = prefs.getBool('plotter_mirror_x') ?? false;
       final mirrorY = prefs.getBool('plotter_mirror_y') ?? false;
 
+      _isCutCancelled = false;
+      _classicCutTimer?.cancel();
+      _classicCutTimer = null;
+
+      final double estimatedSeconds = estimateCutDuration(content, speed, isClassic: isClassicPlotter);
+      print('[PlotterService] Starting cut. Estimated physical cutting duration: ${estimatedSeconds.toStringAsFixed(1)} seconds');
+
+      if (isClassicPlotter) {
+        _progressController.add(0);
+      }
+
+      final DateTime startTime = DateTime.now();
+
       final bool result = await _channel.invokeMethod('cutFile', {
         'content': content,
         'name': name,
@@ -250,6 +340,43 @@ class PlotterService extends ChangeNotifier {
         'mirrorX': mirrorX,
         'mirrorY': mirrorY,
       });
+
+      if (!result) return false;
+
+      if (isClassicPlotter) {
+        // Measure exact transmission time (time taken by native BLE socket write loop to finish sending data)
+        final double transmissionSeconds = DateTime.now().difference(startTime).inMilliseconds / 1000.0;
+        
+        // The remaining duration represents the physical cutting time left after transmission is complete.
+        // We set a minimum safety floor of 2.0 seconds to allow progress to transition smoothly to 100%.
+        final double remainingSeconds = math.max(2.0, estimatedSeconds - transmissionSeconds);
+        print('[PlotterService] Data transmission took ${transmissionSeconds.toStringAsFixed(1)}s. Running physical cut countdown for remaining ${remainingSeconds.toStringAsFixed(1)}s.');
+
+        final completer = Completer<bool>();
+        final int totalDurationMs = (remainingSeconds * 1000).toInt();
+        const int tickIntervalMs = 200;
+        int elapsedMs = 0;
+
+        _classicCutTimer = Timer.periodic(const Duration(milliseconds: tickIntervalMs), (timer) {
+          if (_isCutCancelled) {
+            timer.cancel();
+            completer.complete(false);
+            return;
+          }
+
+          elapsedMs += tickIntervalMs;
+          final int progress = ((elapsedMs / totalDurationMs) * 100).toInt().clamp(0, 100);
+          _progressController.add(progress);
+
+          if (progress >= 100) {
+            timer.cancel();
+            completer.complete(true);
+          }
+        });
+
+        return await completer.future;
+      }
+
       return result;
     } on PlatformException catch (e) {
       print('Failed to cut file: ${e.message}');
@@ -259,6 +386,11 @@ class PlotterService extends ChangeNotifier {
 
   Future<bool> reset() async {
     try {
+      _isCutCancelled = true;
+      _classicCutTimer?.cancel();
+      _classicCutTimer = null;
+      _progressController.add(0);
+      
       final bool result = await _channel.invokeMethod('reset');
       return result;
     } on PlatformException catch (e) {

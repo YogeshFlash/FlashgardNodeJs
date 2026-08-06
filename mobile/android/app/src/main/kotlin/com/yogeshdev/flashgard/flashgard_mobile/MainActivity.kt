@@ -484,8 +484,9 @@ class MainActivity : FlutterFragmentActivity() {
                 "cutFile" -> {
                     val content = call.argument<String>("content") ?: ""
                     val name = call.argument<String>("name") ?: "cut"
-                    val speed = call.argument<Int>("speed") ?: 300
-                    val width = call.argument<Double>("width") ?: 180.0
+                     val speed = call.argument<Int>("speed") ?: 300
+                     val force = call.argument<Int>("force") ?: 300
+                     val width = call.argument<Double>("width") ?: 180.0
                     val height = call.argument<Double>("height") ?: 297.0
                     
                     val startString = call.argument<String>("startString") ?: "IN;PA;"
@@ -557,7 +558,9 @@ class MainActivity : FlutterFragmentActivity() {
                                               match.value
                                           }
                                       }
-                                      val start = "IN; \\30,30 FX30,1 !10,1 LT;SP1;"
+                                      val gpglSpeed = (speed / 10).coerceIn(1, 10)
+                                      val gpglForce = (force / 10).coerceIn(1, 33)
+                                      val start = "IN; \\30,30 FX$gpglForce,1 !$gpglSpeed,1 LT;SP1;"
                                       val end = "M0 0;"
                                       start + gpglBody.trim() + end
                                  } else {
