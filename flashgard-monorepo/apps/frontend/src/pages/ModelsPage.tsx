@@ -384,8 +384,14 @@ const ModelsPage: React.FC = () => {
 
     setIsExportingExcel(true);
     try {
-      // 1. Fetch ALL models across all pages
-      const { items: allModels } = await modelsApi.getAll(undefined, undefined, undefined, 0, 100000);
+      // 1. Fetch listed models matching current filters (brand, category, search)
+      const { items: allModels } = await modelsApi.getAll(
+        selectedBrandId || undefined,
+        selectedCategoryId || undefined,
+        searchTerm || undefined,
+        0,
+        100000
+      );
       const modelList = allModels || [];
 
       // Map models by "categoryId_brandId" for instant, efficient lookup
