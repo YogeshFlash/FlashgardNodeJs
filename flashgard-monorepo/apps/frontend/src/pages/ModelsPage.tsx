@@ -886,13 +886,13 @@ const ModelsPage: React.FC = () => {
         {!selected && (
           <div className="flex-shrink-0">
             <div className="px-6 py-4 border-b border-slate-200 bg-white flex items-center justify-between gap-4">
-              <h2 className="text-xl font-bold text-slate-900 capitalize shrink-0">Manage {activeTab}</h2>
+              <h2 className="text-xl font-bold text-slate-900 capitalize shrink-0">Manage {activeTab === 'catalog' ? 'Models' : activeTab}</h2>
               <div className="flex items-center gap-3 flex-1 justify-end">
                 <div className="relative w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
                     type="text"
-                    placeholder={`Search ${activeTab}...`}
+                    placeholder={`Search ${activeTab === 'catalog' ? 'models' : activeTab}...`}
                     className="w-full pl-9 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/20"
                     value={searchTerm}
                     onChange={(e) => {
@@ -919,7 +919,7 @@ const ModelsPage: React.FC = () => {
                   onClick={handleExportCurrentTabExcel}
                   disabled={isExportingTabExcel}
                   className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm disabled:opacity-50"
-                  title={`Export Listed ${activeTab} as Excel`}
+                  title={`Export Listed ${activeTab === 'catalog' ? 'Models' : activeTab} as Excel`}
                 >
                   {isExportingTabExcel ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--color-accent)]" /> : <Download className="w-3.5 h-3.5 text-slate-600" />}
                 </button>
