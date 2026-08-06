@@ -1298,6 +1298,28 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
     );
   });
 
+  const handleExportLicensesExcel = () => {
+    const dataToExport = filteredLicenses.map((l, index) => {
+      const lastTransfer = l.transferItems?.[0]?.transfer;
+      const assignedBy = lastTransfer?.fromOrg?.name || 'Flashgard';
+      return {
+        '#': index + 1,
+        'License Key': l.key || 'N/A',
+        'Owner / Assigned To': l.owner?.name || 'N/A',
+        'Assigned By': assignedBy,
+        'Type': l.batch?.licenseType || 'STANDARD',
+        'Status': l.status || 'AVAILABLE',
+        'Expiry Date': l.expiryDate ? new Date(l.expiryDate).toLocaleDateString() : 'Never',
+        'Created At': l.createdAt ? new Date(l.createdAt).toLocaleDateString() : 'N/A'
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Licenses');
+    XLSX.writeFile(workbook, `Organization_Licenses_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   const totalPages = Math.ceil(filteredLicenses.length / pageSize) || 1;
   const startIndex = (currentPage - 1) * pageSize;
   const paginatedLicenses = filteredLicenses.slice(startIndex, startIndex + pageSize);
@@ -1338,6 +1360,14 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
               </button>
             )}
           </div>
+          <button
+            onClick={handleExportLicensesExcel}
+            disabled={filteredLicenses.length === 0}
+            className="btn-secondary text-xs flex items-center gap-1.5 py-1.5 px-3 whitespace-nowrap border border-slate-200 hover:bg-slate-100 transition-all disabled:opacity-50"
+            title="Download Listed Licenses as Excel"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-600" /> Export Excel
+          </button>
           <HasPermission permission="licenses:write">
             <button onClick={() => setModal(true)} className="btn-primary text-xs flex items-center gap-1.5 py-1.5 px-3 whitespace-nowrap">
               <Plus className="w-3.5 h-3.5" /> Add Licenses
@@ -1521,6 +1551,24 @@ const CreditsTab = ({ orgId, org, orgs, reload }: { orgId: string, org: any, org
     );
   });
 
+  const handleExportCreditsExcel = () => {
+    const dataToExport = filteredTransfers.map((t, index) => {
+      return {
+        '#': index + 1,
+        'Assigned From': t.owner?.name || 'System',
+        'Credits': t.credits || 0,
+        'Plan Type': t.planType || 'REGULAR',
+        'Date': t.createdAt ? new Date(t.createdAt).toLocaleString() : 'N/A',
+        'Notes': t.notes || 'N/A'
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Credit_Assignments');
+    XLSX.writeFile(workbook, `Organization_Credit_Assignments_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   const totalPages = Math.ceil(filteredTransfers.length / pageSize) || 1;
   const startIndex = (currentPage - 1) * pageSize;
   const paginatedTransfers = filteredTransfers.slice(startIndex, startIndex + pageSize);
@@ -1566,6 +1614,14 @@ const CreditsTab = ({ orgId, org, orgs, reload }: { orgId: string, org: any, org
               </button>
             )}
           </div>
+          <button
+            onClick={handleExportCreditsExcel}
+            disabled={filteredTransfers.length === 0}
+            className="btn-secondary text-xs flex items-center gap-1.5 py-1.5 px-3 whitespace-nowrap border border-slate-200 hover:bg-slate-100 transition-all disabled:opacity-50"
+            title="Download Listed Assignment History as Excel"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-600" /> Export Excel
+          </button>
           <HasPermission permission="licenses:write">
             <button onClick={() => setModal(true)} className="btn-primary text-xs flex items-center gap-1.5 py-1.5 px-3 whitespace-nowrap">
               <Plus className="w-3.5 h-3.5" /> Assign Credit
