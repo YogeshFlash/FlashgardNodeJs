@@ -1325,7 +1325,7 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
   const paginatedLicenses = filteredLicenses.slice(startIndex, startIndex + pageSize);
 
   const totalLicenses = licenses.length;
-  const availableLicenses = licenses.filter(l => l.status === 'AVAILABLE').length;
+  const availableLicenses = licenses.filter(l => l.status === 'AVAILABLE' && (!l.ownerId || l.ownerId === orgId || l.ownerId === l.tenantId)).length;
   const assignedLicenses = totalLicenses - availableLicenses;
 
   return (

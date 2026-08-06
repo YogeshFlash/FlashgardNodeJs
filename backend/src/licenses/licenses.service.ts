@@ -10,18 +10,37 @@ export class LicensesService implements OnModuleInit {
 
   async onModuleInit() {
     try {
-      await (this.prisma.orgLicense as any).updateMany({
+      // 1. Licenses with no machine that match ownerId == tenantId are AVAILABLE (remaining stock)
+      const unassignedHqLicenses = await (this.prisma.orgLicense as any).findMany({
         where: {
           machineId: null,
           deviceHash: null,
-          macAddress: null,
-          status: 'ACTIVE'
+          macAddress: null
         },
-        data: {
-          status: 'AVAILABLE',
-          activatedAt: null
-        }
+        select: { id: true, ownerId: true, tenantId: true }
       });
+
+      const availableIds = unassignedHqLicenses
+        .filter((l: any) => !l.ownerId || !l.tenantId || l.ownerId === l.tenantId)
+        .map((l: any) => l.id);
+
+      const assignedIds = unassignedHqLicenses
+        .filter((l: any) => l.ownerId && l.tenantId && l.ownerId !== l.tenantId)
+        .map((l: any) => l.id);
+
+      if (availableIds.length > 0) {
+        await (this.prisma.orgLicense as any).updateMany({
+          where: { id: { in: availableIds } },
+          data: { status: 'AVAILABLE', activatedAt: null }
+        });
+      }
+
+      if (assignedIds.length > 0) {
+        await (this.prisma.orgLicense as any).updateMany({
+          where: { id: { in: assignedIds } },
+          data: { status: 'ACTIVE' }
+        });
+      }
     } catch (e) {
       console.error('Failed to sync unactivated license statuses on startup:', e);
     }
