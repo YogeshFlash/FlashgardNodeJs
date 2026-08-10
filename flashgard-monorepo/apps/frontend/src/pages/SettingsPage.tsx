@@ -2326,22 +2326,21 @@ const MaterialsTab = () => {
         setProductTypes(await productTypesApi.getAll(search || undefined, includeDeleted));
       } else if (subTab === 'material-categories') {
         const [categoriesList, ptList] = await Promise.all([
-          materialCategoriesApi.getAll(search || undefined, includeDeleted),
+          materialCategoriesApi.getAll(undefined, search || undefined, includeDeleted),
           productTypesApi.getAll()
         ]);
         setMaterialCategories(categoriesList);
         setProductTypes(ptList);
       } else if (subTab === 'film-categories') {
         const [fcList, mcList] = await Promise.all([
-          filmCategoriesApi.getAll(search || undefined),
+          filmCategoriesApi.getAll(undefined, search || undefined),
           materialCategoriesApi.getAll()
         ]);
         setFilmCategories(fcList);
         setMaterialCategories(mcList);
       } else if (subTab === 'materials') {
-        const skip = (currentPage - 1) * itemsPerPage;
         const [res, ptList, mcList, fcList] = await Promise.all([
-          materialsApi.getAll(search || undefined, includeDeleted, skip, itemsPerPage),
+          materialsApi.getAll(undefined, search || undefined, includeDeleted),
           productTypesApi.getAll(),
           materialCategoriesApi.getAll(),
           filmCategoriesApi.getAll()

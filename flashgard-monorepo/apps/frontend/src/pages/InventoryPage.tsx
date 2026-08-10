@@ -7,7 +7,7 @@ import {
   CheckCircle2, ArrowRight, Zap, RotateCcw,
   Send, Edit2, Trash2, FileText, Package2, PlusCircle, Tag, Download, Save
 } from 'lucide-react';
-import { inventoryApi, orgsApi, filmTypesApi } from '../lib/api';
+import { inventoryApi, orgsApi, filmTypesApi, productTypesApi, materialCategoriesApi, filmCategoriesApi, materialsApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 
@@ -2597,8 +2597,264 @@ const FilmTypeModal = ({ item, filmTypes, onClose, onSave }: { item?: any; filmT
   );
 };
 
+// ─── Taxonomy Modals ─────────────────────────────────────────────────────────
+const ProductTypeModal = ({ item, onClose, onSave }: { item?: any; onClose: () => void; onSave: () => void }) => {
+  const [name, setName] = useState(item?.name || '');
+  const [slug, setSlug] = useState(item?.slug || '');
+  const [isActive, setIsActive] = useState(item?.isActive !== false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return setError('Name is required');
+    setLoading(true);
+    try {
+      const payload = {
+        name: name.trim(),
+        slug: slug.trim() || name.trim().toLowerCase().replace(/\s+/g, '-'),
+        isActive
+      };
+      if (item?.id) await productTypesApi.update(item.id, payload);
+      else await productTypesApi.create(payload);
+      onSave();
+    } catch (e: any) {
+      setError(e.message || 'Failed to save Product Type');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal title={item ? 'Edit Product Type' : 'New Product Type'} onClose={onClose}>
+      <form onSubmit={handleSave} className="space-y-4 py-2">
+        {error && <div className="p-3 bg-red-50 text-red-600 text-xs rounded border border-red-100">{error}</div>}
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Product Type Name *</label>
+          <input type="text" required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Screen Protector, Canvas" className="w-full px-3 py-2 text-xs border rounded-lg" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Slug (URL key)</label>
+          <input type="text" value={slug} onChange={e => setSlug(e.target.value)} placeholder="e.g. screen-protector" className="w-full px-3 py-2 text-xs border rounded-lg" />
+        </div>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="ptActive" checked={isActive} onChange={e => setIsActive(e.target.checked)} className="rounded" />
+          <label htmlFor="ptActive" className="text-xs font-medium text-slate-700">Active Status</label>
+        </div>
+        <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-xs border rounded-lg">Cancel</button>
+          <button type="submit" disabled={loading} className="px-5 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg flex items-center gap-2">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+const MaterialCategoryModal = ({ item, productTypes, onClose, onSave }: { item?: any; productTypes: any[]; onClose: () => void; onSave: () => void }) => {
+  const [name, setName] = useState(item?.name || '');
+  const [productTypeId, setProductTypeId] = useState(item?.productTypeId || '');
+  const [description, setDescription] = useState(item?.description || '');
+  const [isActive, setIsActive] = useState(item?.isActive !== false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !productTypeId) return setError('Name and Product Type are required');
+    setLoading(true);
+    try {
+      const payload = { name: name.trim(), productTypeId, description: description.trim() || undefined, isActive };
+      if (item?.id) await materialCategoriesApi.update(item.id, payload);
+      else await materialCategoriesApi.create(payload);
+      onSave();
+    } catch (e: any) {
+      setError(e.message || 'Failed to save Material Category');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal title={item ? 'Edit Material Category' : 'New Material Category'} onClose={onClose}>
+      <form onSubmit={handleSave} className="space-y-4 py-2">
+        {error && <div className="p-3 bg-red-50 text-red-600 text-xs rounded border border-red-100">{error}</div>}
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Material Category Name *</label>
+          <input type="text" required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Mobile Screen Protector" className="w-full px-3 py-2 text-xs border rounded-lg" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Parent Product Type *</label>
+          <select required value={productTypeId} onChange={e => setProductTypeId(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg bg-white">
+            <option value="">Select Product Type...</option>
+            {productTypes.map((pt: any) => <option key={pt.id} value={pt.id}>{pt.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Description</label>
+          <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full px-3 py-2 text-xs border rounded-lg" />
+        </div>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="mcActive" checked={isActive} onChange={e => setIsActive(e.target.checked)} className="rounded" />
+          <label htmlFor="mcActive" className="text-xs font-medium text-slate-700">Active Status</label>
+        </div>
+        <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-xs border rounded-lg">Cancel</button>
+          <button type="submit" disabled={loading} className="px-5 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg flex items-center gap-2">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+const FilmCategoryModal = ({ item, materialCategories, onClose, onSave }: { item?: any; materialCategories: any[]; onClose: () => void; onSave: () => void }) => {
+  const [name, setName] = useState(item?.name || '');
+  const [materialCategoryId, setMaterialCategoryId] = useState(item?.materialCategoryId || '');
+  const [isActive, setIsActive] = useState(item?.isActive !== false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !materialCategoryId) return setError('Name and Material Category are required');
+    setLoading(true);
+    try {
+      const payload = { name: name.trim(), materialCategoryId, isActive };
+      if (item?.id) await filmCategoriesApi.update(item.id, payload);
+      else await filmCategoriesApi.create(payload);
+      onSave();
+    } catch (e: any) {
+      setError(e.message || 'Failed to save Film Category');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal title={item ? 'Edit Film Category' : 'New Film Category'} onClose={onClose}>
+      <form onSubmit={handleSave} className="space-y-4 py-2">
+        {error && <div className="p-3 bg-red-50 text-red-600 text-xs rounded border border-red-100">{error}</div>}
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Film Category Name *</label>
+          <input type="text" required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Canvas Shield, Canvas Alpha" className="w-full px-3 py-2 text-xs border rounded-lg" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Parent Material Category *</label>
+          <select required value={materialCategoryId} onChange={e => setMaterialCategoryId(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg bg-white">
+            <option value="">Select Material Category...</option>
+            {materialCategories.map((mc: any) => <option key={mc.id} value={mc.id}>{mc.name}</option>)}
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="fcActive" checked={isActive} onChange={e => setIsActive(e.target.checked)} className="rounded" />
+          <label htmlFor="fcActive" className="text-xs font-medium text-slate-700">Active Status</label>
+        </div>
+        <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-xs border rounded-lg">Cancel</button>
+          <button type="submit" disabled={loading} className="px-5 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg flex items-center gap-2">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+const MaterialModal = ({ item, filmCategories, onClose, onSave }: { item?: any; filmCategories: any[]; onClose: () => void; onSave: () => void }) => {
+  const [name, setName] = useState(item?.name || '');
+  const [filmCategoryId, setFilmCategoryId] = useState(item?.filmCategoryId || '');
+  const [thickness, setThickness] = useState(item?.thickness ? String(item.thickness) : '');
+  const [layers, setLayers] = useState(item?.layers ? String(item.layers) : '1');
+  const [minForce, setMinForce] = useState(item?.minForce ? String(item.minForce) : '');
+  const [minSpeed, setMinSpeed] = useState(item?.minSpeed ? String(item.minSpeed) : '');
+  const [isActive, setIsActive] = useState(item?.isActive !== false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !filmCategoryId) return setError('Name and Film Category are required');
+    setLoading(true);
+    try {
+      const payload = {
+        name: name.trim(),
+        filmCategoryId,
+        thickness: thickness ? Number(thickness) : undefined,
+        layers: layers ? Number(layers) : 1,
+        minForce: minForce ? Number(minForce) : undefined,
+        minSpeed: minSpeed ? Number(minSpeed) : undefined,
+        isActive,
+      };
+      if (item?.id) await materialsApi.update(item.id, payload);
+      else await materialsApi.create(payload);
+      onSave();
+    } catch (e: any) {
+      setError(e.message || 'Failed to save Material');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal title={item ? 'Edit Catalog Material' : 'New Catalog Material'} onClose={onClose}>
+      <form onSubmit={handleSave} className="space-y-4 py-2">
+        {error && <div className="p-3 bg-red-50 text-red-600 text-xs rounded border border-red-100">{error}</div>}
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Material Name *</label>
+          <input type="text" required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Shield Dry Matte, Eco Clear" className="w-full px-3 py-2 text-xs border rounded-lg" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Film Category *</label>
+          <select required value={filmCategoryId} onChange={e => setFilmCategoryId(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg bg-white">
+            <option value="">Select Film Category...</option>
+            {filmCategories.map((fc: any) => <option key={fc.id} value={fc.id}>{fc.name}</option>)}
+          </select>
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Layers</label>
+            <input type="number" min="1" max="10" value={layers} onChange={e => setLayers(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Thickness (mm)</label>
+            <input type="number" step="0.01" value={thickness} onChange={e => setThickness(e.target.value)} placeholder="0.15" className="w-full px-3 py-2 text-xs border rounded-lg" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Min Speed</label>
+            <input type="number" value={minSpeed} onChange={e => setMinSpeed(e.target.value)} placeholder="15" className="w-full px-3 py-2 text-xs border rounded-lg" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Min Force (g)</label>
+            <input type="number" value={minForce} onChange={e => setMinForce(e.target.value)} placeholder="45" className="w-full px-3 py-2 text-xs border rounded-lg" />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="matActive" checked={isActive} onChange={e => setIsActive(e.target.checked)} className="rounded" />
+          <label htmlFor="matActive" className="text-xs font-medium text-slate-700">Active Status</label>
+        </div>
+        <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-xs border rounded-lg">Cancel</button>
+          <button type="submit" disabled={loading} className="px-5 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg flex items-center gap-2">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
 const FilmTypesTab = () => {
+  const [subTab, setSubTab] = useState<'filmtypes' | 'producttypes' | 'materialcategories' | 'filmcategories' | 'materials'>('filmtypes');
+  
   const [filmTypes, setFilmTypes] = useState<any[]>([]);
+  const [productTypes, setProductTypes] = useState<any[]>([]);
+  const [materialCategories, setMaterialCategories] = useState<any[]>([]);
+  const [filmCategories, setFilmCategories] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
+
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [modalItem, setModalItem] = useState<any | null>(null);
@@ -2606,44 +2862,110 @@ const FilmTypesTab = () => {
   const [confirmDelete, setConfirmDelete] = useState<any | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
-  const load = useCallback(async () => {
+  const loadAllData = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await filmTypesApi.getAll(search || undefined, true);
-      setFilmTypes(Array.isArray(data) ? data : []);
+      if (subTab === 'filmtypes') {
+        const d = await filmTypesApi.getAll(search || undefined, true);
+        setFilmTypes(Array.isArray(d) ? d : []);
+      } else if (subTab === 'producttypes') {
+        const d = await productTypesApi.getAll(search || undefined, true);
+        setProductTypes(Array.isArray(d) ? d : []);
+      } else if (subTab === 'materialcategories') {
+        const [mc, pt] = await Promise.all([
+          materialCategoriesApi.getAll(undefined, search || undefined, true),
+          productTypesApi.getAll(undefined, true)
+        ]);
+        setMaterialCategories(Array.isArray(mc) ? mc : []);
+        setProductTypes(Array.isArray(pt) ? pt : []);
+      } else if (subTab === 'filmcategories') {
+        const [fc, mc] = await Promise.all([
+          filmCategoriesApi.getAll(undefined, search || undefined, true),
+          materialCategoriesApi.getAll(undefined, undefined, true)
+        ]);
+        setFilmCategories(Array.isArray(fc) ? fc : []);
+        setMaterialCategories(Array.isArray(mc) ? mc : []);
+      } else if (subTab === 'materials') {
+        const [m, fc] = await Promise.all([
+          materialsApi.getAll(undefined, search || undefined, true),
+          filmCategoriesApi.getAll(undefined, undefined, true)
+        ]);
+        const items = Array.isArray(m) ? m : (m?.items || []);
+        setMaterials(items);
+        setFilmCategories(Array.isArray(fc) ? fc : []);
+      }
     } catch (err) {
       console.error(err);
-      setFilmTypes([]);
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [subTab, search]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadAllData();
+  }, [loadAllData]);
 
   const handleExportExcel = async () => {
     setIsExporting(true);
     try {
-      const dataToExport = filmTypes.map((f: any, idx: number) => ({
-        '#': idx + 1,
-        'Film Type Name': f.name,
-        'Parent Category': f.parent?.name || 'Top-Level',
-        'Layers': f.layers || 1,
-        'Thickness (mm)': f.thickness || '—',
-        'Min Speed': f.minSpeed || '—',
-        'Min Force': f.minForce || '—',
-        'Status': f.isActive ? 'Active' : 'Inactive',
-        'Description': f.description || ''
-      }));
+      let dataToExport: any[] = [];
+      let sheetName = 'Export';
+      
+      if (subTab === 'filmtypes') {
+        sheetName = 'Film Types';
+        dataToExport = filmTypes.map((f: any, idx: number) => ({
+          '#': idx + 1,
+          'Film Type Name': f.name,
+          'Parent Category': f.parent?.name || 'Top-Level',
+          'Layers': f.layers || 1,
+          'Thickness (mm)': f.thickness || '—',
+          'Min Speed': f.minSpeed || '—',
+          'Min Force': f.minForce || '—',
+          'Status': f.isActive ? 'Active' : 'Inactive',
+          'Description': f.description || ''
+        }));
+      } else if (subTab === 'producttypes') {
+        sheetName = 'Product Types';
+        dataToExport = productTypes.map((pt: any, idx: number) => ({
+          '#': idx + 1,
+          'Product Type Name': pt.name,
+          'Slug': pt.slug,
+          'Status': pt.isActive ? 'Active' : 'Inactive',
+          'Created At': pt.createdAt ? new Date(pt.createdAt).toLocaleDateString() : ''
+        }));
+      } else if (subTab === 'materialcategories') {
+        sheetName = 'Material Categories';
+        dataToExport = materialCategories.map((mc: any, idx: number) => ({
+          '#': idx + 1,
+          'Material Category': mc.name,
+          'Parent Product Type': mc.productType?.name || '—',
+          'Description': mc.description || '',
+          'Status': mc.isActive ? 'Active' : 'Inactive'
+        }));
+      } else if (subTab === 'filmcategories') {
+        sheetName = 'Film Categories';
+        dataToExport = filmCategories.map((fc: any, idx: number) => ({
+          '#': idx + 1,
+          'Film Category Name': fc.name,
+          'Parent Material Category': fc.materialCategory?.name || '—',
+          'Status': fc.isActive ? 'Active' : 'Inactive'
+        }));
+      } else if (subTab === 'materials') {
+        sheetName = 'Catalog Materials';
+        dataToExport = materials.map((m: any, idx: number) => ({
+          '#': idx + 1,
+          'Material Name': m.name,
+          'Parent Film Category': m.filmCategory?.name || '—',
+          'Layers': m.layers || 1,
+          'Thickness (mm)': m.thickness || '—',
+          'Status': m.isActive ? 'Active' : 'Inactive'
+        }));
+      }
+
       const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-      worksheet['!cols'] = [
-        { wch: 8 }, { wch: 25 }, { wch: 20 }, { wch: 10 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 30 }
-      ];
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Film Types');
-      XLSX.writeFile(workbook, `Film_Types_${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+      XLSX.writeFile(workbook, `${sheetName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (e) {
       console.error(e);
     } finally {
@@ -2654,9 +2976,14 @@ const FilmTypesTab = () => {
   const handleDelete = async () => {
     if (!confirmDelete) return;
     try {
-      await filmTypesApi.remove(confirmDelete.id);
+      if (subTab === 'filmtypes') await filmTypesApi.remove(confirmDelete.id);
+      else if (subTab === 'producttypes') await productTypesApi.remove(confirmDelete.id);
+      else if (subTab === 'materialcategories') await materialCategoriesApi.remove(confirmDelete.id);
+      else if (subTab === 'filmcategories') await filmCategoriesApi.remove(confirmDelete.id);
+      else if (subTab === 'materials') await materialsApi.remove(confirmDelete.id);
+
       setConfirmDelete(null);
-      load();
+      loadAllData();
     } catch (err) {
       console.error(err);
     }
@@ -2664,12 +2991,47 @@ const FilmTypesTab = () => {
 
   return (
     <div className="p-6 space-y-4">
+      {/* Taxonomy Sub-Nav Bar */}
+      <div className="flex border-b border-slate-200 bg-slate-50/50 p-1.5 rounded-xl overflow-x-auto gap-1">
+        <button
+          onClick={() => { setSubTab('filmtypes'); setSearch(''); }}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'filmtypes' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          <Tag className="w-3.5 h-3.5" /> Operational Film Types
+        </button>
+        <button
+          onClick={() => { setSubTab('producttypes'); setSearch(''); }}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'producttypes' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          <Package2 className="w-3.5 h-3.5" /> Tier 1: Product Types
+        </button>
+        <button
+          onClick={() => { setSubTab('materialcategories'); setSearch(''); }}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'materialcategories' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          <Layers className="w-3.5 h-3.5" /> Tier 2: Material Categories
+        </button>
+        <button
+          onClick={() => { setSubTab('filmcategories'); setSearch(''); }}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'filmcategories' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          <FileText className="w-3.5 h-3.5" /> Tier 3: Film Categories
+        </button>
+        <button
+          onClick={() => { setSubTab('materials'); setSearch(''); }}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'materials' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          <ClipboardList className="w-3.5 h-3.5" /> Tier 4: Catalog Materials
+        </button>
+      </div>
+
+      {/* Control Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="relative w-full sm:w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search film types & materials..."
+            placeholder="Search items..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
@@ -2685,76 +3047,135 @@ const FilmTypesTab = () => {
           <button onClick={handleExportExcel} disabled={isExporting} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 bg-white shadow-sm flex items-center justify-center" title="Export Excel">
             {isExporting ? <Loader2 className="w-4 h-4 animate-spin text-indigo-600" /> : <Download className="w-4 h-4 text-slate-600" />}
           </button>
-          <button onClick={load} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 bg-white shadow-sm" title="Refresh">
+          <button onClick={loadAllData} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 bg-white shadow-sm" title="Refresh">
             <RotateCcw className={`w-4 h-4 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
           </button>
           <button onClick={() => { setModalItem(null); setShowModal(true); }} className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl flex items-center gap-2 transition shadow-sm">
-            <Plus className="w-4 h-4" /> New Film Type
+            <Plus className="w-4 h-4" /> New {subTab === 'filmtypes' ? 'Film Type' : subTab === 'producttypes' ? 'Product Type' : subTab === 'materialcategories' ? 'Material Category' : subTab === 'filmcategories' ? 'Film Category' : 'Catalog Material'}
           </button>
         </div>
       </div>
 
+      {/* Main Dynamic Table */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
         <table className="w-full text-left text-xs border-collapse">
           <thead className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
-            <tr>
-              <th className="px-4 py-3">Material / Film Type Name</th>
-              <th className="px-4 py-3">Parent Category</th>
-              <th className="px-4 py-3">Layers & Thickness</th>
-              <th className="px-4 py-3">Plotter Settings</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3 text-right">Actions</th>
-            </tr>
+            {subTab === 'filmtypes' && (
+              <tr>
+                <th className="px-4 py-3">Material / Film Type Name</th>
+                <th className="px-4 py-3">Parent Category</th>
+                <th className="px-4 py-3">Layers & Thickness</th>
+                <th className="px-4 py-3">Plotter Settings</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            )}
+            {subTab === 'producttypes' && (
+              <tr>
+                <th className="px-4 py-3">Product Type Name</th>
+                <th className="px-4 py-3">Slug (URL Key)</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Created At</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            )}
+            {subTab === 'materialcategories' && (
+              <tr>
+                <th className="px-4 py-3">Material Category Name</th>
+                <th className="px-4 py-3">Parent Product Type</th>
+                <th className="px-4 py-3">Description</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            )}
+            {subTab === 'filmcategories' && (
+              <tr>
+                <th className="px-4 py-3">Film Category Name</th>
+                <th className="px-4 py-3">Parent Material Category</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            )}
+            {subTab === 'materials' && (
+              <tr>
+                <th className="px-4 py-3">Material Name</th>
+                <th className="px-4 py-3">Parent Film Category</th>
+                <th className="px-4 py-3">Layers & Thickness</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            )}
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
-              <tr><td colSpan={6} className="py-12 text-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin mx-auto text-indigo-500 mb-2" />Loading film types...</td></tr>
-            ) : filmTypes.length === 0 ? (
-              <tr><td colSpan={6} className="py-12 text-center text-slate-400">No film types found. Click "New Film Type" to add one.</td></tr>
-            ) : (
+              <tr><td colSpan={6} className="py-12 text-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin mx-auto text-indigo-500 mb-2" />Loading items...</td></tr>
+            ) : subTab === 'filmtypes' ? (
+              filmTypes.length === 0 ? <tr><td colSpan={6} className="py-12 text-center text-slate-400">No items found.</td></tr> :
               filmTypes.map((f: any) => (
                 <tr key={f.id} className="hover:bg-slate-50/50 transition">
-                  <td className="px-4 py-3 font-bold text-slate-800">
-                    <div className="flex items-center gap-2">
-                      <Tag className="w-4 h-4 text-indigo-500 shrink-0" />
-                      <span>{f.name}</span>
-                    </div>
-                    {f.description && <p className="text-[10px] font-normal text-slate-400 mt-0.5">{f.description}</p>}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600 font-medium">
-                    {f.parent ? (
-                      <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-semibold text-[10px]">{f.parent.name}</span>
-                    ) : (
-                      <span className="text-slate-400 italic">Top-Level</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold">{f.layers || 1} Layer(s)</span>
-                      {f.thickness && <span className="text-slate-400">({f.thickness}mm)</span>}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {f.minSpeed || f.minForce ? (
-                      <span className="font-mono text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded">Speed: {f.minSpeed || '—'} | Force: {f.minForce ? `${f.minForce}g` : '—'}</span>
-                    ) : (
-                      <span className="text-slate-400">Default</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${f.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {f.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
+                  <td className="px-4 py-3 font-bold text-slate-800"><div className="flex items-center gap-2"><Tag className="w-4 h-4 text-indigo-500 shrink-0" /><span>{f.name}</span></div></td>
+                  <td className="px-4 py-3 text-slate-600">{f.parent?.name || 'Top-Level'}</td>
+                  <td className="px-4 py-3 text-slate-600">{f.layers || 1} Layer(s) {f.thickness && `(${f.thickness}mm)`}</td>
+                  <td className="px-4 py-3 text-slate-600">{f.minSpeed || f.minForce ? `Speed: ${f.minSpeed || '—'} | Force: ${f.minForce || '—'}g` : 'Default'}</td>
+                  <td className="px-4 py-3"><span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${f.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{f.isActive ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => { setModalItem(f); setShowModal(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition" title="Edit">
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => setConfirmDelete(f)} className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-slate-100 transition" title="Delete">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                    <button onClick={() => { setModalItem(f); setShowModal(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
+                    <button onClick={() => setConfirmDelete(f)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                  </td>
+                </tr>
+              ))
+            ) : subTab === 'producttypes' ? (
+              productTypes.length === 0 ? <tr><td colSpan={5} className="py-12 text-center text-slate-400">No items found.</td></tr> :
+              productTypes.map((pt: any) => (
+                <tr key={pt.id} className="hover:bg-slate-50/50 transition">
+                  <td className="px-4 py-3 font-bold text-slate-800">{pt.name}</td>
+                  <td className="px-4 py-3 text-slate-500 font-mono text-[11px]">{pt.slug}</td>
+                  <td className="px-4 py-3"><span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${pt.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{pt.isActive ? 'Active' : 'Inactive'}</span></td>
+                  <td className="px-4 py-3 text-slate-500">{pt.createdAt ? new Date(pt.createdAt).toLocaleDateString() : '—'}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => { setModalItem(pt); setShowModal(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
+                    <button onClick={() => setConfirmDelete(pt)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                  </td>
+                </tr>
+              ))
+            ) : subTab === 'materialcategories' ? (
+              materialCategories.length === 0 ? <tr><td colSpan={5} className="py-12 text-center text-slate-400">No items found.</td></tr> :
+              materialCategories.map((mc: any) => (
+                <tr key={mc.id} className="hover:bg-slate-50/50 transition">
+                  <td className="px-4 py-3 font-bold text-slate-800">{mc.name}</td>
+                  <td className="px-4 py-3 text-indigo-600 font-semibold">{mc.productType?.name || '—'}</td>
+                  <td className="px-4 py-3 text-slate-500">{mc.description || '—'}</td>
+                  <td className="px-4 py-3"><span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${mc.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{mc.isActive ? 'Active' : 'Inactive'}</span></td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => { setModalItem(mc); setShowModal(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
+                    <button onClick={() => setConfirmDelete(mc)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                  </td>
+                </tr>
+              ))
+            ) : subTab === 'filmcategories' ? (
+              filmCategories.length === 0 ? <tr><td colSpan={4} className="py-12 text-center text-slate-400">No items found.</td></tr> :
+              filmCategories.map((fc: any) => (
+                <tr key={fc.id} className="hover:bg-slate-50/50 transition">
+                  <td className="px-4 py-3 font-bold text-slate-800">{fc.name}</td>
+                  <td className="px-4 py-3 text-indigo-600 font-semibold">{fc.materialCategory?.name || '—'}</td>
+                  <td className="px-4 py-3"><span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${fc.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{fc.isActive ? 'Active' : 'Inactive'}</span></td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => { setModalItem(fc); setShowModal(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
+                    <button onClick={() => setConfirmDelete(fc)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              materials.length === 0 ? <tr><td colSpan={5} className="py-12 text-center text-slate-400">No items found.</td></tr> :
+              materials.map((m: any) => (
+                <tr key={m.id} className="hover:bg-slate-50/50 transition">
+                  <td className="px-4 py-3 font-bold text-slate-800">{m.name}</td>
+                  <td className="px-4 py-3 text-indigo-600 font-semibold">{m.filmCategory?.name || '—'}</td>
+                  <td className="px-4 py-3 text-slate-600">{m.layers || 1} Layer(s) {m.thickness && `(${m.thickness}mm)`}</td>
+                  <td className="px-4 py-3"><span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${m.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{m.isActive ? 'Active' : 'Inactive'}</span></td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => { setModalItem(m); setShowModal(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
+                    <button onClick={() => setConfirmDelete(m)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
                   </td>
                 </tr>
               ))
@@ -2763,11 +3184,16 @@ const FilmTypesTab = () => {
         </table>
       </div>
 
-      {showModal && <FilmTypeModal item={modalItem} filmTypes={filmTypes} onClose={() => { setShowModal(false); setModalItem(null); }} onSave={() => { setShowModal(false); setModalItem(null); load(); }} />}
+      {showModal && subTab === 'filmtypes' && <FilmTypeModal item={modalItem} filmTypes={filmTypes} onClose={() => { setShowModal(false); setModalItem(null); }} onSave={() => { setShowModal(false); setModalItem(null); loadAllData(); }} />}
+      {showModal && subTab === 'producttypes' && <ProductTypeModal item={modalItem} onClose={() => { setShowModal(false); setModalItem(null); }} onSave={() => { setShowModal(false); setModalItem(null); loadAllData(); }} />}
+      {showModal && subTab === 'materialcategories' && <MaterialCategoryModal item={modalItem} productTypes={productTypes} onClose={() => { setShowModal(false); setModalItem(null); }} onSave={() => { setShowModal(false); setModalItem(null); loadAllData(); }} />}
+      {showModal && subTab === 'filmcategories' && <FilmCategoryModal item={modalItem} materialCategories={materialCategories} onClose={() => { setShowModal(false); setModalItem(null); }} onSave={() => { setShowModal(false); setModalItem(null); loadAllData(); }} />}
+      {showModal && subTab === 'materials' && <MaterialModal item={modalItem} filmCategories={filmCategories} onClose={() => { setShowModal(false); setModalItem(null); }} onSave={() => { setShowModal(false); setModalItem(null); loadAllData(); }} />}
+
       {confirmDelete && (
         <ConfirmDialog
           isOpen={true}
-          title="Delete Film Type"
+          title="Delete Item"
           message={`Are you sure you want to delete "${confirmDelete.name}"?`}
           confirmLabel="Delete"
           variant="danger"

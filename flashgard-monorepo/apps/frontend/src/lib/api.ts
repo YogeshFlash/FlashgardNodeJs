@@ -218,6 +218,69 @@ export const filmTypesApi = {
   purge: (id: string) => request<void>(`/film-types/${id}/purge`, { method: 'DELETE' }),
 };
 
+export const productTypesApi = {
+  getAll: (search?: string, includeDeleted?: boolean) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (includeDeleted) params.append('includeDeleted', 'true');
+    return request<any[]>(`/product-types${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getOne: (id: string) => request<any>(`/product-types/${id}`),
+  create: (data: any) => request<any>('/product-types', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => request<any>(`/product-types/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/product-types/${id}`, { method: 'DELETE' }),
+  restore: (id: string) => request<any>(`/product-types/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) => request<void>(`/product-types/${id}/purge`, { method: 'DELETE' }),
+};
+
+export const materialCategoriesApi = {
+  getAll: (productTypeId?: string, search?: string, includeDeleted?: boolean) => {
+    const params = new URLSearchParams();
+    if (productTypeId) params.append('productTypeId', productTypeId);
+    if (search) params.append('search', search);
+    if (includeDeleted) params.append('includeDeleted', 'true');
+    return request<any[]>(`/material-categories${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getOne: (id: string) => request<any>(`/material-categories/${id}`),
+  create: (data: any) => request<any>('/material-categories', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => request<any>(`/material-categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/material-categories/${id}`, { method: 'DELETE' }),
+  restore: (id: string) => request<any>(`/material-categories/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) => request<void>(`/material-categories/${id}/purge`, { method: 'DELETE' }),
+};
+
+export const filmCategoriesApi = {
+  getAll: (materialCategoryId?: string, search?: string, includeDeleted?: boolean) => {
+    const params = new URLSearchParams();
+    if (materialCategoryId) params.append('materialCategoryId', materialCategoryId);
+    if (search) params.append('search', search);
+    if (includeDeleted) params.append('includeDeleted', 'true');
+    return request<any[]>(`/film-categories${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getOne: (id: string) => request<any>(`/film-categories/${id}`),
+  create: (data: any) => request<any>('/film-categories', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => request<any>(`/film-categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/film-categories/${id}`, { method: 'DELETE' }),
+  restore: (id: string) => request<any>(`/film-categories/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) => request<void>(`/film-categories/${id}/purge`, { method: 'DELETE' }),
+};
+
+export const materialsApi = {
+  getAll: (filmCategoryId?: string, search?: string, includeDeleted?: boolean) => {
+    const params = new URLSearchParams();
+    if (filmCategoryId) params.append('filmCategoryId', filmCategoryId);
+    if (search) params.append('search', search);
+    if (includeDeleted) params.append('includeDeleted', 'true');
+    return request<{ items: any[]; total: number } | any[]>(`/materials${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getOne: (id: string) => request<any>(`/materials/${id}`),
+  create: (data: any) => request<any>('/materials', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => request<any>(`/materials/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/materials/${id}`, { method: 'DELETE' }),
+  restore: (id: string) => request<any>(`/materials/${id}/restore`, { method: 'PATCH' }),
+  purge: (id: string) => request<void>(`/materials/${id}/purge`, { method: 'DELETE' }),
+};
+
 export const modelCategoriesApi = {
   getAll: (search?: string, includeDeleted?: boolean) => {
     const params = new URLSearchParams();
@@ -630,66 +693,7 @@ export const dashboardApi = {
   getStats: () => request<any>('/dashboard/stats'),
 };
 
-// ─── Materials Management Relational Schema CRUD ───
-export const productTypesApi = {
-  getAll: (search?: string, includeDeleted?: boolean) => {
-    const params = new URLSearchParams();
-    if (search) params.append('search', search);
-    if (includeDeleted) params.append('includeDeleted', 'true');
-    return request<any[]>(`/product-types${params.toString() ? `?${params.toString()}` : ''}`);
-  },
-  getOne: (id: string) => request<any>(`/product-types/${id}`),
-  create: (data: any) => request<any>('/product-types', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: any) => request<any>(`/product-types/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  remove: (id: string) => request<void>(`/product-types/${id}`, { method: 'DELETE' }),
-  restore: (id: string) => request<any>(`/product-types/${id}/restore`, { method: 'PATCH' }),
-  purge: (id: string) => request<void>(`/product-types/${id}/purge`, { method: 'DELETE' }),
-};
-
-export const materialCategoriesApi = {
-  getAll: (search?: string, includeDeleted?: boolean) => {
-    const params = new URLSearchParams();
-    if (search) params.append('search', search);
-    if (includeDeleted) params.append('includeDeleted', 'true');
-    return request<any[]>(`/material-categories${params.toString() ? `?${params.toString()}` : ''}`);
-  },
-  getOne: (id: string) => request<any>(`/material-categories/${id}`),
-  create: (data: any) => request<any>('/material-categories', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: any) => request<any>(`/material-categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  remove: (id: string) => request<void>(`/material-categories/${id}`, { method: 'DELETE' }),
-  restore: (id: string) => request<any>(`/material-categories/${id}/restore`, { method: 'PATCH' }),
-  purge: (id: string) => request<void>(`/material-categories/${id}/purge`, { method: 'DELETE' }),
-};
-
-export const filmCategoriesApi = {
-  getAll: (search?: string) => {
-    const params = new URLSearchParams();
-    if (search) params.append('search', search);
-    return request<any[]>(`/film-categories${params.toString() ? `?${params.toString()}` : ''}`);
-  },
-  getOne: (id: string) => request<any>(`/film-categories/${id}`),
-  create: (data: any) => request<any>('/film-categories', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: any) => request<any>(`/film-categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  remove: (id: string) => request<void>(`/film-categories/${id}`, { method: 'DELETE' }),
-  purge: (id: string) => request<void>(`/film-categories/${id}/purge`, { method: 'DELETE' }),
-};
-
-export const materialsApi = {
-  getAll: (search?: string, includeDeleted?: boolean, skip?: number, take?: number) => {
-    const params = new URLSearchParams();
-    if (search) params.append('search', search);
-    if (includeDeleted) params.append('includeDeleted', 'true');
-    if (skip !== undefined) params.append('skip', skip.toString());
-    if (take !== undefined) params.append('take', take.toString());
-    return request<any>(`/materials${params.toString() ? `?${params.toString()}` : ''}`);
-  },
-  getOne: (id: string) => request<any>(`/materials/${id}`),
-  create: (data: any) => request<any>('/materials', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: any) => request<any>(`/materials/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  remove: (id: string) => request<void>(`/materials/${id}`, { method: 'DELETE' }),
-  restore: (id: string) => request<any>(`/materials/${id}/restore`, { method: 'PATCH' }),
-  purge: (id: string) => request<void>(`/materials/${id}/purge`, { method: 'DELETE' }),
-};
+// ─── Mobile Home API ───
 
 export const mobileHomeApi = {
   getContent: () => request<any>('/mobile-home/content'),
