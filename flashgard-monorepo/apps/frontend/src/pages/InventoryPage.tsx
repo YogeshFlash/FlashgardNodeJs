@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import XLSX from 'xlsx-js-style';
 import {
   Package, Plus, Search, Loader2, RefreshCw,
   Layers, ClipboardList, Truck, QrCode, X, AlertCircle, ChevronDown,
   CheckCircle2, ArrowRight, Zap, RotateCcw,
-  Send, Edit2, Trash2, FileText, Package2, PlusCircle
+  Send, Edit2, Trash2, FileText, Package2, PlusCircle, Tag, Download, Save
 } from 'lucide-react';
 import { inventoryApi, orgsApi, filmTypesApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -2429,6 +2430,355 @@ const DispatchTab = () => {
   );
 };
 
+// ─── Film Types & Materials Tab ────────────────────────────────────────────────
+const FilmTypeModal = ({ item, filmTypes, onClose, onSave }: { item?: any; filmTypes: any[]; onClose: () => void; onSave: () => void }) => {
+  const [name, setName] = useState(item?.name || '');
+  const [description, setDescription] = useState(item?.description || '');
+  const [parentId, setParentId] = useState(item?.parentId || '');
+  const [thickness, setThickness] = useState(item?.thickness ? String(item.thickness) : '');
+  const [layers, setLayers] = useState(item?.layers ? String(item.layers) : '1');
+  const [minForce, setMinForce] = useState(item?.minForce ? String(item.minForce) : '');
+  const [minSpeed, setMinSpeed] = useState(item?.minSpeed ? String(item.minSpeed) : '');
+  const [isActive, setIsActive] = useState(item?.isActive !== false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setError('Film Type name is required.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const payload = {
+        name: name.trim(),
+        description: description.trim() || undefined,
+        parentId: parentId || null,
+        thickness: thickness ? Number(thickness) : undefined,
+        layers: layers ? Number(layers) : 1,
+        minForce: minForce ? Number(minForce) : undefined,
+        minSpeed: minSpeed ? Number(minSpeed) : undefined,
+        isActive,
+      };
+
+      if (item?.id) {
+        await filmTypesApi.update(item.id, payload);
+      } else {
+        await filmTypesApi.create(payload);
+      }
+      onSave();
+    } catch (err: any) {
+      setError(err.message || 'Failed to save Film Type');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal title={item ? 'Edit Film Type / Material' : 'New Film Type / Material'} onClose={onClose}>
+      <form onSubmit={handleSave} className="space-y-4 py-2">
+        {error && (
+          <div className="p-3 rounded-lg bg-red-50 text-red-600 text-xs border border-red-100 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Film / Material Name *</label>
+          <input
+            type="text"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Shield Dry Matte, Canvas Titan"
+            className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Parent Category</label>
+            <select
+              value={parentId}
+              onChange={(e) => setParentId(e.target.value)}
+              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white"
+            >
+              <option value="">None (Top-Level Category)</option>
+              {filmTypes.filter((f: any) => f.id !== item?.id).map((f: any) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Layers</label>
+            <input
+              type="number"
+              min="1"
+              max="10"
+              value={layers}
+              onChange={(e) => setLayers(e.target.value)}
+              placeholder="1"
+              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Thickness (mm)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={thickness}
+              onChange={(e) => setThickness(e.target.value)}
+              placeholder="e.g. 0.15"
+              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Min Speed</label>
+            <input
+              type="number"
+              value={minSpeed}
+              onChange={(e) => setMinSpeed(e.target.value)}
+              placeholder="e.g. 15"
+              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Min Force (g)</label>
+            <input
+              type="number"
+              value={minForce}
+              onChange={(e) => setMinForce(e.target.value)}
+              placeholder="e.g. 45"
+              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Description / Notes</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            placeholder="Optional material description or cutting instructions..."
+            className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 pt-1">
+          <input
+            type="checkbox"
+            id="filmIsActive"
+            checked={isActive}
+            onChange={(e) => setIsActive(e.target.checked)}
+            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+          />
+          <label htmlFor="filmIsActive" className="text-xs font-medium text-slate-700">Active Material Status</label>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition">Cancel</button>
+          <button type="submit" disabled={loading} className="px-5 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2 transition shadow-sm">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {item ? 'Update Film Type' : 'Create Film Type'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+const FilmTypesTab = () => {
+  const [filmTypes, setFilmTypes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [modalItem, setModalItem] = useState<any | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<any | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await filmTypesApi.getAll(search || undefined, true);
+      setFilmTypes(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+      setFilmTypes([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [search]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const handleExportExcel = async () => {
+    setIsExporting(true);
+    try {
+      const dataToExport = filmTypes.map((f: any, idx: number) => ({
+        '#': idx + 1,
+        'Film Type Name': f.name,
+        'Parent Category': f.parent?.name || 'Top-Level',
+        'Layers': f.layers || 1,
+        'Thickness (mm)': f.thickness || '—',
+        'Min Speed': f.minSpeed || '—',
+        'Min Force': f.minForce || '—',
+        'Status': f.isActive ? 'Active' : 'Inactive',
+        'Description': f.description || ''
+      }));
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+      worksheet['!cols'] = [
+        { wch: 8 }, { wch: 25 }, { wch: 20 }, { wch: 10 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 30 }
+      ];
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Film Types');
+      XLSX.writeFile(workbook, `Film_Types_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
+    try {
+      await filmTypesApi.remove(confirmDelete.id);
+      setConfirmDelete(null);
+      load();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search film types & materials..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <button onClick={handleExportExcel} disabled={isExporting} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 bg-white shadow-sm flex items-center justify-center" title="Export Excel">
+            {isExporting ? <Loader2 className="w-4 h-4 animate-spin text-indigo-600" /> : <Download className="w-4 h-4 text-slate-600" />}
+          </button>
+          <button onClick={load} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 bg-white shadow-sm" title="Refresh">
+            <RotateCcw className={`w-4 h-4 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button onClick={() => { setModalItem(null); setShowModal(true); }} className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl flex items-center gap-2 transition shadow-sm">
+            <Plus className="w-4 h-4" /> New Film Type
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+        <table className="w-full text-left text-xs border-collapse">
+          <thead className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
+            <tr>
+              <th className="px-4 py-3">Material / Film Type Name</th>
+              <th className="px-4 py-3">Parent Category</th>
+              <th className="px-4 py-3">Layers & Thickness</th>
+              <th className="px-4 py-3">Plotter Settings</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading ? (
+              <tr><td colSpan={6} className="py-12 text-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin mx-auto text-indigo-500 mb-2" />Loading film types...</td></tr>
+            ) : filmTypes.length === 0 ? (
+              <tr><td colSpan={6} className="py-12 text-center text-slate-400">No film types found. Click "New Film Type" to add one.</td></tr>
+            ) : (
+              filmTypes.map((f: any) => (
+                <tr key={f.id} className="hover:bg-slate-50/50 transition">
+                  <td className="px-4 py-3 font-bold text-slate-800">
+                    <div className="flex items-center gap-2">
+                      <Tag className="w-4 h-4 text-indigo-500 shrink-0" />
+                      <span>{f.name}</span>
+                    </div>
+                    {f.description && <p className="text-[10px] font-normal text-slate-400 mt-0.5">{f.description}</p>}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600 font-medium">
+                    {f.parent ? (
+                      <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-semibold text-[10px]">{f.parent.name}</span>
+                    ) : (
+                      <span className="text-slate-400 italic">Top-Level</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">{f.layers || 1} Layer(s)</span>
+                      {f.thickness && <span className="text-slate-400">({f.thickness}mm)</span>}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {f.minSpeed || f.minForce ? (
+                      <span className="font-mono text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded">Speed: {f.minSpeed || '—'} | Force: {f.minForce ? `${f.minForce}g` : '—'}</span>
+                    ) : (
+                      <span className="text-slate-400">Default</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${f.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                      {f.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => { setModalItem(f); setShowModal(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition" title="Edit">
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setConfirmDelete(f)} className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-slate-100 transition" title="Delete">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {showModal && <FilmTypeModal item={modalItem} filmTypes={filmTypes} onClose={() => { setShowModal(false); setModalItem(null); }} onSave={() => { setShowModal(false); setModalItem(null); load(); }} />}
+      {confirmDelete && (
+        <ConfirmDialog
+          isOpen={true}
+          title="Delete Film Type"
+          message={`Are you sure you want to delete "${confirmDelete.name}"?`}
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={handleDelete}
+          onClose={() => setConfirmDelete(null)}
+        />
+      )}
+    </div>
+  );
+};
+
 // ─── Stats Card ───────────────────────────────────────────────────────────────
 const StatsCard = ({ icon: Icon, label, value, color }: any) => (
   <div className="bg-white rounded-2xl border border-slate-200 p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
@@ -2446,6 +2796,7 @@ const StatsCard = ({ icon: Icon, label, value, color }: any) => (
 const TABS = [
   { id: 'receipts', label: 'Inward Receipts', icon: FileText },
   { id: 'batches', label: 'Stock Batches', icon: Package },
+  { id: 'filmtypes', label: 'Film Types & Materials', icon: Tag },
   { id: 'workorders', label: 'Work Orders', icon: ClipboardList },
   { id: 'dispatch', label: 'Dispatch', icon: Truck },
 ];
@@ -2532,6 +2883,7 @@ export default function InventoryPage() {
 
         {activeTab === 'receipts' && <InwardReceiptsTab onReceiptClick={handleReceiptClick} onAddStock={handleAddStock} />}
         {activeTab === 'batches' && <BatchesTab initialReceiptId={initialReceiptId} onShowInward={() => { setInwardInitialId(null); setShowInward(true); }} onGoToWorkOrder={handleBatchToWorkOrder} />}
+        {activeTab === 'filmtypes' && <FilmTypesTab />}
         {activeTab === 'workorders' && <WorkOrdersTab initialBatchSearch={initialBatchSearch} onClearSearch={() => setInitialBatchSearch(null)} />}
         {activeTab === 'dispatch' && <DispatchTab />}
       </div>
