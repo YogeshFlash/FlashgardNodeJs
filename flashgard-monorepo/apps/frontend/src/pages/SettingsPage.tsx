@@ -2466,10 +2466,10 @@ const MaterialsTab = () => {
   // Actions for Cut Configs removed
 
   const subTabsList = [
-    { id: 'product-types', label: 'Product Types' },
-    { id: 'material-categories', label: 'Categories' },
-    { id: 'film-categories', label: 'Film Categories' },
-    { id: 'materials', label: 'Materials' }
+    { id: 'product-types', label: 'Product Lines' },
+    { id: 'material-categories', label: 'Material Categories' },
+    { id: 'film-categories', label: 'Film Series' },
+    { id: 'materials', label: 'Catalog Materials' }
   ];
 
   return (
