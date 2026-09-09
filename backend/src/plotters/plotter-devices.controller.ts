@@ -2,10 +2,21 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Re
 import { PlotterDevicesService } from './plotter-devices.service';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Public } from '../auth/public.decorator';
 
 @Controller('plotter-devices')
 export class PlotterDevicesController {
   constructor(private readonly plotterDevicesService: PlotterDevicesService) {}
+
+  @Public()
+  @Post('bind')
+  bindDevice(@Body() data: any, @Request() req: any) {
+    const organizationId = req?.user?.organizationId || data.organizationId;
+    return this.plotterDevicesService.bindDevice({
+      ...data,
+      organizationId,
+    });
+  }
 
   @Post('check-or-register')
   @UseGuards(JwtAuthGuard)

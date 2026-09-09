@@ -79,30 +79,51 @@ export class RechargeService {
     return { items, total };
   }
 
-  async createOrder(packageId: string, userId: string) {
-    // 1. Fetch user and check active license on their organization
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        organization: {
-          include: {
-            orgLicenses: {
-              where: { status: 'ACTIVE' },
-            },
-          },
-        },
-      },
-    });
+  async createOrder(packageId: string, userId: string, requestedOrgId?: string) {
+    // 1. Resolve Organization ID
+    let orgId = requestedOrgId;
 
-    if (!user || !user.organization) {
+    if (!orgId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          organizations: true,
+        },
+      });
+      orgId = user?.organizationId || user?.organizations?.[0]?.organizationId;
+    }
+
+    if (!orgId) {
       throw new BadRequestException('User organization not found');
     }
 
-    if (user.organization.orgLicenses.length === 0) {
+    // 2. Check active license for this organization (both tenantLicenses and owner orgLicenses, plus AVAILABLE ones)
+    const activeLicense = await this.prisma.orgLicense.findFirst({
+      where: {
+        OR: [
+          { tenantId: orgId },
+          { ownerId: orgId },
+        ],
+        status: { in: ['ACTIVE', 'AVAILABLE'] as any },
+      },
+    });
+
+    if (!activeLicense) {
       throw new BadRequestException('Recharge requires an active organization license');
     }
 
-    // 2. Fetch package details
+    // If license is AVAILABLE, activate it
+    if (activeLicense.status === 'AVAILABLE') {
+      await this.prisma.orgLicense.update({
+        where: { id: activeLicense.id },
+        data: {
+          status: 'ACTIVE',
+          activatedAt: new Date(),
+        },
+      });
+    }
+
+    // 3. Fetch package details
     const pkg = await this.prisma.rechargePackage.findUnique({
       where: { id: packageId },
     });
@@ -111,7 +132,7 @@ export class RechargeService {
       throw new BadRequestException('Invalid or inactive recharge package');
     }
 
-    // 3. Create order on Razorpay using dynamic client
+    // 4. Create order on Razorpay using dynamic client
     const gateway = await this.getRazorpayClient();
     const amountInPaise = Math.round(Number(pkg.price) * 100);
 
@@ -127,11 +148,11 @@ export class RechargeService {
       throw new BadRequestException('Failed to initialize payment gateway order');
     }
 
-    // 4. Create local pending transaction
+    // 5. Create local pending transaction
     const transaction = await this.prisma.paymentTransaction.create({
       data: {
-        organizationId: user.organization.id,
-        userId: user.id,
+        organizationId: orgId,
+        userId: userId,
         packageId: pkg.id,
         razorpayOrderId: razorpayOrder.id,
         amount: pkg.price,
@@ -191,13 +212,21 @@ export class RechargeService {
 
       // Update organization wallet balance
       const wallet = await tx.entityWallet.findFirst({
-        where: { tenantId: transaction.organizationId },
+        where: {
+          OR: [
+            { tenantId: transaction.organizationId },
+            { orgId: transaction.organizationId },
+          ],
+        },
       });
 
-      // Query active license for this tenant
+      // Query active license for this tenant or owner
       const activeLicense = await tx.orgLicense.findFirst({
         where: {
-          tenantId: transaction.organizationId,
+          OR: [
+            { tenantId: transaction.organizationId },
+            { ownerId: transaction.organizationId },
+          ],
           status: 'ACTIVE',
         },
       });
@@ -322,10 +351,13 @@ export class RechargeService {
                 },
               });
 
-              // Query active license for this tenant
+              // Query active license for this tenant or owner
               const activeLicense = await tx.orgLicense.findFirst({
                 where: {
-                  tenantId: transaction.organizationId,
+                  OR: [
+                    { tenantId: transaction.organizationId },
+                    { ownerId: transaction.organizationId },
+                  ],
                   status: 'ACTIVE',
                 },
               });
@@ -365,7 +397,12 @@ export class RechargeService {
               });
 
               const wallet = await tx.entityWallet.findFirst({
-                where: { tenantId: transaction.organizationId },
+                where: {
+                  OR: [
+                    { tenantId: transaction.organizationId },
+                    { orgId: transaction.organizationId },
+                  ],
+                },
               });
 
               if (!wallet) {

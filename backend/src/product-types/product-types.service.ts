@@ -6,7 +6,13 @@ export class ProductTypesService {
   constructor(private prisma: PrismaService) {}
 
   async create(data: any) {
-    const slug = data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    let baseSlug = (data.slug || data.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'category';
+    let slug = baseSlug;
+    let counter = 1;
+
+    while (await this.prisma.productType.findUnique({ where: { slug } })) {
+      slug = `${baseSlug}-${counter++}`;
+    }
     
     // Auto-calculate legacyId if not provided
     let legacyId = data.legacyId;
@@ -51,6 +57,17 @@ export class ProductTypesService {
     const updateData: any = { ...data };
     if (updateData.name && !updateData.slug) {
       updateData.slug = updateData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    }
+    if (updateData.slug) {
+      let baseSlug = updateData.slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'category';
+      let slug = baseSlug;
+      let counter = 1;
+      while (true) {
+        const existing = await this.prisma.productType.findUnique({ where: { slug } });
+        if (!existing || existing.id === id) break;
+        slug = `${baseSlug}-${counter++}`;
+      }
+      updateData.slug = slug;
     }
     return this.prisma.productType.update({
       where: { id },

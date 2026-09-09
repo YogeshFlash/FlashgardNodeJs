@@ -1,8 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { encryptLicenseKey, decryptLicenseKey } from '../utils/encryption';
+import { OrgLicenseStatus } from '@prisma/client';
 
 @Injectable()
 export class PlotterDevicesService {
+  private readonly logger = new Logger(PlotterDevicesService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async create(data: any) {
@@ -218,4 +222,142 @@ export class PlotterDevicesService {
 
     return plotter;
   }
+
+  async bindDevice(data: {
+    licenseKey: string;
+    serialNumber?: string;
+    macAddress?: string;
+    deviceHash?: string;
+    organizationId?: string;
+  }) {
+    const { licenseKey, serialNumber, macAddress, deviceHash, organizationId } = data;
+
+    if (!licenseKey || !licenseKey.trim()) {
+      throw new BadRequestException('License key is required for device binding');
+    }
+
+    const encryptedKey = encryptLicenseKey(licenseKey.trim());
+
+    // 1. Look up License
+    const license = await this.prisma.orgLicense.findFirst({
+      where: {
+        OR: [
+          { key: encryptedKey },
+          { key: licenseKey.trim() },
+        ],
+      },
+      include: {
+        tenant: true,
+      },
+    });
+
+    if (!license) {
+      throw new NotFoundException('License key not found');
+    }
+
+    if (license.status === OrgLicenseStatus.REVOKED) {
+      throw new BadRequestException('This license has been revoked.');
+    }
+
+    // Check anti-piracy hardware locking
+    if (license.deviceHash && deviceHash && license.deviceHash !== deviceHash) {
+      this.logger.warn(`Hardware mismatch attempt for license ${license.id}. Stored: ${license.deviceHash}, Attempted: ${deviceHash}`);
+      // Record security alert
+      await (this.prisma as any).securityAlert.create({
+        data: {
+          licenseId: license.id,
+          tenantId: license.tenantId,
+          attemptedFingerprint: { deviceHash, macAddress, serialNumber },
+          storedFingerprint: { deviceHash: license.deviceHash, macAddress: license.macAddress },
+        },
+      }).catch((e: any) => this.logger.error('Failed to log security alert', e));
+    }
+
+    const effectiveOrgId = organizationId || license.tenantId || license.ownerId;
+
+    // 2. Activate License & Lock Hardware Fingerprint
+    const updatedLicense = await this.prisma.orgLicense.update({
+      where: { id: license.id },
+      data: {
+        status: OrgLicenseStatus.ACTIVE,
+        activatedAt: license.activatedAt || new Date(),
+        macAddress: macAddress || license.macAddress,
+        deviceHash: deviceHash || license.deviceHash,
+        machineId: serialNumber || macAddress || license.machineId,
+      },
+      include: {
+        tenant: true,
+      },
+    });
+
+    // 3. Update or link Plotter record if exists
+    let plotter: any = null;
+    if (serialNumber || effectiveOrgId) {
+      plotter = await (this.prisma as any).plotter.findFirst({
+        where: {
+          OR: [
+            serialNumber ? { serialNumber: serialNumber.trim() } : undefined,
+            { licenseKey: encryptedKey },
+            { licenseKey: licenseKey.trim() },
+            effectiveOrgId ? { organizationId: effectiveOrgId } : undefined,
+          ].filter(Boolean),
+        },
+        include: {
+          plotterMaster: true,
+        },
+      });
+
+      if (plotter) {
+        plotter = await (this.prisma as any).plotter.update({
+          where: { id: plotter.id },
+          data: {
+            macAddress: macAddress || plotter.macAddress,
+            serialNumber: serialNumber || plotter.serialNumber,
+            status: 'ACTIVE',
+          },
+          include: {
+            plotterMaster: true,
+          },
+        });
+      }
+    }
+
+    // 4. Ensure Wallet is Active
+    if (effectiveOrgId) {
+      const wallet = await this.prisma.entityWallet.findFirst({
+        where: {
+          OR: [
+            { orgId: effectiveOrgId },
+            { tenantId: effectiveOrgId },
+          ],
+        },
+      });
+
+      if (!wallet) {
+        await this.prisma.entityWallet.create({
+          data: {
+            orgId: effectiveOrgId,
+            tenantId: effectiveOrgId,
+            balance: 50,
+            totalCredits: 50,
+            usedCredits: 0,
+          },
+        });
+      }
+    }
+
+    return {
+      success: true,
+      message: 'Plotter hardware successfully bound and activated',
+      license: {
+        id: updatedLicense.id,
+        key: licenseKey.trim(),
+        status: updatedLicense.status,
+        organizationId: effectiveOrgId,
+        activatedAt: updatedLicense.activatedAt,
+      },
+      plotter,
+    };
+  }
 }
+

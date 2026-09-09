@@ -181,7 +181,7 @@ export class InventoryController {
   }
 
   @Post('dispatch/:id/receive')
-  @RequirePermissions('inventory:write')
+  @RequirePermissions('inventory:read')
   receiveDispatch(@Param('id') id: string, @Body() body: any, @Req() req: any) {
     return this.inventoryService.receiveDispatch(id, body, req.user);
   }
@@ -203,6 +203,12 @@ export class InventoryController {
       fromOrgId,
       toOrgId,
     }, req.user);
+  }
+
+  @Get('dispatch/:id')
+  @RequirePermissions('inventory:read')
+  findOneDispatch(@Param('id') id: string, @Req() req: any) {
+    return this.inventoryService.findOneDispatch(id, req.user);
   }
 }
 

@@ -93,7 +93,9 @@ export class RechargeController {
   @Post('create-order')
   async createOrder(@Request() req: any, @Body('packageId') packageId: string) {
     if (!packageId) throw new BadRequestException('Package ID is required');
-    return this.rechargeService.createOrder(packageId, req.user.userId);
+    const userId = req.user.userId || req.user.sub;
+    const orgId = req.user.organizationId;
+    return this.rechargeService.createOrder(packageId, userId, orgId);
   }
 
   // ─── User: Verify payment ────────────────────────────────────────────────────

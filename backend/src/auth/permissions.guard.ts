@@ -23,14 +23,63 @@ export class PermissionsGuard implements CanActivate {
       return false; 
     }
 
+    const userPermissions = user.permissions || [];
+    
     // Super Admin bypass
     if (user.isSuperAdmin) {
       return true;
     }
 
-    const userPermissions = user.permissions || [];
-    
-    const hasPermission = requiredPermissions.every(permission => userPermissions.includes(permission));
+    // Map tab-level permissions to backend endpoint requirements
+    const expandedUserPerms = new Set<string>(userPermissions);
+
+    if (userPermissions.includes('inventory:read') || userPermissions.includes('inventory:write')) {
+      expandedUserPerms.add('inventory:read');
+      expandedUserPerms.add('inventory:write');
+    }
+
+    if (userPermissions.includes('inventory_dispatch:read') || userPermissions.includes('dispatch:read')) {
+      expandedUserPerms.add('inventory:read');
+      expandedUserPerms.add('inventory_dispatch:read');
+      expandedUserPerms.add('dispatch:read');
+    }
+    if (userPermissions.includes('inventory_dispatch:write') || userPermissions.includes('dispatch:write')) {
+      expandedUserPerms.add('inventory:write');
+      expandedUserPerms.add('inventory_dispatch:write');
+      expandedUserPerms.add('dispatch:write');
+    }
+
+    if (userPermissions.includes('inventory_inward:read') || userPermissions.includes('inward:read')) {
+      expandedUserPerms.add('inventory:read');
+      expandedUserPerms.add('inventory_inward:read');
+      expandedUserPerms.add('inward:read');
+    }
+    if (userPermissions.includes('inventory_inward:write') || userPermissions.includes('inward:write')) {
+      expandedUserPerms.add('inventory:write');
+      expandedUserPerms.add('inventory_inward:write');
+      expandedUserPerms.add('inward:write');
+    }
+
+    if (userPermissions.includes('inventory_packaged:read') || userPermissions.includes('inventory_batches:read')) {
+      expandedUserPerms.add('inventory:read');
+    }
+    if (userPermissions.includes('inventory_packaged:write') || userPermissions.includes('inventory_batches:write')) {
+      expandedUserPerms.add('inventory:write');
+    }
+    if (userPermissions.includes('inventory_workorders:read') || userPermissions.includes('production:read')) {
+      expandedUserPerms.add('inventory:read');
+    }
+    if (userPermissions.includes('inventory_workorders:write') || userPermissions.includes('production:write')) {
+      expandedUserPerms.add('inventory:write');
+    }
+    if (userPermissions.includes('inventory_filmtypes:read') || userPermissions.includes('catalog:read')) {
+      expandedUserPerms.add('inventory:read');
+    }
+    if (userPermissions.includes('inventory_filmtypes:write') || userPermissions.includes('catalog:write')) {
+      expandedUserPerms.add('inventory:write');
+    }
+
+    const hasPermission = requiredPermissions.every(permission => expandedUserPerms.has(permission));
 
     if (!hasPermission) {
       throw new ForbiddenException('You do not have the required permissions to perform this action.');

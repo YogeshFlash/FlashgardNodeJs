@@ -1,10 +1,26 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreditPlanType, TransactionType } from '@prisma/client';
+import { decryptLicenseKey } from '../utils/encryption';
 
 @Injectable()
 export class CutCreditsService {
   constructor(private prisma: PrismaService) {}
+
+  private formatItems(items: any[]) {
+    return items.map((item: any) => {
+      if (item.license?.key) {
+        return {
+          ...item,
+          license: {
+            ...item.license,
+            key: decryptLicenseKey(item.license.key),
+          },
+        };
+      }
+      return item;
+    });
+  }
 
   async issueCutCredits(data: {
     targetOrgId: string;
@@ -222,10 +238,10 @@ export class CutCreditsService {
         }),
         (this.prisma.cutCredit as any).count({ where })
       ]);
-      return { data: items, total };
+      return { data: this.formatItems(items), total };
     }
 
-    return (this.prisma.cutCredit as any).findMany({
+    const items = await (this.prisma.cutCredit as any).findMany({
       where,
       include: { 
         owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } },
@@ -234,10 +250,11 @@ export class CutCreditsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    return this.formatItems(items);
   }
 
   async getReceivedInventory(orgId: string) {
-    return (this.prisma.cutCredit as any).findMany({
+    const items = await (this.prisma.cutCredit as any).findMany({
       where: { tenantId: orgId },
       include: {
         owner: { select: { id: true, name: true, organizationType: { select: { name: true } } } },
@@ -246,6 +263,7 @@ export class CutCreditsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    return this.formatItems(items);
   }
 
   async getTransfers(orgId: string, isSuperAdmin = false) {

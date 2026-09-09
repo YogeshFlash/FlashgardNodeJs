@@ -17,16 +17,38 @@ export class MigrationService {
 
   constructor(private prisma: PrismaService) {}
 
+  private generateDeterministicUuid(key: string): string {
+    const hash = crypto.createHash('sha256').update(`cut-log:${key}`).digest('hex');
+    return `${hash.substring(0, 8)}-${hash.substring(8, 12)}-4${hash.substring(13, 16)}-a${hash.substring(17, 20)}-${hash.substring(20, 32)}`;
+  }
+
+  private legacyColumnEnsured = false;
+
+  private async ensureLegacyIdColumn() {
+    if (this.legacyColumnEnsured) return;
+    try {
+      await this.prisma.$executeRawUnsafe('ALTER TABLE "machine_cut_logs" ADD COLUMN IF NOT EXISTS "legacy_id" INT;');
+      await this.prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "machine_cut_logs_legacy_id_key" ON "machine_cut_logs" ("legacy_id") WHERE "legacy_id" IS NOT NULL;');
+      this.legacyColumnEnsured = true;
+    } catch (e: any) {
+      this.logger.warn(`Could not ensure legacy_id column on machine_cut_logs: ${e.message}`);
+    }
+  }
+
   private async executeBatchRaw(batch: any[]) {
     if (batch.length === 0) return;
+    await this.ensureLegacyIdColumn();
     const valuesPlaceholders: string[] = [];
     const queryValues: any[] = [];
     let valIdx = 1;
 
     for (const item of batch) {
-      const id = crypto.randomUUID();
+      const id = item.legacyId
+        ? this.generateDeterministicUuid(`legacy:${item.legacyId}`)
+        : (item.appUniqueId ? this.generateDeterministicUuid(item.appUniqueId) : (item.id || crypto.randomUUID()));
       queryValues.push(
         id,
+        item.legacyId || null,
         item.appUniqueId,
         item.licenseId,
         item.modelId,
@@ -46,14 +68,14 @@ export class MigrationService {
         item.createdAt
       );
       valuesPlaceholders.push(
-        `($${valIdx}::uuid, $${valIdx + 1}, $${valIdx + 2}::uuid, $${valIdx + 3}::uuid, $${valIdx + 4}::uuid, $${valIdx + 5}::uuid, $${valIdx + 6}::uuid, $${valIdx + 7}, $${valIdx + 8}, $${valIdx + 9}, $${valIdx + 10}, $${valIdx + 11}, $${valIdx + 12}, $${valIdx + 13}::float8, $${valIdx + 14}::float8, $${valIdx + 15}::boolean, $${valIdx + 16}, $${valIdx + 17}::timestamp)`
+        `($${valIdx}::uuid, $${valIdx + 1}::int, $${valIdx + 2}, $${valIdx + 3}::uuid, $${valIdx + 4}::uuid, $${valIdx + 5}::uuid, $${valIdx + 6}::uuid, $${valIdx + 7}::uuid, $${valIdx + 8}, $${valIdx + 9}, $${valIdx + 10}, $${valIdx + 11}, $${valIdx + 12}, $${valIdx + 13}, $${valIdx + 14}::float8, $${valIdx + 15}::float8, $${valIdx + 16}::boolean, $${valIdx + 17}, $${valIdx + 18}::timestamp)`
       );
-      valIdx += 18;
+      valIdx += 19;
     }
 
     const sqlQuery = `
       INSERT INTO "machine_cut_logs" (
-        "id", "app_unique_id", "license_id", "model_id", "model_cut_file_id", "organization_id", "user_id",
+        "id", "legacy_id", "app_unique_id", "license_id", "model_id", "model_cut_file_id", "organization_id", "user_id",
         "brand_name", "model_name", "pattern_name",
         "qr_code", "instruction", "plotter_id", "latitude", "longitude", "is_positive_cut",
         "reviews", "created_at"
@@ -61,7 +83,12 @@ export class MigrationService {
       ON CONFLICT ("id") DO NOTHING;
     `;
 
-    await this.prisma.$executeRawUnsafe(sqlQuery, ...queryValues);
+    try {
+      await this.prisma.$executeRawUnsafe(sqlQuery, ...queryValues);
+    } catch (err: any) {
+      this.logger.error(`executeBatchRaw SQL error: ${err.message}`);
+      throw err;
+    }
   }
 
   async getLogs() {
@@ -259,7 +286,7 @@ export class MigrationService {
     
     let csv = 'Date,Module,File,Status,Processed,Created,Updated,Failed,Errors\n';
     logs.forEach((l: any) => {
-      const date = new Date(l.createdAt).toLocaleString().replace(/,/g, '');
+      const date = new Date(l.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }).replace(/,/g, '');
       csv += `${date},${l.module},${l.fileName},${l.status},${l.recordsProcessed},${l.recordsCreated},${l.recordsUpdated},${l.recordsFailed},"${(l.errorMessage || '').replace(/"/g, '""')}"\n`;
     });
     return csv;
@@ -2593,6 +2620,8 @@ export class MigrationService {
       modelLegacyMap: Map<number, string>;
       modelCutFileLegacyMap: Map<number, string>;
       licenseMap: Map<string, any>;
+      skipLog?: boolean;
+      skipDeduplicate?: boolean;
     }
   ) {
     let importedLogs = 0;
@@ -2689,19 +2718,36 @@ export class MigrationService {
     const batchSize = 1000;
     let batchData: any[] = [];
 
+    const flushBatch = async () => {
+      if (batchData.length === 0) return;
+      const count = batchData.length;
+      try {
+        await this.executeBatchRaw(batchData);
+        importedLogs += count;
+      } catch (err: any) {
+        skippedRows += count;
+        this.logger.error(`Batch insert of ${count} cut log records failed: ${err.message}`);
+        if (failures.length < 1000) {
+          failures.push({ row: batchData[0], error: 'Batch failed: ' + err.message });
+        }
+      } finally {
+        batchData = [];
+      }
+    };
+
     for (const row of cutsData) {
       try {
-        const modelLegacyId = parseInt(row.CatalogID || row.CatalogId);
+        const modelLegacyId = parseInt(row.CatalogID || row.CatalogId || row.catalogid);
         const modelId = !isNaN(modelLegacyId) ? modelLegacyMap.get(modelLegacyId) : null;
 
-        const modelCutFileLegacyId = parseInt(row.ModelID || row.ModelId);
+        const modelCutFileLegacyId = parseInt(row.ModelID || row.ModelId || row.modelid);
         const modelCutFileId = !isNaN(modelCutFileLegacyId) ? modelCutFileLegacyMap.get(modelCutFileLegacyId) : null;
         
         let licenseId = null;
         let organizationId = null;
         let userId = null;
 
-        const rawLicenseKey = String(row.LicenseKey || '').replace(/\0/g, '').trim();
+        const rawLicenseKey = String(row.LicenseKey || row.licenseKey || '').replace(/\0/g, '').trim();
         if (rawLicenseKey) {
           const decodedKey = this.decodeHex(rawLicenseKey);
           const encryptedKey = encryptLicenseKey(decodedKey);
@@ -2717,18 +2763,25 @@ export class MigrationService {
 
         // Fallback to PromoterID mapping if userId could not be resolved via license owner organization
         if (!userId) {
-          const promoterId = String(row.PromoterID || '').trim().toLowerCase();
+          const promoterId = String(row.PromoterID || row.PromoterId || '').trim().toLowerCase();
           userId = promoterId ? userLegacyMap.get(promoterId) : null;
         }
 
-        const brandName = row.ParentName || null;
-        const modelName = row.CatalogName || null;
-        const patternName = row.ModelName || null;
+        const brandName = row.ParentName || row.parentName || null;
+        const modelName = row.CatalogName || row.catalogName || null;
+        const patternName = row.ModelName || row.modelName || null;
 
-        const isPositive = row.IsPositiveCut === '1' || row.IsPositiveCut === 1 || row.IsPositiveCut === 'true' || row.IsPositiveCut === true;
+        const isPositive = row.IsPositiveCut === '1' || row.IsPositiveCut === 1 || row.IsPositiveCut === 'true' || row.IsPositiveCut === true || row.isPositiveCut === true || row.isPositiveCut === 1;
+
+        const legacyIdRaw = parseInt(row.MobileAppCutsID || row.MobileAppCutsId || row.ID || row.Id || row.id);
+        const legacyId = !isNaN(legacyIdRaw) ? legacyIdRaw : null;
+
+        const rawAppUniqueId = row.AppUniqueID || row.AppUniqueId || (legacyId ? String(legacyId) : null);
+        const appUniqueId = rawAppUniqueId ? String(rawAppUniqueId).trim() : null;
 
         batchData.push({
-          appUniqueId: row.AppUniqueID || null,
+          legacyId: legacyId,
+          appUniqueId: appUniqueId,
           licenseId: licenseId,
           modelId: modelId,
           modelCutFileId: modelCutFileId,
@@ -2737,43 +2790,31 @@ export class MigrationService {
           brandName: brandName,
           modelName: modelName,
           patternName: patternName,
-          qrCode: row.QRCode || null,
-          instruction: row.Instruction || null,
-          plotterId: row.PlotterID || null,
-          latitude: row.Latitude ? parseFloat(row.Latitude) : null,
-          longitude: row.Longitude ? parseFloat(row.Longitude) : null,
+          qrCode: row.QRCode || row.QrCode || row.qrcode || null,
+          instruction: row.Instruction || row.instruction || null,
+          plotterId: row.PlotterID || row.PlotterId || row.plotterid || null,
+          latitude: row.Latitude || row.latitude ? parseFloat(row.Latitude || row.latitude) : null,
+          longitude: row.Longitude || row.longitude ? parseFloat(row.Longitude || row.longitude) : null,
           isPositiveCut: isPositive,
-          reviews: row.Reviews || null,
-          createdAt: this.safeDate(row.CreatedDate) || new Date()
+          reviews: row.Reviews || row.reviews || null,
+          createdAt: this.safeDate(row.CreatedDate || row.createdDate || row.CreatedDate) || new Date()
         });
 
-        if (batchData.length >= batchSize) {
-          await this.executeBatchRaw(batchData);
-          importedLogs += batchData.length;
-          batchData = [];
-          
-          // Let the event loop breathe to prevent OOM
-          await new Promise(resolve => setTimeout(resolve, 0));
-        }
       } catch (err: any) {
         skippedRows++;
         if (failures.length < 1000) {
           failures.push({ row, error: err.message });
         }
       }
-    }
 
-    if (batchData.length > 0) {
-      try {
-        await this.executeBatchRaw(batchData);
-        importedLogs += batchData.length;
-      } catch (err: any) {
-        skippedRows += batchData.length;
-        if (failures.length < 1000) {
-          failures.push({ row: batchData[0], error: 'Batch failed: ' + err.message });
-        }
+      if (batchData.length >= batchSize) {
+        await flushBatch();
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
     }
+
+    // Flush remaining rows
+    await flushBatch();
 
     const result = {
       importedLogs,
@@ -2781,18 +2822,49 @@ export class MigrationService {
       failures: failures.slice(0, 1000)
     };
 
-    await this.logMigration({
-      module: 'mobile-app-cuts',
-      fileName: sourceName || (!Array.isArray(mobileCutsFile) ? (mobileCutsFile as Express.Multer.File).originalname : 'Uploaded Mobile Cuts CSV File'),
-      status: skippedRows === 0 ? 'SUCCESS' : (importedLogs > 0 ? 'PARTIAL' : 'FAILED'),
-      processed: cutsData.length,
-      created: importedLogs,
-      updated: 0,
-      failed: skippedRows,
-      details: result
-    });
+    if (!mapsCache?.skipLog) {
+      await this.logMigration({
+        module: 'mobile-app-cuts',
+        fileName: sourceName || (!Array.isArray(mobileCutsFile) ? (mobileCutsFile as Express.Multer.File).originalname : 'Uploaded Mobile Cuts CSV File'),
+        status: skippedRows === 0 ? 'SUCCESS' : (importedLogs > 0 ? 'PARTIAL' : 'FAILED'),
+        processed: cutsData.length,
+        created: importedLogs,
+        updated: 0,
+        failed: skippedRows,
+        details: result
+      });
+    }
+
+    if (!mapsCache?.skipDeduplicate) {
+      try {
+        await this.deduplicateCutLogs();
+      } catch (e: any) {
+        this.logger.warn(`Automatic deduplication during MobileAppCuts migration failed: ${e.message}`);
+      }
+    }
 
     return result;
+  }
+
+  async deduplicateCutLogs() {
+    this.logger.log('Starting deduplication of machine_cut_logs...');
+    const sql = `
+      WITH duplicates AS (
+        SELECT id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY COALESCE(legacy_id::text, app_unique_id, CONCAT_WS('|', license_id, created_at::text, model_name, pattern_name, qr_code, plotter_id))
+                 ORDER BY created_at ASC, id ASC
+               ) AS rnum
+        FROM "machine_cut_logs"
+      )
+      DELETE FROM "machine_cut_logs"
+      WHERE id IN (
+        SELECT id FROM duplicates WHERE rnum > 1
+      );
+    `;
+    const deletedCount = await this.prisma.$executeRawUnsafe(sql);
+    this.logger.log(`Deduplication completed. Removed ${deletedCount} duplicate cut log records.`);
+    return { deletedCount: Number(deletedCount) };
   }
 
   async migrateDealerMasterQRs(fileOrRows: Express.Multer.File | any[], sourceName?: string) {
@@ -3216,6 +3288,13 @@ export class MigrationService {
       await (this.prisma as any).cutCredit?.deleteMany({});
     }
 
+    if (module === 'stock' || module === 'all') {
+      this.logger.log('Wiping stock migration data (TRUNCATE CASCADE)...');
+      await this.prisma.$executeRawUnsafe(`
+        TRUNCATE TABLE dispatch_order_items, dispatch_orders, return_request_items, return_requests, credit_notes, work_order_outputs, work_orders, qr_codes, film_batches CASCADE;
+      `);
+    }
+
     if (module === 'mobile-users' || module === 'all') {
       const mobileUserRole = await (this.prisma.role as any).findFirst({
         where: { name: { in: ['MobileUser', 'Mobile User'] } }
@@ -3254,8 +3333,12 @@ export class MigrationService {
       await (this.prisma as any).cutPattern.deleteMany({});
     }
 
-    if (module === 'mobile-app-cuts' || module === 'all') {
-      await this.prisma.machineCutLog.deleteMany({});
+    if (module === 'mobile-app-cuts' || module === 'mobile_app_cuts' || module === 'mobileAppCuts' || module === 'all') {
+      try {
+        await this.prisma.$executeRawUnsafe('TRUNCATE TABLE "machine_cut_logs" CASCADE;');
+      } catch (e: any) {
+        await this.prisma.machineCutLog.deleteMany({});
+      }
     }
 
     if (module === 'dealer-master-qrs' || module === 'all') {
@@ -3304,7 +3387,68 @@ export class MigrationService {
     }
   }
 
+  private dbMigrationJob = {
+    isRunning: false,
+    moduleType: '',
+    step: '',
+    progress: 0,
+    message: '',
+    startedAt: null as Date | null,
+    finishedAt: null as Date | null,
+    result: null as any,
+    error: null as string | null,
+  };
+
+  getDbMigrationStatus() {
+    return this.dbMigrationJob;
+  }
+
   async dbRun(credentials: any, moduleType: string, tableMap: Record<string, string>) {
+    if (this.dbMigrationJob.isRunning) {
+      return {
+        status: 'RUNNING',
+        message: `A migration job (${this.dbMigrationJob.moduleType}) is already in progress on the server.`,
+        job: this.dbMigrationJob,
+      };
+    }
+
+    this.dbMigrationJob = {
+      isRunning: true,
+      moduleType,
+      step: `Starting ${moduleType} migration`,
+      progress: 5,
+      message: `Connecting to SQL Server for ${moduleType}...`,
+      startedAt: new Date(),
+      finishedAt: null,
+      result: null,
+      error: null,
+    };
+
+    this.executeDbRunInternal(credentials, moduleType, tableMap)
+      .then((res) => {
+        this.dbMigrationJob.isRunning = false;
+        this.dbMigrationJob.progress = 100;
+        this.dbMigrationJob.step = 'Completed';
+        this.dbMigrationJob.message = `Migration of ${moduleType} completed successfully.`;
+        this.dbMigrationJob.finishedAt = new Date();
+        this.dbMigrationJob.result = res;
+      })
+      .catch((err) => {
+        this.dbMigrationJob.isRunning = false;
+        this.dbMigrationJob.step = 'Failed';
+        this.dbMigrationJob.message = err?.message || `Migration of ${moduleType} failed.`;
+        this.dbMigrationJob.finishedAt = new Date();
+        this.dbMigrationJob.error = err?.message || 'Migration failed';
+      });
+
+    return {
+      status: 'STARTED',
+      message: `Migration of ${moduleType} started in background on server.`,
+      job: this.dbMigrationJob,
+    };
+  }
+
+  private async executeDbRunInternal(credentials: any, moduleType: string, tableMap: Record<string, string>) {
     const config = {
       user: credentials.user,
       password: credentials.password,
@@ -3315,7 +3459,7 @@ export class MigrationService {
         encrypt: false,
         trustServerCertificate: true
       },
-      requestTimeout: 300000 // 5 minutes
+      requestTimeout: 600000 // 10 minutes
     };
     const pool = await sql.connect(config);
     try {
@@ -3708,7 +3852,9 @@ export class MigrationService {
           userLegacyMap,
           modelLegacyMap,
           modelCutFileLegacyMap,
-          licenseMap
+          licenseMap,
+          skipLog: true,
+          skipDeduplicate: true,
         };
 
         let offset = 0;
@@ -3720,6 +3866,9 @@ export class MigrationService {
 
         while (hasMore) {
           this.logger.log(`Fetching chunk for mobile-app-cuts: OFFSET ${offset} LIMIT ${limit}`);
+          this.dbMigrationJob.step = `Migrating Mobile App Cuts (OFFSET ${offset})`;
+          this.dbMigrationJob.message = `Processed chunk: ${totalImported} cut logs imported, ${totalSkipped} skipped so far.`;
+          
           let rows: any = (await pool.request().query(`SELECT * FROM [${tableMap.file1}] ORDER BY MobileAppCutsID OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`)).recordset;
           
           if (rows.length === 0) {
@@ -3751,6 +3900,12 @@ export class MigrationService {
           }
         }
         
+        try {
+          await this.deduplicateCutLogs();
+        } catch (e: any) {
+          this.logger.warn(`Deduplication after dbRun MobileAppCuts failed: ${e.message}`);
+        }
+
         return { 
           importedLogs: totalImported, 
           skippedRows: totalSkipped, 
@@ -4179,6 +4334,785 @@ export class MigrationService {
     });
 
     return result;
+  }
+
+  private async fetchAllPaginated(pool: sql.ConnectionPool, tableName: string, pageSize: number = 1000): Promise<any[]> {
+    const rows: any[] = [];
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      try {
+        const query = `SELECT * FROM ${tableName} ORDER BY (SELECT NULL) OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY`;
+        const res = await pool.request().query(query);
+        const batch = res.recordset || [];
+        rows.push(...batch);
+        if (batch.length < pageSize) {
+          hasMore = false;
+        } else {
+          offset += pageSize;
+        }
+      } catch (err: any) {
+        this.logger.error(`Paginated query for ${tableName} failed at offset ${offset}: ${err.message}`);
+        hasMore = false;
+      }
+    }
+    return rows;
+  }
+
+  private stockMigrationJob = {
+    isRunning: false,
+    step: '',
+    progress: 0,
+    message: '',
+    startedAt: null as Date | null,
+    finishedAt: null as Date | null,
+    result: null as any,
+    error: null as string | null,
+  };
+
+  getStockMigrationStatus() {
+    return this.stockMigrationJob;
+  }
+
+  startStockMigrationBackground(config?: any) {
+    if (this.stockMigrationJob.isRunning) {
+      return {
+        status: 'RUNNING',
+        message: 'Stock migration is currently in progress on the server.',
+        job: this.stockMigrationJob,
+      };
+    }
+
+    this.stockMigrationJob = {
+      isRunning: true,
+      step: 'Step 1/5: Connecting to SQL Server',
+      progress: 5,
+      message: 'Connecting to database...',
+      startedAt: new Date(),
+      finishedAt: null,
+      result: null,
+      error: null,
+    };
+
+    this.migrateStockFromSqlServer(config)
+      .then((result) => {
+        this.stockMigrationJob.isRunning = false;
+        this.stockMigrationJob.progress = 100;
+        this.stockMigrationJob.step = 'Completed';
+        this.stockMigrationJob.message = 'Stock migration completed successfully.';
+        this.stockMigrationJob.finishedAt = new Date();
+        this.stockMigrationJob.result = result;
+      })
+      .catch((err) => {
+        this.stockMigrationJob.isRunning = false;
+        this.stockMigrationJob.step = 'Failed';
+        this.stockMigrationJob.message = err.message || 'Stock migration failed.';
+        this.stockMigrationJob.finishedAt = new Date();
+        this.stockMigrationJob.error = err.message;
+      });
+
+    return {
+      status: 'STARTED',
+      message: 'Stock migration initiated in background.',
+      job: this.stockMigrationJob,
+    };
+  }
+
+  async migrateStockFromSqlServer(config?: { server?: string; database?: string; user?: string; password?: string; lookbackDays?: number }) {
+    this.logger.log(`Starting Stock Migration directly from SQL Server (Lookback: ${config?.lookbackDays ? `${config.lookbackDays} days` : 'ALL'})...`);
+    const server = config?.server || process.env.MSSQL_SERVER || 'Yogesh';
+    const database = config?.database || process.env.MSSQL_DATABASE || 'scratchgard';
+    const user = config?.user || process.env.MSSQL_USER || 'sa';
+    const password = config?.password || process.env.MSSQL_PASSWORD || 'sqldb2023';
+
+    let pool: sql.ConnectionPool | null = null;
+    let importedHeaders = 0;
+    let importedLines = 0;
+    let importedDispatches = 0;
+    let importedDispatchItems = 0;
+    let importedReversals = 0;
+    let skipped = 0;
+    const failures: any[] = [];
+
+    try {
+      pool = await sql.connect({
+        server,
+        database,
+        user,
+        password,
+        options: { encrypt: false, trustServerCertificate: true, requestTimeout: 600000 },
+        requestTimeout: 600000
+      });
+
+      const defaultHq = await (this.prisma as any).organization.findFirst({
+        where: { parentId: null, isDeleted: false },
+        orderBy: { createdAt: 'asc' }
+      });
+      const defaultOrgId = defaultHq?.id || '00000000-0000-0000-0000-000000000001';
+
+      const defaultUser = await this.prisma.user.findFirst({
+        where: { isDeleted: false },
+        orderBy: { createdAt: 'asc' }
+      });
+      const defaultUserId = defaultUser?.id || '00000000-0000-0000-0000-000000000001';
+
+      const defaultFilmType = await (this.prisma as any).filmType.findFirst({ where: { isDeleted: false } });
+      const defaultFilmTypeId = defaultFilmType?.id || '00000000-0000-0000-0000-000000000001';
+
+      // Map legacy Organization IDs to DB UUIDs
+      const orgMap = new Map<string, string>();
+      const orgs = await (this.prisma as any).organization.findMany({ select: { id: true, legacyId: true, name: true } });
+      orgs.forEach((o: any) => {
+        if (o.legacyId) orgMap.set(String(o.legacyId), o.id);
+        if (o.name) orgMap.set(o.name.trim().toLowerCase(), o.id);
+      });
+
+      const getOrgId = (legacyVal: any) => {
+        if (!legacyVal) return defaultOrgId;
+        const str = String(legacyVal).trim();
+        if (orgMap.has(str)) return orgMap.get(str)!;
+        if (orgMap.has(str.toLowerCase())) return orgMap.get(str.toLowerCase())!;
+        return defaultOrgId;
+      };
+
+      // -------------------------------------------------------------
+      // 1. STREAM STOCK HEADERS (StockHedaerMaster -> film_batches)
+      // -------------------------------------------------------------
+      this.logger.log('Step 1: Streaming StockHedaerMaster to FilmBatches (Keyset Pagination)...');
+      const batchMap = new Map<string, string>();
+
+      const existingBatches = await (this.prisma as any).filmBatch.findMany({
+        where: { legacyId: { not: null } },
+        select: { id: true, legacyId: true }
+      });
+      existingBatches.forEach((b: any) => {
+        if (b.legacyId) batchMap.set(String(b.legacyId), b.id);
+      });
+
+      const pageSize = 5000;
+      let lastHeaderId = 0;
+      let hasMore = true;
+
+      const dateFilter = config?.lookbackDays ? ` AND (CreatedDate >= DATEADD(day, -${Number(config.lookbackDays)}, GETDATE()) OR ModifiedDate >= DATEADD(day, -${Number(config.lookbackDays)}, GETDATE()))` : '';
+
+      while (hasMore) {
+        try {
+          const res = await pool.request().query(
+            `SELECT TOP ${pageSize} Id, PackOfQRNo, TotalStock, OwnerID, CreatedDate, ModifiedDate FROM StockHedaerMaster WHERE Id > ${lastHeaderId}${dateFilter} ORDER BY Id ASC`
+          );
+          const rows = res.recordset || [];
+          if (rows.length === 0) {
+            hasMore = false;
+            break;
+          }
+
+          lastHeaderId = rows[rows.length - 1].Id;
+
+          const batchData = rows.map((h: any) => {
+            const headerId = String(h.Id);
+            const batchCode = String(h.PackOfQRNo || `LEGACY-BATCH-${headerId}`).trim();
+            const totalStock = parseFloat(h.TotalStock || 1);
+            const ownerId = getOrgId(h.OwnerID);
+            const createdDate = h.CreatedDate ? new Date(h.CreatedDate) : new Date();
+            const updatedDate = h.ModifiedDate ? new Date(h.ModifiedDate) : createdDate;
+            return {
+              batchCode,
+              filmTypeId: defaultFilmTypeId,
+              vendorId: ownerId,
+              orgId: ownerId,
+              quantity: totalStock,
+              batchType: 'PACKAGED' as const,
+              status: 'PACKAGED' as const,
+              arrivalDate: createdDate,
+              createdAt: createdDate,
+              updatedAt: updatedDate,
+              legacyId: headerId,
+              notes: `Migrated from SQL Server StockHedaerMaster ID ${headerId}`
+            };
+          });
+
+          await (this.prisma as any).filmBatch.createMany({
+            data: batchData,
+            skipDuplicates: true
+          });
+
+          importedHeaders += rows.length;
+          if (rows.length < pageSize) {
+            hasMore = false;
+          }
+        } catch (err: any) {
+          this.logger.error(`StockHedaerMaster streaming failed at lastId ${lastHeaderId}: ${err.message}`);
+          hasMore = false;
+        }
+      }
+
+      this.logger.log('Refreshing batch legacyId map from database...');
+      const allBatches = await (this.prisma as any).filmBatch.findMany({
+        where: { legacyId: { not: null } },
+        select: { id: true, legacyId: true }
+      });
+      allBatches.forEach((b: any) => {
+        if (b.legacyId) batchMap.set(String(b.legacyId), b.id);
+      });
+      this.logger.log(`Active batch map size: ${batchMap.size}`);
+
+      // -------------------------------------------------------------
+      // 2. STREAM STOCK LINES (StockLineMaster -> qr_codes)
+      // -------------------------------------------------------------
+      this.logger.log('Step 2: Streaming StockLineMaster to QRCodes (Keyset Pagination)...');
+      let lastLineId = 0;
+      hasMore = true;
+      const linePageSize = 5000;
+
+      const validOrgs = await (this.prisma as any).organization.findMany({ select: { id: true } });
+      const validOrgIdsSet = new Set<string>(validOrgs.map((o: any) => o.id));
+
+      const validBatches = await (this.prisma as any).filmBatch.findMany({ select: { id: true } });
+      const validBatchIdsSet = new Set<string>(validBatches.map((b: any) => b.id));
+
+      const fallbackBatchId = allBatches[0]?.id || Array.from(batchMap.values())[0] || Array.from(validBatchIdsSet)[0];
+
+      while (hasMore) {
+        try {
+          let rows: any[] = [];
+          try {
+            const res = await pool.request().query(
+              `SELECT TOP ${linePageSize} * FROM StockLineMaster WHERE Id > ${lastLineId} ORDER BY Id ASC`
+            );
+            rows = res.recordset || [];
+          } catch {
+            const res = await pool.request().query(
+              `SELECT TOP ${linePageSize} Id, StcokHeaderId, QRCode, IsAssign, OwnerID, CreatedDate FROM StockLineMaster WHERE Id > ${lastLineId} ORDER BY Id ASC`
+            );
+            rows = res.recordset || [];
+          }
+
+          if (rows.length === 0) {
+            hasMore = false;
+            break;
+          }
+
+          lastLineId = rows[rows.length - 1].Id || rows[rows.length - 1].ID;
+
+          const qrData: any[] = [];
+          for (const l of rows) {
+            const qrCodeStr = String(l.QRCode ?? l.Qrcode ?? l.QrCode ?? l.Code ?? '').trim();
+            if (!qrCodeStr) continue;
+
+            const headerLegacyId = String(l.StcokHeaderId ?? l.StockHeaderId ?? l.StcokHeaderID ?? l.StockHeaderID ?? l.HeaderId ?? l.HeaderID ?? '').trim();
+            let batchId = headerLegacyId ? batchMap.get(headerLegacyId) : undefined;
+            if (!batchId || !validBatchIdsSet.has(batchId)) {
+              batchId = fallbackBatchId;
+            }
+            if (!batchId || !validBatchIdsSet.has(batchId)) continue;
+
+            const isAssign = l.IsAssign === true || l.IsAssign === 1 || l.IsAssigned === true || l.IsAssigned === 1;
+            const ownerId = getOrgId(l.OwnerID ?? l.OwnerId ?? l.DealerID ?? l.DealerId);
+            const assignedOrgId = validOrgIdsSet.has(ownerId) ? ownerId : null;
+            const createdDate = l.CreatedDate ? new Date(l.CreatedDate) : (l.CreatedOn ? new Date(l.CreatedOn) : new Date());
+
+            qrData.push({
+              sequenceNumber: qrCodeStr,
+              qrType: 'INDIVIDUAL' as const,
+              filmBatchId: batchId,
+              filmTypeId: defaultFilmTypeId,
+              status: isAssign ? ('ASSIGNED' as const) : ('CREATED' as const),
+              assignedOrgId,
+              generatedAt: createdDate
+            });
+          }
+
+          if (qrData.length > 0) {
+            try {
+              await (this.prisma as any).qRCode.createMany({
+                data: qrData,
+                skipDuplicates: true
+              });
+            } catch (chunkErr: any) {
+              this.logger.warn(`qRCode.createMany bulk failed at lastLineId ${lastLineId}: ${chunkErr.message}. Attempting row-by-row fallback...`);
+              for (const qrItem of qrData) {
+                try {
+                  await (this.prisma as any).qRCode.create({ data: qrItem });
+                } catch {
+                  // Skip individual invalid/duplicate row
+                }
+              }
+            }
+          }
+
+          importedLines += rows.length;
+          if (rows.length < linePageSize) {
+            hasMore = false;
+          }
+        } catch (err: any) {
+          this.logger.error(`StockLineMaster streaming failed at lastId ${lastLineId}: ${err.message}`);
+          if (lastLineId === 0) {
+            hasMore = false;
+          }
+        }
+      }
+
+      // -------------------------------------------------------------
+      // 3. STREAM DISPATCHES (StockAssignHeaderMaster -> dispatch_orders)
+      // -------------------------------------------------------------
+      this.logger.log('Step 3: Streaming StockAssignHeaderMaster to DispatchOrders (Keyset Pagination)...');
+      let lastAssignId = 0;
+      hasMore = true;
+      const assignPageSize = 5000;
+
+      while (hasMore) {
+        try {
+          const res = await pool.request().query(
+            `SELECT TOP ${assignPageSize} AssignId, DealerID, OwnerID, CreatedDate FROM StockAssignHeaderMaster WHERE AssignId > ${lastAssignId} ORDER BY AssignId ASC`
+          );
+          const rows = res.recordset || [];
+          if (rows.length === 0) {
+            hasMore = false;
+            break;
+          }
+
+          lastAssignId = rows[rows.length - 1].AssignId;
+
+          const dispatchData = rows.map((ah: any) => {
+            const assignId = String(ah.AssignId);
+            const fromOrgId = getOrgId(ah.OwnerID);
+            const toOrgId = getOrgId(ah.DealerID);
+            const dispatchDate = ah.CreatedDate ? new Date(ah.CreatedDate) : new Date();
+            return {
+              fromOrgId,
+              toOrgId,
+              dispatchDate,
+              createdAt: dispatchDate,
+              status: 'RECEIVED' as const,
+              createdBy: defaultUserId,
+              legacyId: assignId,
+              notes: `Migrated from SQL Server StockAssignHeaderMaster AssignId ${assignId}`
+            };
+          });
+
+          await (this.prisma as any).dispatchOrder.createMany({
+            data: dispatchData,
+            skipDuplicates: true
+          });
+
+          importedDispatches += rows.length;
+          if (rows.length < assignPageSize) {
+            hasMore = false;
+          }
+        } catch (err: any) {
+          this.logger.error(`StockAssignHeaderMaster streaming failed at lastAssignId ${lastAssignId}: ${err.message}`);
+          hasMore = false;
+        }
+      }
+
+      this.logger.log('Loading DispatchOrder legacyId mappings...');
+      const dispatchMap = new Map<string, string>();
+      const allDispatches = await (this.prisma as any).dispatchOrder.findMany({
+        where: { legacyId: { not: null } },
+        select: { id: true, legacyId: true }
+      });
+      allDispatches.forEach((d: any) => {
+        if (d.legacyId) dispatchMap.set(String(d.legacyId), d.id);
+      });
+      this.logger.log(`Active dispatch map size: ${dispatchMap.size}`);
+
+      // -------------------------------------------------------------
+      // 4. STREAM DISPATCH ITEMS (StockAssignLineMaster -> dispatch_order_items)
+      // -------------------------------------------------------------
+      this.logger.log('Step 4: Streaming StockAssignLineMaster to DispatchOrderItems (Keyset Pagination)...');
+      let lastAssignLineId = 0;
+      hasMore = true;
+      const assignLinePageSize = 5000;
+
+      while (hasMore) {
+        try {
+          const res = await pool.request().query(
+            `SELECT TOP ${assignLinePageSize} AssignLineId, AssignId, QRCode, CreatedDate FROM StockAssignLineMaster WHERE AssignLineId > ${lastAssignLineId} ORDER BY AssignLineId ASC`
+          );
+          const rows = res.recordset || [];
+          if (rows.length === 0) {
+            hasMore = false;
+            break;
+          }
+
+          lastAssignLineId = rows[rows.length - 1].AssignLineId;
+
+          const itemsData: any[] = [];
+          for (const al of rows) {
+            const assignId = String(al.AssignId);
+            const dispatchOrderId = dispatchMap.get(assignId);
+            if (!dispatchOrderId || !fallbackBatchId) continue;
+
+            itemsData.push({
+              dispatchOrderId,
+              filmBatchId: fallbackBatchId,
+              quantityDispatched: 1,
+              quantityReceived: 1,
+              legacyId: String(al.AssignLineId)
+            });
+          }
+
+          if (itemsData.length > 0) {
+            await (this.prisma as any).dispatchOrderItem.createMany({
+              data: itemsData,
+              skipDuplicates: true
+            });
+            importedDispatchItems += itemsData.length;
+          }
+
+          if (rows.length < assignLinePageSize) {
+            hasMore = false;
+          }
+        } catch (err: any) {
+          this.logger.error(`StockAssignLineMaster streaming failed at lastAssignLineId ${lastAssignLineId}: ${err.message}`);
+          hasMore = false;
+        }
+      }
+
+      // -------------------------------------------------------------
+      // 5. STREAM REVERSALS (StockReverseHeaderMaster -> dispatch_orders)
+      // -------------------------------------------------------------
+      this.logger.log('Step 5: Streaming StockReverseHeaderMaster to Return Dispatches...');
+      try {
+        const res = await pool.request().query('SELECT AssignId, DealerID, OwnerID, CreatedDate, IsApproved, Remark FROM StockReverseHeaderMaster');
+        const rows = res.recordset || [];
+        const reverseData = rows.map((rh: any) => {
+          const assignId = String(rh.AssignId);
+          const fromOrgId = getOrgId(rh.DealerID);
+          const toOrgId = getOrgId(rh.OwnerID);
+          const isApproved = rh.IsApproved === true || rh.IsApproved === 1;
+          const cDate = rh.CreatedDate ? new Date(rh.CreatedDate) : new Date();
+          return {
+            fromOrgId,
+            toOrgId,
+            dispatchDate: cDate,
+            createdAt: cDate,
+            status: isApproved ? ('RECEIVED' as const) : ('DISPATCHED' as const),
+            createdBy: defaultUserId,
+            legacyId: `REVERSE-${assignId}`,
+            notes: `[STOCK RETURN] Migrated from StockReverseHeaderMaster AssignId ${assignId}. Remark: ${rh.Remark || 'None'}`
+          };
+        });
+
+        if (reverseData.length > 0) {
+          await (this.prisma as any).dispatchOrder.createMany({
+            data: reverseData,
+            skipDuplicates: true
+          });
+          importedReversals += reverseData.length;
+        }
+      } catch (err: any) {
+        this.logger.error(`StockReverseHeaderMaster failed: ${err.message}`);
+      }
+
+      const summary = {
+        importedHeaders,
+        importedLines,
+        importedDispatches,
+        importedDispatchItems,
+        importedReversals,
+        skipped,
+        failures
+      };
+
+      await this.logMigration({
+        module: 'stock',
+        fileName: `Direct SQL Server (${server}/${database})`,
+        status: 'SUCCESS',
+        processed: importedHeaders + importedLines + importedDispatches + importedDispatchItems + importedReversals,
+        created: importedHeaders + importedLines + importedDispatches + importedReversals,
+        updated: 0,
+        failed: skipped,
+        details: summary
+      });
+
+      return summary;
+    } catch (err: any) {
+      this.logger.error(`SQL Server Stock Migration Failed: ${err.message}`, err.stack);
+      throw new BadRequestException(`SQL Server connection failed: ${err.message}`);
+    } finally {
+      if (pool) await pool.close();
+    }
+  }
+
+  async migrateStockSystem(
+    stockHeadersFile?: Express.Multer.File | any[],
+    stockLinesFile?: Express.Multer.File | any[],
+    stockAssignHeadersFile?: Express.Multer.File | any[],
+    stockAssignLinesFile?: Express.Multer.File | any[],
+    stockReverseHeadersFile?: Express.Multer.File | any[],
+    stockReverseLinesFile?: Express.Multer.File | any[],
+    sourceName?: string
+  ) {
+    const parse = async (file: any) => {
+      if (!file) return [];
+      if (Array.isArray(file)) return file;
+      if (file.buffer) return await this.parseCsvBuffer(file.buffer);
+      return [];
+    };
+
+    const headers = await parse(stockHeadersFile);
+    const lines = await parse(stockLinesFile);
+    const assignHeaders = await parse(stockAssignHeadersFile);
+    const assignLines = await parse(stockAssignLinesFile);
+    const reverseHeaders = await parse(stockReverseHeadersFile);
+    const reverseLines = await parse(stockReverseLinesFile);
+
+    return await this.migrateStockRows(headers, lines, assignHeaders, assignLines, reverseHeaders, reverseLines, sourceName || 'Uploaded Files');
+  }
+
+  private async migrateStockRows(
+    headers: any[],
+    lines: any[],
+    assignHeaders: any[],
+    assignLines: any[],
+    reverseHeaders: any[],
+    reverseLines: any[],
+    sourceName: string
+  ) {
+    let importedHeaders = 0;
+    let importedLines = 0;
+    let importedDispatches = 0;
+    let importedDispatchItems = 0;
+    let importedReversals = 0;
+    let skipped = 0;
+    const failures: any[] = [];
+
+    const defaultHq = await (this.prisma as any).organization.findFirst({
+      where: { parentId: null, isDeleted: false },
+      orderBy: { createdAt: 'asc' }
+    });
+    const defaultOrgId = defaultHq?.id || '00000000-0000-0000-0000-000000000001';
+
+    const defaultUser = await this.prisma.user.findFirst({
+      where: { isDeleted: false },
+      orderBy: { createdAt: 'asc' }
+    });
+    const defaultUserId = defaultUser?.id || '00000000-0000-0000-0000-000000000001';
+
+    const defaultFilmType = await (this.prisma as any).filmType.findFirst({ where: { isDeleted: false } });
+    const defaultFilmTypeId = defaultFilmType?.id || '00000000-0000-0000-0000-000000000001';
+
+    const getProp = (obj: any, ...keys: string[]) => {
+      if (!obj) return undefined;
+      for (const k of keys) {
+        if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+        const lowerK = k.toLowerCase();
+        for (const key of Object.keys(obj)) {
+          if (key.toLowerCase() === lowerK && obj[key] !== undefined && obj[key] !== null) {
+            return obj[key];
+          }
+        }
+      }
+      return undefined;
+    };
+
+    const orgMap = new Map<string, string>();
+    const orgs = await (this.prisma as any).organization.findMany({ select: { id: true, legacyId: true, name: true } });
+    orgs.forEach((o: any) => {
+      if (o.legacyId) orgMap.set(String(o.legacyId), o.id);
+      if (o.name) orgMap.set(o.name.trim().toLowerCase(), o.id);
+    });
+
+    const getOrgId = (legacyVal: any) => {
+      if (!legacyVal) return defaultOrgId;
+      const str = String(legacyVal).trim();
+      if (orgMap.has(str)) return orgMap.get(str)!;
+      if (orgMap.has(str.toLowerCase())) return orgMap.get(str.toLowerCase())!;
+      return defaultOrgId;
+    };
+
+    const batchMap = new Map<string, string>();
+    const existingBatches = await (this.prisma as any).filmBatch.findMany({
+      where: { legacyId: { not: null } },
+      select: { id: true, legacyId: true }
+    });
+    existingBatches.forEach((b: any) => {
+      if (b.legacyId) batchMap.set(String(b.legacyId), b.id);
+    });
+
+    const batchData = headers.map((h: any) => {
+      const headerId = String(getProp(h, 'Id', 'id', 'HeaderId') || '');
+      const packNo = getProp(h, 'PackOfQRNo', 'packofqrno', 'BatchCode');
+      const batchCode = String(packNo || `LEGACY-BATCH-${headerId}`).trim();
+      const totalStock = parseFloat(getProp(h, 'TotalStock', 'totalstock') || 1);
+      const ownerId = getOrgId(getProp(h, 'OwnerID', 'ownerid'));
+      const createdDate = getProp(h, 'CreatedDate', 'createddate');
+      const modifiedDate = getProp(h, 'ModifiedDate', 'modifieddate');
+      const cDate = createdDate ? new Date(createdDate) : new Date();
+      const uDate = modifiedDate ? new Date(modifiedDate) : cDate;
+      return {
+        batchCode,
+        filmTypeId: defaultFilmTypeId,
+        vendorId: ownerId,
+        orgId: ownerId,
+        quantity: totalStock,
+        batchType: 'PACKAGED' as const,
+        status: 'PACKAGED' as const,
+        arrivalDate: cDate,
+        createdAt: cDate,
+        updatedAt: uDate,
+        legacyId: headerId,
+        notes: `Migrated from StockHedaerMaster ID ${headerId}`
+      };
+    });
+
+    if (batchData.length > 0) {
+      await (this.prisma as any).filmBatch.createMany({
+        data: batchData,
+        skipDuplicates: true
+      });
+      importedHeaders = batchData.length;
+    }
+
+    const reloadedBatches = await (this.prisma as any).filmBatch.findMany({
+      where: { legacyId: { not: null } },
+      select: { id: true, legacyId: true }
+    });
+    reloadedBatches.forEach((b: any) => {
+      if (b.legacyId) batchMap.set(String(b.legacyId), b.id);
+    });
+
+    const qrDataToInsert: any[] = [];
+    for (const l of lines) {
+      const qrCodeStr = String(getProp(l, 'QRCode', 'qrcode', 'QR') || '').trim();
+      if (!qrCodeStr) continue;
+
+      const headerId = String(getProp(l, 'StcokHeaderId', 'StockHeaderId', 'stcokheaderid', 'stockheaderid') || '');
+      const batchId = batchMap.get(headerId);
+      if (!batchId) continue;
+
+      const isAssign = this.parseBit(getProp(l, 'IsAssign', 'isassign'));
+      const ownerId = getOrgId(getProp(l, 'OwnerID', 'ownerid'));
+
+      qrDataToInsert.push({
+        sequenceNumber: qrCodeStr,
+        qrType: 'INDIVIDUAL' as const,
+        filmBatchId: batchId,
+        filmTypeId: defaultFilmTypeId,
+        status: isAssign ? ('ASSIGNED' as const) : ('CREATED' as const),
+        assignedOrgId: ownerId
+      });
+    }
+
+    for (let i = 0; i < qrDataToInsert.length; i += 5000) {
+      const chunk = qrDataToInsert.slice(i, i + 5000);
+      await (this.prisma as any).qRCode.createMany({
+        data: chunk,
+        skipDuplicates: true
+      });
+      importedLines += chunk.length;
+    }
+
+    const dispatchData = assignHeaders.map((ah: any) => {
+      const assignId = String(getProp(ah, 'AssignId', 'assignid') || '');
+      const fromOrgId = getOrgId(getProp(ah, 'OwnerID', 'ownerid'));
+      const toOrgId = getOrgId(getProp(ah, 'DealerID', 'dealerid'));
+      const createdDate = getProp(ah, 'CreatedDate', 'createddate');
+      const dispatchDate = createdDate ? new Date(createdDate) : new Date();
+      return {
+        fromOrgId,
+        toOrgId,
+        dispatchDate,
+        status: 'RECEIVED' as const,
+        createdBy: defaultUserId,
+        legacyId: assignId,
+        notes: `Migrated from StockAssignHeaderMaster AssignId ${assignId}`
+      };
+    });
+
+    if (dispatchData.length > 0) {
+      await (this.prisma as any).dispatchOrder.createMany({
+        data: dispatchData,
+        skipDuplicates: true
+      });
+      importedDispatches = dispatchData.length;
+    }
+
+    const reloadedDispatches = await (this.prisma as any).dispatchOrder.findMany({
+      where: { legacyId: { not: null } },
+      select: { id: true, legacyId: true }
+    });
+    const dispatchMap = new Map<string, string>();
+    reloadedDispatches.forEach((d: any) => {
+      if (d.legacyId) dispatchMap.set(String(d.legacyId), d.id);
+    });
+
+    const fallbackBatchId = reloadedBatches[0]?.id || Array.from(batchMap.values())[0];
+    const itemsData: any[] = [];
+    for (const al of assignLines) {
+      const assignId = String(getProp(al, 'AssignId', 'assignid') || '');
+      const dispatchOrderId = dispatchMap.get(assignId);
+      if (!dispatchOrderId || !fallbackBatchId) continue;
+
+      itemsData.push({
+        dispatchOrderId,
+        filmBatchId: fallbackBatchId,
+        quantityDispatched: 1,
+        quantityReceived: 1,
+        legacyId: String(getProp(al, 'AssignLineId', 'assignlineid', 'Id', 'id') || '')
+      });
+    }
+
+    for (let i = 0; i < itemsData.length; i += 5000) {
+      const chunk = itemsData.slice(i, i + 5000);
+      await (this.prisma as any).dispatchOrderItem.createMany({
+        data: chunk,
+        skipDuplicates: true
+      });
+      importedDispatchItems += chunk.length;
+    }
+
+    const reverseData = reverseHeaders.map((rh: any) => {
+      const assignId = String(getProp(rh, 'AssignId', 'assignid') || '');
+      const fromOrgId = getOrgId(getProp(rh, 'DealerID', 'dealerid'));
+      const toOrgId = getOrgId(getProp(rh, 'OwnerID', 'ownerid'));
+      const isApproved = this.parseBit(getProp(rh, 'IsApproved', 'isapproved'));
+      const createdDate = getProp(rh, 'CreatedDate', 'createddate');
+      const cDate = createdDate ? new Date(createdDate) : new Date();
+      return {
+        fromOrgId,
+        toOrgId,
+        dispatchDate: cDate,
+        createdAt: cDate,
+        status: isApproved ? ('RECEIVED' as const) : ('DISPATCHED' as const),
+        createdBy: defaultUserId,
+        legacyId: `REVERSE-${assignId}`,
+        notes: `[STOCK RETURN] Migrated from StockReverseHeaderMaster AssignId ${assignId}`
+      };
+    });
+
+    if (reverseData.length > 0) {
+      await (this.prisma as any).dispatchOrder.createMany({
+        data: reverseData,
+        skipDuplicates: true
+      });
+      importedReversals = reverseData.length;
+    }
+
+    const summary = {
+      importedHeaders,
+      importedLines,
+      importedDispatches,
+      importedDispatchItems,
+      importedReversals,
+      skipped,
+      failures: failures.slice(0, 1000)
+    };
+
+    await this.logMigration({
+      module: 'stock',
+      fileName: sourceName,
+      status: skipped === 0 ? 'SUCCESS' : (importedHeaders > 0 ? 'PARTIAL' : 'FAILED'),
+      processed: headers.length + lines.length + assignHeaders.length + assignLines.length + reverseHeaders.length + reverseLines.length,
+      created: importedHeaders + importedLines + importedDispatches + importedReversals,
+      updated: 0,
+      failed: skipped,
+      details: summary
+    });
+
+    return summary;
   }
 }
 

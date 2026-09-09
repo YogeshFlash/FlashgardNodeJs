@@ -2,14 +2,15 @@ import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } f
 import { MobileHomeService } from './mobile-home.service';
 import { Public } from '../auth/public.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 
 @Controller('mobile-home')
 export class MobileHomeController {
   constructor(private readonly service: MobileHomeService) {}
 
-  // Mobile App Content Retrieval Endpoint
-  @UseGuards(JwtAuthGuard)
+  // Mobile App Content Retrieval Endpoint (Optional Auth: returns live promotions & cuts even if token is missing/expired)
+  @UseGuards(OptionalJwtAuthGuard)
   @Get('content')
   getMobileContent(@Request() req: any) {
     return this.service.getMobileContent(req.user);

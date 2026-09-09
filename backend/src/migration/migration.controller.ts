@@ -1,14 +1,18 @@
-import { Controller, Post, Get, Body, UseInterceptors, UploadedFile, UploadedFiles, UseGuards, Res, Param } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, UseInterceptors, UploadedFile, UploadedFiles, UseGuards, Res, Param } from '@nestjs/common';
 import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { MigrationService } from './migration.service';
+import { MigrationScheduleService } from './migration-schedule.service';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import * as fs from 'fs';
 import * as path from 'path';
 
 @Controller('migration')
 export class MigrationController {
-  constructor(private readonly migrationService: MigrationService) {}
+  constructor(
+    private readonly migrationService: MigrationService,
+    private readonly scheduleService: MigrationScheduleService,
+  ) {}
 
   @Post('legacy/catalog')
   @RequirePermissions('catalog:write')
@@ -123,6 +127,18 @@ export class MigrationController {
   }))
   migrateMobileAppCuts(@UploadedFile() file: Express.Multer.File) {
     return this.migrationService.migrateMobileAppCuts(file);
+  }
+
+  @Post('deduplicate-cut-logs')
+  @RequirePermissions('catalog:write')
+  deduplicateCutLogs() {
+    return this.migrationService.deduplicateCutLogs();
+  }
+
+  @Post('legacy/deduplicate-cut-logs')
+  @RequirePermissions('catalog:write')
+  deduplicateCutLogsLegacy() {
+    return this.migrationService.deduplicateCutLogs();
   }
 
   @Post('legacy/designs')
@@ -264,6 +280,12 @@ export class MigrationController {
     return this.migrationService.dbRun(credentials, moduleType, tableMap);
   }
 
+  @Get('db/status')
+  @RequirePermissions('catalog:write')
+  getDbMigrationStatus() {
+    return this.migrationService.getDbMigrationStatus();
+  }
+
   @Post('legacy/dealer-master-qrs')
   @RequirePermissions('catalog:write')
   @UseInterceptors(FileInterceptor('file', {
@@ -309,6 +331,78 @@ export class MigrationController {
       files.products?.[0]!,
       files.displayMaster?.[0]!
     );
+  }
+
+  @Post('legacy/stock')
+  @RequirePermissions('catalog:write')
+  @UseInterceptors(FileFieldsInterceptor([
+    { name: 'stockHeaders', maxCount: 1 },
+    { name: 'stockLines', maxCount: 1 },
+    { name: 'stockAssignHeaders', maxCount: 1 },
+    { name: 'stockAssignLines', maxCount: 1 },
+    { name: 'stockReverseHeaders', maxCount: 1 },
+    { name: 'stockReverseLines', maxCount: 1 }
+  ], {
+    limits: { fileSize: 1024 * 1024 * 1024 } // 1GB limit
+  }))
+  migrateStock(
+    @Body() body: any,
+    @UploadedFiles() files?: {
+      stockHeaders?: Express.Multer.File[];
+      stockLines?: Express.Multer.File[];
+      stockAssignHeaders?: Express.Multer.File[];
+      stockAssignLines?: Express.Multer.File[];
+      stockReverseHeaders?: Express.Multer.File[];
+      stockReverseLines?: Express.Multer.File[];
+    }
+  ) {
+    if (body && (body.useDirectSqlServer || !files || Object.keys(files || {}).length === 0)) {
+      return this.migrationService.startStockMigrationBackground(body);
+    }
+    return this.migrationService.migrateStockSystem(
+      files?.stockHeaders?.[0],
+      files?.stockLines?.[0],
+      files?.stockAssignHeaders?.[0],
+      files?.stockAssignLines?.[0],
+      files?.stockReverseHeaders?.[0],
+      files?.stockReverseLines?.[0]
+    );
+  }
+
+  @Get('legacy/stock/status')
+  @RequirePermissions('catalog:write')
+  getStockMigrationStatus() {
+    return this.migrationService.getStockMigrationStatus();
+  }
+
+  @Get('schedule/settings')
+  @RequirePermissions('settings:read')
+  getScheduleSettings() {
+    return this.scheduleService.getSettings();
+  }
+
+  @Post('schedule/settings')
+  @RequirePermissions('settings:write')
+  updateScheduleSettings(@Body() body: any) {
+    return this.scheduleService.updateSettings(body);
+  }
+
+  @Post('schedule/trigger')
+  @RequirePermissions('settings:write')
+  triggerScheduleMigration() {
+    return this.scheduleService.triggerMigration('MANUAL');
+  }
+
+  @Get('schedule/logs')
+  @RequirePermissions('settings:read')
+  getScheduleLogs() {
+    return this.scheduleService.getLogs();
+  }
+
+  @Delete('schedule/logs')
+  @RequirePermissions('settings:write')
+  clearScheduleLogs() {
+    return this.scheduleService.clearLogs();
   }
 }
 

@@ -34,11 +34,21 @@ export class InventoryService {
     if (user.organizationId) return user.organizationId;
 
     if (user.isSuperAdmin) {
+      const hqOrg = await (this.prisma as any).organization.findFirst({
+        where: { 
+          isDeleted: false,
+          organizationType: { name: { in: ['parent', 'internal', 'HQ', 'Parent'] } }
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (hqOrg) return hqOrg.id;
+
       const rootOrg = await (this.prisma as any).organization.findFirst({
         where: { parentId: null, isDeleted: false },
         orderBy: { createdAt: 'asc' },
       });
       if (rootOrg) return rootOrg.id;
+
       throw new InventoryException(
         'NO_ORG_FOUND',
         'No root organization exists. Please create an organization first.',
@@ -48,14 +58,60 @@ export class InventoryService {
 
     throw new InventoryException(
       'ORG_ID_REQUIRED',
-      'No organization assigned to user.',
+      'User must belong to an organization to perform this action.',
       HttpStatus.BAD_REQUEST,
     );
   }
 
+
+  private async ensureFilmTypeExists(filmTypeId: string, tx?: any): Promise<any> {
+    const prismaClient = tx || this.prisma;
+    if (!filmTypeId) return null;
+
+    // 1. Check if filmType already exists in film_types table
+    let existing: any = null;
+    try {
+      existing = await (prismaClient as any).filmType.findUnique({ where: { id: filmTypeId } });
+    } catch (e) {}
+
+    if (existing) return existing;
+
+    // 2. Lookup name from FilmCategory or Material
+    let name = 'Flash Film';
+    try {
+      const fc = await (prismaClient as any).filmCategory.findUnique({ where: { id: filmTypeId } });
+      if (fc?.name) {
+        name = fc.name;
+      } else {
+        const mat = await (prismaClient as any).material.findUnique({ where: { id: filmTypeId } });
+        if (mat?.name) name = mat.name;
+      }
+    } catch (e) {}
+
+    // 3. Upsert into film_types table so foreign key constraint film_batches_film_type_id_fkey passes
+    try {
+      return await (prismaClient as any).filmType.upsert({
+        where: { id: filmTypeId },
+        update: { name, requiresQr: true },
+        create: {
+          id: filmTypeId,
+          name,
+          requiresQr: true,
+          isActive: true,
+        },
+      });
+    } catch (e) {
+      try {
+        const fallback = await (prismaClient as any).filmType.findFirst({ where: { name } });
+        if (fallback) return fallback;
+      } catch (e2) {}
+      return null;
+    }
+  }
+
   private async generateBatchCode(filmTypeId: string, offset: number = 0, tx?: any): Promise<string> {
     const prismaClient = tx || this.prisma;
-    const filmType = await (prismaClient as any).filmType.findUnique({ where: { id: filmTypeId } });
+    const filmType = await this.ensureFilmTypeExists(filmTypeId, prismaClient);
     if (!filmType) throw new InventoryException('FILM_TYPE_NOT_FOUND', 'Film type not found');
 
     const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
@@ -66,7 +122,7 @@ export class InventoryService {
 
     const count = await (prismaClient as any).filmBatch.count({
       where: {
-        filmTypeId,
+        filmTypeId: filmType.id,
         createdAt: {
           gte: startOfDay,
           lte: endOfDay,
@@ -76,7 +132,7 @@ export class InventoryService {
 
     const sequence = (count + 1 + offset).toString().padStart(3, '0');
     // Slugify film type name (remove spaces, uppercase)
-    const filmTypeName = filmType.name.replace(/\s+/g, '').toUpperCase();
+    const filmTypeName = (filmType.name || 'FILM').replace(/\s+/g, '').toUpperCase();
     
     const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
     return `FG-${filmTypeName}-${dateStr}-${sequence}-${randomSuffix}`;
@@ -127,13 +183,16 @@ export class InventoryService {
     }
 
     const orgId = await this.resolveOrgId(user);
-    const batchCode = await this.generateBatchCode(data.filmTypeId);
+    const filmTypeObj = await this.ensureFilmTypeExists(data.filmTypeId);
+    const targetFilmTypeId = filmTypeObj ? filmTypeObj.id : data.filmTypeId;
+
+    const batchCode = await this.generateBatchCode(targetFilmTypeId);
 
     try {
       return await (this.prisma as any).filmBatch.create({
         data: {
           batchCode,
-          filmTypeId: data.filmTypeId,
+          filmTypeId: targetFilmTypeId,
           vendorId: data.vendorId,
           orgId,
           quantity: data.quantity,
@@ -281,15 +340,18 @@ export class InventoryService {
         const typeOffsets: Record<string, number> = {};
 
         for (const item of items) {
-          const currentOffset = typeOffsets[item.filmTypeId] || 0;
-          const batchCode = await this.generateBatchCode(item.filmTypeId, currentOffset, tx);
-          typeOffsets[item.filmTypeId] = currentOffset + 1;
+          const filmTypeObj = await this.ensureFilmTypeExists(item.filmTypeId, tx);
+          const targetFilmTypeId = filmTypeObj ? filmTypeObj.id : item.filmTypeId;
+
+          const currentOffset = typeOffsets[targetFilmTypeId] || 0;
+          const batchCode = await this.generateBatchCode(targetFilmTypeId, currentOffset, tx);
+          typeOffsets[targetFilmTypeId] = currentOffset + 1;
           
           // 1. Create Film Batch
           const batch = await tx.filmBatch.create({
             data: {
               batchCode,
-              filmTypeId: item.filmTypeId,
+              filmTypeId: targetFilmTypeId,
               vendorId,
               orgId,
               inwardReceiptId,
@@ -399,8 +461,19 @@ export class InventoryService {
     
     const allowedOrgIds = await this.orgsService.getAllowedOrgIds(user);
 
-    const where: any = {};
-    if (status) where.status = status;
+    const where: any = { isDeleted: false };
+    const VALID_BATCH_STATUSES = new Set(['BULK_RECEIVED', 'RAW_MATERIAL', 'PACKAGED', 'QR_APPLIED', 'IN_TRANSIT', 'AT_DISTRIBUTOR', 'AT_RETAILER']);
+    if (status) {
+      if (Array.isArray(status)) {
+        const valid = status.filter((s: string) => VALID_BATCH_STATUSES.has(s));
+        if (valid.length > 0) where.status = { in: valid };
+      } else if (typeof status === 'string' && status.includes(',')) {
+        const statuses = status.split(',').map((s: string) => s.trim()).filter((s: string) => VALID_BATCH_STATUSES.has(s));
+        if (statuses.length > 0) where.status = { in: statuses };
+      } else if (typeof status === 'string' && status.trim() !== '' && VALID_BATCH_STATUSES.has(status.trim())) {
+        where.status = status.trim();
+      }
+    }
     if (type) where.batchType = type;
     if (filmTypeId) where.filmTypeId = filmTypeId;
     if (vendorId) where.vendorId = vendorId;
@@ -811,12 +884,13 @@ export class InventoryService {
       throw new InventoryException('BATCH_NOT_FOUND', 'Batch not found', HttpStatus.NOT_FOUND);
     }
 
-    if (batch.status !== 'PACKAGED' && batch.status !== 'QR_APPLIED') {
-      throw new InventoryException('INVALID_STATUS', 'QR generation is only allowed for PACKAGED or QR_APPLIED batches');
-    }
-
-    if (!batch.filmType.requiresQr) {
-      return { success: true, message: 'QR not required for this SKU' };
+    if (batch.filmType && !batch.filmType.requiresQr) {
+      try {
+        await (this.prisma as any).filmType.update({
+          where: { id: batch.filmTypeId },
+          data: { requiresQr: true },
+        });
+      } catch (e) {}
     }
 
     const todayDateStr = new Date().toISOString().split('T')[0];
@@ -925,15 +999,20 @@ export class InventoryService {
           data: { status: 'QR_APPLIED' }
         });
 
-        await (tx.auditLog as any).create({
-          data: {
-            userId: user.id,
-            action: 'STATUS_CHANGE',
-            entity: 'FilmBatch',
-            entityId: batch.id,
-            details: { old_status: batch.status, new_status: 'QR_APPLIED', qrs_generated: totalRequested },
-          },
-        });
+        const auditUserId = user?.userId || user?.id || user?.sub;
+        if (auditUserId) {
+          try {
+            await (tx.auditLog as any).create({
+              data: {
+                userId: auditUserId,
+                action: 'STATUS_CHANGE',
+                entity: 'FilmBatch',
+                entityId: batch.id,
+                details: { old_status: batch.status, new_status: 'QR_APPLIED', qrs_generated: totalRequested },
+              },
+            });
+          } catch (e) {}
+        }
       }
 
       return {
@@ -943,7 +1022,7 @@ export class InventoryService {
         qr_details: {
           status: 'CREATED',
           batch: batch.batchCode,
-          film_type: batch.filmType.name,
+          film_type: batch.filmType?.name || 'Flash Film',
           device_model: null,
           assigned_dealer: null
         }
@@ -986,8 +1065,8 @@ export class InventoryService {
   }
 
   async createDispatch(data: any, user: any) {
-    const { toOrgId, items, notes } = data; // items: Array<{ batchId: string, quantity: number }>
-    const fromOrgId = await this.resolveOrgId(user);
+    const { toOrgId, items: rawItems, notes, qrIds, fromOrgId: explicitFromOrgId } = data;
+    const fromOrgId = explicitFromOrgId || (await this.resolveOrgId(user));
     
     const fromOrgType = await this.getOrgType(fromOrgId);
     const toOrgType = await this.getOrgType(toOrgId);
@@ -995,125 +1074,197 @@ export class InventoryService {
     // Validation Rules
     const isHQ = fromOrgType === 'parent' || fromOrgType === 'internal';
     const isDist = fromOrgType === 'distributor';
+    const isReturnToHQ = (toOrgType === 'parent' || toOrgType === 'internal' || toOrgType === 'HQ' || toOrgType === 'Parent') && !isHQ;
 
-    if (isHQ && toOrgType !== 'distributor' && toOrgType !== 'dealer' && toOrgType !== 'retailer') {
-      throw new InventoryException('INVALID_TRANSFER', 'HQ can only dispatch to Distributors, Dealers, or Retailers');
+    if (!isReturnToHQ) {
+      if (isHQ && toOrgType !== 'distributor' && toOrgType !== 'dealer' && toOrgType !== 'retailer') {
+        throw new InventoryException('INVALID_TRANSFER', 'HQ can only dispatch to Distributors, Dealers, or Retailers');
+      }
+      if (isDist && toOrgType !== 'dealer' && toOrgType !== 'retailer') {
+        throw new InventoryException('INVALID_TRANSFER', 'Distributors can only dispatch to Dealers or Retailers');
+      }
+    } else {
+      if (rawItems && Array.isArray(rawItems)) {
+        for (const itemInput of rawItems) {
+          const b = await (this.prisma as any).filmBatch.findUnique({ where: { id: itemInput.batchId } });
+          if (b && (b.status === 'BULK_RECEIVED' || b.status === 'PACKAGED')) {
+            throw new InventoryException('INVALID_RETURN', `Batch ${b.batchCode} is unpackaged/HQ stock. Stock return can only be applied to stock that has been dispatched to your organization.`);
+          }
+        }
+      }
     }
-    if (isDist && toOrgType !== 'dealer' && toOrgType !== 'retailer') {
-      throw new InventoryException('INVALID_TRANSFER', 'Distributors can only dispatch to Dealers or Retailers');
-    }
+
+    const effectiveNotes = isReturnToHQ && notes && !notes.includes('[STOCK RETURN]') ? `[STOCK RETURN] ${notes}` : isReturnToHQ && !notes ? '[STOCK RETURN]' : notes;
 
     return (this.prisma as any).$transaction(async (tx: any) => {
-      // 1. Fetch all selected QRs with their children if they are Master Boxes
-      const selectedQrs = await tx.qRCode.findMany({
-        where: { id: { in: data.qrIds } },
-        include: { children: true }
-      });
+      let dispatchOrder: any = null;
 
-      if (selectedQrs.length === 0) {
-        throw new InventoryException('NO_ITEMS', 'No valid QR codes selected for dispatch');
-      }
+      // 1. Handle QR-tracked dispatches if QR IDs are provided
+      if (qrIds && Array.isArray(qrIds) && qrIds.length > 0) {
+        const selectedQrs = await tx.qRCode.findMany({
+          where: { id: { in: qrIds } },
+          include: { children: true }
+        });
 
-      // 2. Expand hierarchy: If a master is selected, we move its children too
-      const allQrIdsToMove = new Set<string>();
-      selectedQrs.forEach((qr: any) => {
-        allQrIdsToMove.add(qr.id);
-        if (qr.children) {
-          qr.children.forEach((c: any) => allQrIdsToMove.add(c.id));
+        if (selectedQrs.length > 0) {
+          const allQrIdsToMove = new Set<string>();
+          selectedQrs.forEach((qr: any) => {
+            allQrIdsToMove.add(qr.id);
+            if (qr.children) {
+              qr.children.forEach((c: any) => allQrIdsToMove.add(c.id));
+            }
+          });
+
+          const finalQrs = await tx.qRCode.findMany({
+            where: { id: { in: Array.from(allQrIdsToMove) } },
+            include: { filmBatch: { include: { filmType: true } } }
+          });
+
+          dispatchOrder = await tx.dispatchOrder.create({
+            data: {
+              fromOrgId,
+              toOrgId,
+              dispatchDate: new Date(),
+              status: 'DISPATCHED',
+              createdBy: user.userId || user.id,
+              notes,
+            },
+          });
+
+          const qrsByBatch = finalQrs.reduce((acc: any, qr: any) => {
+            const bid = qr.filmBatchId;
+            if (!acc[bid]) acc[bid] = { batch: qr.filmBatch, qrs: [] };
+            acc[bid].qrs.push(qr);
+            return acc;
+          }, {});
+
+          for (const batchId of Object.keys(qrsByBatch)) {
+            const { batch, qrs } = qrsByBatch[batchId];
+            const individualQrs = qrs.filter((q: any) => q.qrType === 'INDIVIDUAL');
+            const quantityToMove = individualQrs.length || qrs.length;
+
+            await tx.filmBatch.update({
+              where: { id: batch.id },
+              data: { quantity: { decrement: quantityToMove } },
+            });
+
+            const transitBatch = await tx.filmBatch.create({
+              data: {
+                batchCode: `${batch.batchCode}-T${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+                filmTypeId: batch.filmTypeId,
+                vendorId: batch.vendorId,
+                orgId: fromOrgId,
+                parentBatchId: batch.id,
+                quantity: quantityToMove,
+                packSize: batch.packSize,
+                batchType: batch.batchType,
+                status: 'IN_TRANSIT',
+              },
+            });
+
+            await tx.qRCode.updateMany({
+              where: { id: { in: qrs.map((q: any) => q.id) } },
+              data: { 
+                status: 'IN_TRANSIT',
+                filmBatchId: transitBatch.id
+              },
+            });
+
+            await tx.dispatchOrderItem.create({
+              data: {
+                dispatchOrderId: dispatchOrder.id,
+                filmBatchId: transitBatch.id,
+                quantityDispatched: quantityToMove,
+                quantityReceived: 0,
+              },
+            });
+
+            await tx.auditLog.create({
+              data: {
+                userId: user.id || user.userId,
+                action: 'STATUS_CHANGE',
+                entity: 'FilmBatch',
+                entityId: transitBatch.id,
+                details: { old_status: batch.status, new_status: 'IN_TRANSIT', dispatchId: dispatchOrder.id, qrsMoved: qrs.length },
+              },
+            });
+          }
+
+          return dispatchOrder;
         }
-      });
-
-      const finalQrs = await tx.qRCode.findMany({
-        where: { id: { in: Array.from(allQrIdsToMove) } },
-        include: { filmBatch: { include: { filmType: true } } }
-      });
-
-      // 3. Create Dispatch Order
-      const dispatchOrder = await tx.dispatchOrder.create({
-        data: {
-          fromOrgId,
-          toOrgId,
-          dispatchDate: new Date(),
-          status: 'DISPATCHED',
-          createdBy: user.userId,
-          notes,
-        },
-      });
-
-      // 4. Group by Batch to create transit batches
-      const qrsByBatch = finalQrs.reduce((acc: any, qr: any) => {
-        const bid = qr.filmBatchId;
-        if (!acc[bid]) acc[bid] = { batch: qr.filmBatch, qrs: [] };
-        acc[bid].qrs.push(qr);
-        return acc;
-      }, {});
-
-      for (const batchId of Object.keys(qrsByBatch)) {
-        const { batch, qrs } = qrsByBatch[batchId];
-        
-        // Quantity to move: count of INDIVIDUAL units (not master boxes)
-        const individualQrs = qrs.filter((q: any) => q.qrType === 'INDIVIDUAL');
-        const quantityToMove = individualQrs.length || qrs.length;
-
-        // 1. Deduct from source
-        await tx.filmBatch.update({
-          where: { id: batch.id },
-          data: { quantity: { decrement: quantityToMove } },
-        });
-
-        // 2. Create Transit Batch (Child)
-        const transitBatch = await tx.filmBatch.create({
-          data: {
-            batchCode: `${batch.batchCode}-T${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
-            filmTypeId: batch.filmTypeId,
-            vendorId: batch.vendorId,
-            orgId: fromOrgId,
-            parentBatchId: batch.id,
-            quantity: quantityToMove,
-            packSize: batch.packSize,
-            batchType: batch.batchType,
-            status: 'IN_TRANSIT',
-          },
-        });
-
-        // 3. Update QRs status and link to transit batch
-        await tx.qRCode.updateMany({
-          where: { id: { in: qrs.map((q: any) => q.id) } },
-          data: { 
-            status: 'IN_TRANSIT',
-            filmBatchId: transitBatch.id
-          },
-        });
-
-        // 4. Create Dispatch Order Item
-        await tx.dispatchOrderItem.create({
-          data: {
-            dispatchOrderId: dispatchOrder.id,
-            filmBatchId: transitBatch.id,
-            quantityDispatched: quantityToMove,
-            quantityReceived: 0,
-          },
-        });
-
-        // 5. Audit Log
-        await tx.auditLog.create({
-          data: {
-            userId: user.id,
-            action: 'STATUS_CHANGE',
-            entity: 'FilmBatch',
-            entityId: transitBatch.id,
-            details: { old_status: batch.status, new_status: 'IN_TRANSIT', dispatchId: dispatchOrder.id, qrsMoved: qrs.length },
-          },
-        });
       }
 
-      return dispatchOrder;
+      // 2. Fallback: Handle packaged stock batch dispatches (without QR codes or when no QRs selected)
+      if (rawItems && Array.isArray(rawItems) && rawItems.length > 0) {
+        dispatchOrder = await tx.dispatchOrder.create({
+          data: {
+            fromOrgId,
+            toOrgId,
+            dispatchDate: new Date(),
+            status: 'DISPATCHED',
+            createdBy: user.userId || user.id,
+            notes,
+          },
+        });
+
+        for (const itemInput of rawItems) {
+          const batch = await tx.filmBatch.findUnique({
+            where: { id: itemInput.batchId },
+            include: { filmType: true }
+          });
+
+          if (!batch) continue;
+          const quantityToMove = itemInput.quantity || batch.quantity || 1;
+
+          await tx.filmBatch.update({
+            where: { id: batch.id },
+            data: { quantity: { decrement: quantityToMove } },
+          });
+
+          const transitBatch = await tx.filmBatch.create({
+            data: {
+              batchCode: `${batch.batchCode}-T${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+              filmTypeId: batch.filmTypeId,
+              vendorId: batch.vendorId,
+              orgId: fromOrgId,
+              parentBatchId: batch.id,
+              quantity: quantityToMove,
+              packSize: batch.packSize,
+              batchType: batch.batchType,
+              status: 'IN_TRANSIT',
+            },
+          });
+
+          await tx.dispatchOrderItem.create({
+            data: {
+              dispatchOrderId: dispatchOrder.id,
+              filmBatchId: transitBatch.id,
+              quantityDispatched: quantityToMove,
+              quantityReceived: 0,
+            },
+          });
+
+          await tx.auditLog.create({
+            data: {
+              userId: user.id || user.userId,
+              action: 'STATUS_CHANGE',
+              entity: 'FilmBatch',
+              entityId: transitBatch.id,
+              details: { old_status: batch.status, new_status: 'IN_TRANSIT', dispatchId: dispatchOrder.id, quantityMoved: quantityToMove },
+            },
+          });
+        }
+
+        return dispatchOrder;
+      }
+
+      throw new InventoryException('NO_ITEMS', 'No items or valid batches selected for dispatch');
     });
   }
 
   async receiveDispatch(id: string, data: any, user: any) {
     const { receivedItems } = data; // Array<{ itemId: string, receivedQuantity: number }>
-    const toOrgId = user.organizationId;
+    const allowedOrgIds = await this.orgsService.getAllowedOrgIds(user);
 
     const dispatch = await (this.prisma as any).dispatchOrder.findUnique({
       where: { id },
@@ -1121,15 +1272,17 @@ export class InventoryService {
     });
 
     if (!dispatch) throw new InventoryException('DISPATCH_NOT_FOUND', 'Dispatch order not found', HttpStatus.NOT_FOUND);
-    if (dispatch.toOrgId !== toOrgId) {
+    if (!allowedOrgIds?.includes(dispatch.toOrgId) && !user.isSuperAdmin) {
       throw new InventoryException('UNAUTHORIZED', 'Only the receiving organization can accept this dispatch', HttpStatus.FORBIDDEN);
     }
     if (dispatch.status === 'RECEIVED') {
       throw new InventoryException('ALREADY_RECEIVED', 'This dispatch order has already been processed');
     }
 
+    const toOrgId = dispatch.toOrgId;
     const toOrgType = await this.getOrgType(toOrgId);
-    const targetStatus = toOrgType === 'distributor' ? 'AT_DISTRIBUTOR' : 'AT_RETAILER';
+    const isReceivingAtHQ = toOrgType === 'parent' || toOrgType === 'internal' || toOrgType === 'HQ' || toOrgType === 'Parent';
+    const targetStatus = isReceivingAtHQ ? 'PACKAGED' : toOrgType === 'distributor' ? 'AT_DISTRIBUTOR' : 'AT_RETAILER';
 
     return (this.prisma as any).$transaction(async (tx: any) => {
       for (const receiveItem of receivedItems) {
@@ -1155,8 +1308,8 @@ export class InventoryService {
         });
 
         // Update QRs status if they were in transit
-        if (batch.filmType.requiresQr) {
-          const finalQrStatus = (toOrgType === 'dealer' || toOrgType === 'retailer') ? 'ASSIGNED' : 'CREATED';
+        if (batch.filmType?.requiresQr) {
+          const finalQrStatus = isReceivingAtHQ ? 'CREATED' : (toOrgType === 'dealer' || toOrgType === 'retailer') ? 'ASSIGNED' : 'CREATED';
           await tx.qRCode.updateMany({
             where: { filmBatchId: batch.id, status: 'IN_TRANSIT' },
             data: { 
@@ -1194,8 +1347,7 @@ export class InventoryService {
     const { page = 1, limit = 20, status, fromOrgId, toOrgId } = query;
     const skip = (page - 1) * limit;
     
-    // Scoping: Only see dispatches where user's org is sender or receiver
-    const orgId = user.organizationId;
+    const allowedOrgIds = await this.orgsService.getAllowedOrgIds(user);
     const where: any = {};
     if (status) where.status = status;
     
@@ -1204,8 +1356,8 @@ export class InventoryService {
       if (toOrgId) where.toOrgId = toOrgId;
     } else {
       where.OR = [
-        { fromOrgId: orgId },
-        { toOrgId: orgId }
+        { fromOrgId: { in: allowedOrgIds } },
+        { toOrgId: { in: allowedOrgIds } }
       ];
       if (fromOrgId) where.fromOrgId = fromOrgId;
       if (toOrgId) where.toOrgId = toOrgId;
@@ -1218,7 +1370,6 @@ export class InventoryService {
           fromOrganization: true,
           toOrganization: true,
           creator: { select: { firstName: true, lastName: true } },
-          items: { include: { filmBatch: { include: { filmType: true } } } }
         },
         orderBy: { createdAt: 'desc' },
         skip: Number(skip),
@@ -1231,5 +1382,41 @@ export class InventoryService {
       items,
       meta: { total, page: Number(page), limit: Number(limit), totalPages: Math.ceil(total / limit) },
     };
+  }
+
+  async findOneDispatch(id: string, user: any) {
+    const allowedOrgIds = await this.orgsService.getAllowedOrgIds(user);
+    const dispatch = await (this.prisma as any).dispatchOrder.findUnique({
+      where: { id },
+      include: {
+        fromOrganization: true,
+        toOrganization: true,
+        creator: { select: { firstName: true, lastName: true } },
+        items: {
+          include: {
+            filmBatch: {
+              include: {
+                filmType: true,
+                qrCodes: {
+                  take: 500,
+                  include: { children: true },
+                  orderBy: { sequenceNumber: 'asc' }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!dispatch) {
+      throw new InventoryException('DISPATCH_NOT_FOUND', 'Dispatch order not found', HttpStatus.NOT_FOUND);
+    }
+
+    if (!user.isSuperAdmin && allowedOrgIds && !allowedOrgIds.includes(dispatch.fromOrgId) && !allowedOrgIds.includes(dispatch.toOrgId)) {
+      throw new InventoryException('UNAUTHORIZED', 'Access denied to this dispatch order', HttpStatus.FORBIDDEN);
+    }
+
+    return dispatch;
   }
 }

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UnauthorizedException, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, UnauthorizedException, UseGuards, Request } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Public } from './public.decorator';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -23,15 +23,23 @@ export class AuthController {
 
   @Public()
   @Post('device-login')
-  async deviceLogin(@Body() body: { licenseKey: string }) {
-    if (!body.licenseKey) {
-      throw new UnauthorizedException('License key is required');
+  async deviceLogin(@Body() body: { licenseKey?: string; orgId?: string; email?: string }) {
+    if (!body.licenseKey && !body.orgId && !body.email) {
+      throw new UnauthorizedException('License key or Organization identifier is required');
     }
-    const result = await this.authService.loginDevice(body.licenseKey);
+    const result = await this.authService.loginDevice(body.licenseKey, body.orgId, body.email);
     if (!result) {
-      throw new UnauthorizedException('Invalid device license key');
+      throw new UnauthorizedException('Invalid device license key or welcome pass');
     }
     return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  async getProfile(@Request() req: any) {
+    const userId = req.user.userId || req.user.sub;
+    const orgId = req.user.organizationId;
+    return this.authService.getProfile(userId, orgId);
   }
 
   @UseGuards(JwtAuthGuard)

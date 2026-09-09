@@ -17,18 +17,19 @@ export class FilmCategoriesService {
     return this.prisma.filmCategory.create({
       data: {
         name: data.name,
-        materialCategoryId: data.materialCategoryId,
+        materialCategoryId: data.materialCategoryId || null,
+        parentId: data.parentId || null,
         legacyId,
         isActive: data.isActive ?? true,
       },
-      include: { materialCategory: true }
+      include: { parent: true, children: true }
     });
   }
 
   async findAll(search?: string) {
     return this.prisma.filmCategory.findMany({
       where: search ? { name: { contains: search, mode: 'insensitive' } } : {},
-      include: { materialCategory: true },
+      include: { parent: true, children: true },
       orderBy: { name: 'asc' }
     });
   }
@@ -36,7 +37,7 @@ export class FilmCategoriesService {
   async findOne(id: string) {
     const item = await this.prisma.filmCategory.findUnique({ 
       where: { id },
-      include: { materialCategory: true }
+      include: { parent: true, children: true }
     });
     if (!item) throw new NotFoundException(`FilmCategory with ID ${id} not found`);
     return item;
@@ -46,8 +47,11 @@ export class FilmCategoriesService {
     await this.findOne(id);
     return this.prisma.filmCategory.update({
       where: { id },
-      data,
-      include: { materialCategory: true }
+      data: {
+        ...data,
+        parentId: data.parentId !== undefined ? (data.parentId || null) : undefined,
+      },
+      include: { parent: true, children: true }
     });
   }
 

@@ -28,8 +28,20 @@ async function main() {
     { action: 'designs:write', description: 'Upload/Modify design files' },
 
     // Inventory (Film)
-    { action: 'inventory:read', description: 'View stock and batches' },
-    { action: 'inventory:write', description: 'Manage film inventory' },
+    { action: 'inventory:read', description: 'View stock and batches (Full Access)' },
+    { action: 'inventory:write', description: 'Manage film inventory (Full Access)' },
+    { action: 'inventory_inward:read', description: 'View Inward Receipts tab' },
+    { action: 'inventory_inward:write', description: 'Manage Inward Receipts' },
+    { action: 'inventory_batches:read', description: 'View Stock Batches tab' },
+    { action: 'inventory_batches:write', description: 'Manage Stock Batches' },
+    { action: 'inventory_workorders:read', description: 'View Work Orders tab' },
+    { action: 'inventory_workorders:write', description: 'Manage Work Orders' },
+    { action: 'inventory_packaged:read', description: 'View Packaged Stock tab' },
+    { action: 'inventory_packaged:write', description: 'Manage Packaged Stock' },
+    { action: 'inventory_dispatch:read', description: 'View Dispatch Orders tab' },
+    { action: 'inventory_dispatch:write', description: 'Manage Dispatch Orders' },
+    { action: 'inventory_filmtypes:read', description: 'View Flash Products & Categories tab' },
+    { action: 'inventory_filmtypes:write', description: 'Manage Flash Products & Categories' },
     { action: 'inward:read', description: 'View inward receipts' },
     { action: 'inward:write', description: 'Create inward receipts' },
 

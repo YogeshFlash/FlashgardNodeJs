@@ -5,198 +5,286 @@ import { PrismaService } from '../prisma/prisma.service';
 export class MobileHomeService {
   constructor(private prisma: PrismaService) {}
 
-  // Consumed by the mobile app (fetches all sections)
-  async getMobileContent(user: any) {
-    const promotions = await this.prisma.mobilePromotion.findMany({
-      where: { isActive: true },
-      orderBy: { sortOrder: 'asc' },
-    });
-    const actions = await this.prisma.mobileQuickAction.findMany({
-      where: { isActive: true },
-      orderBy: { sortOrder: 'asc' },
-    });
-    const infocards = await this.prisma.mobileInfoCard.findMany({
-      where: { isActive: true },
-      orderBy: { sortOrder: 'asc' },
-    });
+  // In-memory caches to prevent heavy repetitive database queries
+  private staticCache: {
+    promotions: any[];
+    actions: any[];
+    infocards: any[];
+    expiry: number;
+  } | null = null;
 
-    // Helper to fetch unique recent cuts with specific where condition
-    const fetchRecentCutsWithWhere = async (whereCondition: any) => {
-      const logs = await this.prisma.machineCutLog.findMany({
-        where: whereCondition,
-        orderBy: {
-          createdAt: 'desc',
-        },
-        select: {
-          id: true,
-          brandName: true,
-          modelName: true,
-          patternName: true,
-          createdAt: true,
-          isPositiveCut: true,
-          model: {
-            select: {
-              id: true,
-              name: true,
-              imageUrl: true,
-            },
-          },
-        },
-        take: 50,
-      });
+  private globalTopCutsCache: {
+    data: any[];
+    expiry: number;
+  } | null = null;
 
-      const uniqueCuts = [];
-      const seenModelIds = new Set<string>();
-      for (const log of logs) {
-        if (log.model && log.model.id) {
-          if (!seenModelIds.has(log.model.id)) {
-            seenModelIds.add(log.model.id);
-            uniqueCuts.push(log);
-            if (uniqueCuts.length >= 10) break;
-          }
-        }
-      }
-      return uniqueCuts;
+  private invalidateStaticCache() {
+    this.staticCache = null;
+  }
+
+  // Get static sections (promotions, quick actions, infocards) with 5-min caching
+  private async getStaticSections() {
+    const now = Date.now();
+    if (this.staticCache && this.staticCache.expiry > now) {
+      return this.staticCache;
+    }
+
+    const [promotions, actions, infocards] = await Promise.all([
+      this.prisma.mobilePromotion.findMany({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' },
+      }),
+      this.prisma.mobileQuickAction.findMany({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' },
+      }),
+      this.prisma.mobileInfoCard.findMany({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' },
+      }),
+    ]);
+
+    this.staticCache = {
+      promotions,
+      actions,
+      infocards,
+      expiry: now + 5 * 60 * 1000, // 5 minutes
     };
 
-    // Helper to fetch top cuts with specific where condition
-    const fetchTopCutsWithWhere = async (whereCondition: any) => {
-      const groupedCuts = await this.prisma.machineCutLog.groupBy({
+    return this.staticCache;
+  }
+
+  // Get global top cuts with 15-min in-memory cache (prevents full-table groupBy scans)
+  private async getGlobalTopCuts(): Promise<any[]> {
+    const now = Date.now();
+    if (this.globalTopCutsCache && this.globalTopCutsCache.expiry > now) {
+      return this.globalTopCutsCache.data;
+    }
+
+    try {
+      // Look at recent 30 days to avoid full table scans across millions of old logs
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const grouped = await this.prisma.machineCutLog.groupBy({
         by: ['modelId'],
         where: {
-          ...whereCondition,
           modelId: { not: null },
+          createdAt: { gte: thirtyDaysAgo },
         },
-        _count: {
-          modelId: true,
-        },
-        orderBy: {
-          _count: {
-            modelId: 'desc',
-          },
-        },
+        _count: { modelId: true },
+        orderBy: { _count: { modelId: 'desc' } },
         take: 10,
       });
 
-      if (groupedCuts.length === 0) return [];
+      let result: any[] = [];
 
-      const modelIds = groupedCuts.map(g => g.modelId).filter((id): id is string => id !== null);
-      const models = await this.prisma.model.findMany({
-        where: {
-          id: { in: modelIds },
-        },
+      if (grouped.length > 0) {
+        const modelIds = grouped.map(g => g.modelId).filter((id): id is string => id !== null);
+        const models = await this.prisma.model.findMany({
+          where: { id: { in: modelIds } },
+          select: {
+            id: true,
+            name: true,
+            imageUrl: true,
+            brand: { select: { name: true } },
+          },
+        });
+
+        result = grouped
+          .map(g => ({
+            cutCount: g._count.modelId,
+            model: models.find(m => m.id === g.modelId),
+          }))
+          .filter(item => item.model != null);
+      }
+
+      // Fallback to active models if no recent cut logs
+      if (result.length < 5) {
+        const popularModels = await this.prisma.model.findMany({
+          where: { isActive: true },
+          take: 10,
+          select: {
+            id: true,
+            name: true,
+            imageUrl: true,
+            brand: { select: { name: true } },
+          },
+        });
+
+        const existingIds = new Set(result.map(r => r.model.id));
+        for (const m of popularModels) {
+          if (!existingIds.has(m.id)) {
+            result.push({ cutCount: 1, model: m });
+            if (result.length >= 10) break;
+          }
+        }
+      }
+
+      this.globalTopCutsCache = { data: result, expiry: now + 15 * 60 * 1000 };
+      return result;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // Fast retrieval of unique recent cuts using indexed queries
+  private async getRecentCuts(orgId?: string): Promise<any[]> {
+    const select = {
+      id: true,
+      brandName: true,
+      modelName: true,
+      patternName: true,
+      createdAt: true,
+      isPositiveCut: true,
+      model: {
         select: {
           id: true,
           name: true,
           imageUrl: true,
-          brand: {
-            select: {
-              name: true,
-            },
-          },
         },
-      });
-
-      return groupedCuts.map(g => {
-        const modelObj = models.find(m => m.id === g.modelId);
-        return {
-          cutCount: g._count.modelId,
-          model: modelObj,
-        };
-      }).filter(item => item.model != null);
+      },
     };
 
-    let recentCuts: any[] = [];
-    let topCuts: any[] = [];
+    // Stage 1: Org recent cuts (uses indexed [organizationId, createdAt(sort: Desc)])
+    const logs = await this.prisma.machineCutLog.findMany({
+      where: orgId ? { organizationId: orgId } : {},
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+      select,
+    });
 
+    const uniqueCuts: any[] = [];
+    const seenModelIds = new Set<string>();
+
+    for (const log of logs) {
+      if (log.model?.id) {
+        if (!seenModelIds.has(log.model.id)) {
+          seenModelIds.add(log.model.id);
+          uniqueCuts.push(log);
+          if (uniqueCuts.length >= 10) break;
+        }
+      }
+    }
+
+    // If org has fewer than 5 cuts, supplement with global system cuts (uses indexed [createdAt(sort: Desc)])
+    if (uniqueCuts.length < 5 && orgId) {
+      const globalLogs = await this.prisma.machineCutLog.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select,
+      });
+
+      for (const log of globalLogs) {
+        if (log.model?.id && !seenModelIds.has(log.model.id)) {
+          seenModelIds.add(log.model.id);
+          uniqueCuts.push(log);
+          if (uniqueCuts.length >= 10) break;
+        }
+      }
+    }
+
+    return uniqueCuts;
+  }
+
+  // Fast retrieval of top cuts (in-memory aggregation of recent logs + global cache fallback)
+  private async getTopCuts(orgId?: string): Promise<any[]> {
+    const globalTop = await this.getGlobalTopCuts();
+    if (!orgId) return globalTop;
+
+    // Fast indexed query: look at last 50 cuts for this org
+    const orgLogs = await this.prisma.machineCutLog.findMany({
+      where: { organizationId: orgId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        modelId: true,
+        model: {
+          select: {
+            id: true,
+            name: true,
+            imageUrl: true,
+            brand: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    if (orgLogs.length === 0) return globalTop;
+
+    // Count in-memory (0.01ms vs seconds in DB)
+    const counts: Record<string, { count: number; model: any }> = {};
+    for (const log of orgLogs) {
+      if (log.modelId && log.model) {
+        if (!counts[log.modelId]) {
+          counts[log.modelId] = { count: 0, model: log.model };
+        }
+        counts[log.modelId].count += 1;
+      }
+    }
+
+    const orgTop = Object.values(counts)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10)
+      .map(item => ({ cutCount: item.count, model: item.model }));
+
+    // If org has fewer than 5 top cuts, merge with global top cuts
+    if (orgTop.length < 5) {
+      const existingIds = new Set(orgTop.map(t => t.model.id));
+      for (const g of globalTop) {
+        if (!existingIds.has(g.model.id)) {
+          orgTop.push(g);
+          if (orgTop.length >= 10) break;
+        }
+      }
+    }
+
+    return orgTop;
+  }
+
+  // Optimized Mobile App Content Endpoint
+  async getMobileContent(user: any) {
     const orgId = user?.organizationId;
+    const now = new Date();
 
-    if (orgId) {
-      // Find the active license for this organization
-      const activeLicense = await this.prisma.orgLicense.findFirst({
-        where: {
-          tenantId: orgId,
-          status: 'ACTIVE',
-        },
-        select: {
-          id: true,
-        },
-      });
-
-      // Stage 1: Org + License
-      const whereStage1: any = { organizationId: orgId };
-      if (activeLicense) {
-        whereStage1.licenseId = activeLicense.id;
-      }
-
-      recentCuts = await fetchRecentCutsWithWhere(whereStage1);
-      topCuts = await fetchTopCutsWithWhere(whereStage1);
-
-      // Stage 2: Org Only (if less than 5 cuts found)
-      if (recentCuts.length < 5 || topCuts.length < 5) {
-        const whereStage2 = { organizationId: orgId };
-        if (recentCuts.length < 5) {
-          recentCuts = await fetchRecentCutsWithWhere(whereStage2);
-        }
-        if (topCuts.length < 5) {
-          topCuts = await fetchTopCutsWithWhere(whereStage2);
-        }
-      }
-    }
-
-    // Stage 3: Global System Cuts fallback (if still less than 5 cuts found, or if no orgId is present)
-    if (recentCuts.length < 5 || topCuts.length < 5) {
-      if (recentCuts.length < 5) {
-        recentCuts = await fetchRecentCutsWithWhere({});
-      }
-      if (topCuts.length < 5) {
-        topCuts = await fetchTopCutsWithWhere({});
-      }
-    }
-
-    // Fetch wallet info if user has an organizationId
-    let wallet = null;
-    let hasUnlimited = false;
-    let unlimitedPlanType: string | null = null;
-    let unlimitedEndDate: Date | null = null;
-
-    if (orgId) {
-      wallet = await this.prisma.entityWallet.findFirst({
-        where: { tenantId: orgId },
-        select: { balance: true }
-      });
-
-      const activeUnlimited = await this.prisma.cutCredit.findFirst({
-        where: {
-          tenantId: orgId,
-          planType: { in: ['UNLIMITED', 'LIFETIME'] },
-          startDate: { lte: new Date() },
-          OR: [
-            { endDate: { gte: new Date() } },
-            { endDate: null }
-          ]
-        }
-      });
-
-      if (activeUnlimited) {
-        hasUnlimited = true;
-        unlimitedPlanType = activeUnlimited.planType;
-        unlimitedEndDate = activeUnlimited.endDate;
-      }
-    }
+    // Execute static content, cuts, wallet, and unlimited plan all in parallel
+    const [staticData, recentCuts, topCuts, wallet, activeUnlimited] = await Promise.all([
+      this.getStaticSections(),
+      this.getRecentCuts(orgId),
+      this.getTopCuts(orgId),
+      orgId
+        ? this.prisma.entityWallet.findFirst({
+            where: { tenantId: orgId },
+            select: { balance: true },
+          })
+        : null,
+      orgId
+        ? this.prisma.cutCredit.findFirst({
+            where: {
+              tenantId: orgId,
+              planType: { in: ['UNLIMITED', 'LIFETIME'] },
+              startDate: { lte: now },
+              OR: [{ endDate: { gte: now } }, { endDate: null }],
+            },
+            select: { planType: true, endDate: true },
+          })
+        : null,
+    ]);
 
     return {
-      promotions,
-      actions,
-      infocards,
+      promotions: staticData.promotions,
+      actions: staticData.actions,
+      infocards: staticData.infocards,
       recentCuts,
       topCuts,
-      wallet: wallet ? { 
-        balance: wallet.balance,
-        hasUnlimited,
-        unlimitedPlanType,
-        unlimitedEndDate,
-      } : null,
+      wallet: wallet
+        ? {
+            balance: wallet.balance,
+            hasUnlimited: !!activeUnlimited,
+            unlimitedPlanType: activeUnlimited?.planType ?? null,
+            unlimitedEndDate: activeUnlimited?.endDate ?? null,
+          }
+        : null,
     };
   }
 
@@ -206,10 +294,12 @@ export class MobileHomeService {
   }
 
   async createPromotion(data: any) {
+    this.invalidateStaticCache();
     return this.prisma.mobilePromotion.create({ data });
   }
 
   async updatePromotion(id: string, data: any) {
+    this.invalidateStaticCache();
     return this.prisma.mobilePromotion.update({
       where: { id },
       data,
@@ -217,6 +307,7 @@ export class MobileHomeService {
   }
 
   async deletePromotion(id: string) {
+    this.invalidateStaticCache();
     return this.prisma.mobilePromotion.delete({ where: { id } });
   }
 
@@ -226,10 +317,12 @@ export class MobileHomeService {
   }
 
   async createAction(data: any) {
+    this.invalidateStaticCache();
     return this.prisma.mobileQuickAction.create({ data });
   }
 
   async updateAction(id: string, data: any) {
+    this.invalidateStaticCache();
     return this.prisma.mobileQuickAction.update({
       where: { id },
       data,
@@ -237,6 +330,7 @@ export class MobileHomeService {
   }
 
   async deleteAction(id: string) {
+    this.invalidateStaticCache();
     return this.prisma.mobileQuickAction.delete({ where: { id } });
   }
 
@@ -246,10 +340,12 @@ export class MobileHomeService {
   }
 
   async createInfoCard(data: any) {
+    this.invalidateStaticCache();
     return this.prisma.mobileInfoCard.create({ data });
   }
 
   async updateInfoCard(id: string, data: any) {
+    this.invalidateStaticCache();
     return this.prisma.mobileInfoCard.update({
       where: { id },
       data,
@@ -257,6 +353,7 @@ export class MobileHomeService {
   }
 
   async deleteInfoCard(id: string) {
+    this.invalidateStaticCache();
     return this.prisma.mobileInfoCard.delete({ where: { id } });
   }
 }

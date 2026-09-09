@@ -3,8 +3,66 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // Use 10.0.2.2 for Android Emulator, localhost for Windows/Web, or your machine IP for physical devices
-  static const String baseUrl = 'http://192.168.1.6:3000/api'; 
+  // Preset Server Environments
+  static const String liveBaseUrl = 'https://proapi.flashgard.in/api';
+  static const String defaultLocalBaseUrl = 'http://192.168.1.2:3000/api';
+  static const String emulatorBaseUrl = 'http://10.0.2.2:3000/api';
+
+  static const String defaultBaseUrl = liveBaseUrl; 
+  static String _baseUrl = defaultBaseUrl;
+
+  static String get baseUrl => _baseUrl;
+
+  static bool get isLive => _baseUrl.contains('proapi.flashgard.in');
+
+  static String get environmentLabel {
+    if (_baseUrl.contains('proapi.flashgard.in')) return 'Live AWS';
+    if (_baseUrl.contains('192.168.1.2') || _baseUrl.contains('127.0.0.1')) return 'Local Wi-Fi';
+    if (_baseUrl.contains('10.0.2.2')) return 'Emulator';
+    return 'Custom';
+  }
+
+  static Future<void> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final autoDetect = prefs.getBool('auto_detect_server') ?? false;
+      if (autoDetect) {
+        final localTarget = prefs.getString('local_base_url') ?? defaultLocalBaseUrl;
+        final isLocalReachable = await pingUrl(localTarget);
+        if (isLocalReachable) {
+          _baseUrl = localTarget;
+          return;
+        }
+      }
+
+      final saved = prefs.getString('custom_base_url');
+      if (saved != null && saved.trim().isNotEmpty) {
+        _baseUrl = saved.trim();
+      } else {
+        _baseUrl = defaultBaseUrl;
+      }
+    } catch (_) {}
+  }
+
+  static Future<void> setBaseUrl(String url, {bool autoDetect = false}) async {
+    _baseUrl = url.trim();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('custom_base_url', _baseUrl);
+      await prefs.setBool('auto_detect_server', autoDetect);
+    } catch (_) {}
+  }
+
+  static Future<bool> pingUrl(String url) async {
+    try {
+      final clean = url.trim().endsWith('/') ? url.trim().substring(0, url.trim().length - 1) : url.trim();
+      final uri = Uri.parse('$clean/model-categories?onlyWithModels=true&take=1');
+      final res = await http.get(uri).timeout(const Duration(milliseconds: 2000));
+      return res.statusCode >= 200 && res.statusCode < 500;
+    } catch (_) {
+      return false;
+    }
+  }
 
   static Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -40,13 +98,19 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>?> loginDevice(String licenseKey) async {
+  static Future<Map<String, dynamic>?> loginDevice({
+    String? licenseKey,
+    String? orgId,
+    String? email,
+  }) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/device-login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'licenseKey': licenseKey,
+          if (licenseKey != null && licenseKey.trim().isNotEmpty) 'licenseKey': licenseKey.trim(),
+          if (orgId != null && orgId.trim().isNotEmpty) 'orgId': orgId.trim(),
+          if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
         }),
       );
 
@@ -58,6 +122,21 @@ class ApiService {
       print('Device Login Error: $e');
       return null;
     }
+  }
+
+  static Future<Map<String, dynamic>?> getProfile() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/auth/me'),
+        headers: await _getHeaders(),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print('Error fetching profile: $e');
+    }
+    return null;
   }
 
   static Future<List<dynamic>> getModelCategories({String? parentId}) async {
@@ -173,15 +252,32 @@ class ApiService {
 
   static Future<Map<String, dynamic>?> fetchMobileHomeContent() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/mobile-home/content'),
-        headers: await _getHeaders(),
-      );
+      final url = '$baseUrl/mobile-home/content';
+      var headers = await _getHeaders();
+      debugPrint('[ApiService] Fetching mobile home content from $url');
+
+      var response = await http.get(
+        Uri.parse(url),
+        headers: headers,
+      ).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 401 && headers.containsKey('Authorization')) {
+        debugPrint('[ApiService] Received 401 with token, retrying unauthenticated...');
+        headers = {'Content-Type': 'application/json'};
+        response = await http.get(
+          Uri.parse(url),
+          headers: headers,
+        ).timeout(const Duration(seconds: 8));
+      }
+
+      debugPrint('[ApiService] Mobile home response code: ${response.statusCode}');
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        debugPrint('[ApiService] Mobile home failed (${response.statusCode}): ${response.body}');
       }
     } catch (e) {
-      print('Error fetching mobile home content: $e');
+      debugPrint('[ApiService] Error fetching mobile home content: $e');
     }
     return null;
   }
@@ -208,10 +304,61 @@ class ApiService {
     return null;
   }
 
+  static Future<Map<String, dynamic>?> bindPlotterDevice({
+    required String licenseKey,
+    String? serialNumber,
+    String? macAddress,
+    String? deviceHash,
+    String? organizationId,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/plotter-devices/bind'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'licenseKey': licenseKey,
+          'serialNumber': serialNumber,
+          'macAddress': macAddress,
+          'deviceHash': deviceHash,
+          'organizationId': organizationId,
+        }),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print('Error binding plotter device: $e');
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/users/change-password'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'oldPassword': oldPassword,
+          'newPassword': newPassword,
+        }),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print('Error changing password: $e');
+    }
+    return null;
+  }
+
   static Future<Map<String, dynamic>?> validateCut({
     required String? licenseKey,
     required String? organizationId,
     required String modelId,
+    bool isCalibrationCut = false,
   }) async {
     try {
       final response = await http.post(
@@ -221,6 +368,7 @@ class ApiService {
           'licenseKey': licenseKey,
           'organizationId': organizationId,
           'modelId': modelId,
+          'isCalibrationCut': isCalibrationCut,
         }),
       );
       if (response.statusCode == 200 || response.statusCode == 201) {

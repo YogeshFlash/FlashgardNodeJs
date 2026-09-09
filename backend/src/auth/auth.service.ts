@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
+import { OrgLicenseStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { decryptLicenseKey } from '../utils/encryption';
@@ -277,23 +278,98 @@ export class AuthService {
     };
   }
 
-  async loginDevice(licenseKey: string) {
-    const plotter = await (this.prisma as any).plotter.findFirst({
-      where: {
-        licenseKey,
-        status: 'ACTIVE',
-      },
-      include: {
-        organization: true,
+  async loginDevice(licenseKey?: string, orgId?: string, email?: string) {
+    let cleanKey = (licenseKey || '').trim();
+    if (cleanKey.toUpperCase() === 'PENDING') {
+      cleanKey = '';
+    }
+
+    let matchedOrgId: string | null = null;
+    let matchedOrg: any = null;
+
+    // 1. Check plotter table by licenseKey
+    if (cleanKey) {
+      const plotter = await (this.prisma as any).plotter.findFirst({
+        where: {
+          licenseKey: cleanKey,
+          status: 'ACTIVE',
+        },
+        include: {
+          organization: true,
+        }
+      });
+
+      if (plotter && plotter.organizationId) {
+        matchedOrgId = plotter.organizationId;
+        matchedOrg = plotter.organization;
       }
-    });
 
-    if (!plotter) return null;
+      // 2. Check OrgLicense table (both encrypted and decrypted match)
+      if (!matchedOrgId) {
+        const allLicenses = await this.prisma.orgLicense.findMany({
+          where: {
+            status: { in: ['ACTIVE', 'AVAILABLE'] as OrgLicenseStatus[] },
+          },
+        });
 
-    // Find a user belonging to the plotter's organization
+        for (const lic of allLicenses) {
+          let decKey = '';
+          try {
+            decKey = decryptLicenseKey(lic.key);
+          } catch {
+            decKey = lic.key;
+          }
+
+          if (
+            decKey.trim().toUpperCase() === cleanKey.toUpperCase() ||
+            lic.key.trim().toUpperCase() === cleanKey.toUpperCase()
+          ) {
+            matchedOrgId = lic.tenantId || lic.ownerId;
+            break;
+          }
+        }
+      }
+    }
+
+    // 3. Check by orgId if not matched yet
+    if (!matchedOrgId && orgId && orgId.trim()) {
+      const org = await this.prisma.organization.findUnique({
+        where: { id: orgId.trim() },
+      });
+      if (org) {
+        matchedOrgId = org.id;
+        matchedOrg = org;
+      }
+    }
+
+    // 4. Check by email if not matched yet
+    if (!matchedOrgId && email && email.trim()) {
+      const user = await this.prisma.user.findFirst({
+        where: { email: email.trim() },
+        include: {
+          organizations: {
+            include: { organization: true }
+          }
+        }
+      });
+      if (user) {
+        matchedOrgId = user.organizations?.[0]?.organizationId || user.organizationId;
+        matchedOrg = user.organizations?.[0]?.organization;
+      }
+    }
+
+    if (!matchedOrgId) return null;
+
+    if (!matchedOrg) {
+      matchedOrg = await this.prisma.organization.findUnique({
+        where: { id: matchedOrgId },
+      });
+    }
+
+    // Find a user belonging to the matched organization
     const userOrgLink = await (this.prisma as any).userOrganization.findFirst({
       where: {
-        organizationId: plotter.organizationId,
+        organizationId: matchedOrgId,
       },
       include: {
         user: true,
@@ -302,25 +378,73 @@ export class AuthService {
 
     let user = userOrgLink?.user;
     if (!user) {
-      // Fallback: get the first active user in the system
       user = await this.prisma.user.findFirst({
-        where: { isActive: true }
+        where: {
+          organizationId: matchedOrgId,
+          isActive: true,
+        }
       });
     }
 
-    if (!user) return null;
+    if (!user) {
+      // Find direct user or contact on org
+      const orgWithUsers = await this.prisma.organization.findUnique({
+        where: { id: matchedOrgId },
+        include: {
+          users: true,
+          contacts: true,
+        }
+      });
+      if (orgWithUsers?.users?.[0]) {
+        user = orgWithUsers.users[0];
+      } else {
+        // Create synthetic device user session
+        user = {
+          id: matchedOrgId,
+          email: orgWithUsers?.contacts?.[0]?.email || `device-${matchedOrgId.substring(0, 8)}@flashgard.local`,
+          firstName: matchedOrg?.name || 'Organization',
+          lastName: 'Device',
+          isSuperAdmin: false,
+          isActive: true,
+        };
+      }
+    }
 
-    const permissions = ['catalog:read', 'cuts:write', 'settings:read'];
+    // Retrieve active license key if available for display
+    let orgLicenseKey = cleanKey;
+    if (!orgLicenseKey || orgLicenseKey === 'PENDING') {
+      const existingLic = await this.prisma.orgLicense.findFirst({
+        where: {
+          OR: [
+            { tenantId: matchedOrgId },
+            { ownerId: matchedOrgId },
+          ],
+          status: { in: ['ACTIVE', 'AVAILABLE'] as OrgLicenseStatus[] }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (existingLic) {
+        try {
+          orgLicenseKey = decryptLicenseKey(existingLic.key);
+        } catch {
+          orgLicenseKey = existingLic.key;
+        }
+      }
+    }
+
+    const permissions = ['catalog:read', 'cuts:write', 'settings:read', 'inventory:read', 'models:read'];
     const permissionScopes = {
       'catalog:read': 'all',
       'cuts:write': 'all',
       'settings:read': 'all',
+      'inventory:read': 'all',
+      'models:read': 'all',
     };
 
     const jwtPayload = {
       email: user.email,
       sub: user.id,
-      organizationId: plotter.organizationId,
+      organizationId: matchedOrgId,
       isSuperAdmin: user.isSuperAdmin || false,
       permissions,
       permissionScopes,
@@ -334,19 +458,90 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        organizationId: plotter.organizationId,
+        organizationId: matchedOrgId,
         isSuperAdmin: user.isSuperAdmin || false,
         permissions,
         permissionScopes,
-        organization: plotter.organization ?? undefined,
-        accessibleOrgs: plotter.organization ? [{
-          organizationId: plotter.organizationId,
+        organization: matchedOrg ?? undefined,
+        licenseKey: orgLicenseKey || undefined,
+        accessibleOrgs: matchedOrg ? [{
+          organizationId: matchedOrgId,
           roleId: null,
           isPrimary: true,
-          organizationName: plotter.organization.name,
+          organizationName: matchedOrg.name,
         }] : [],
         isDevice: true,
       }
+    };
+  }
+
+  async getProfile(userId: string, organizationId?: string) {
+    let matchedOrgId = organizationId;
+    let user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        organizations: {
+          include: {
+            organization: true,
+            role: true,
+          }
+        },
+        role: true,
+      }
+    });
+
+    if (!matchedOrgId && user) {
+      matchedOrgId = user.organizations?.[0]?.organizationId || user.organizationId || undefined;
+    }
+
+    let org: any = null;
+    if (matchedOrgId) {
+      org = await this.prisma.organization.findUnique({
+        where: { id: matchedOrgId },
+        include: {
+          organizationType: true,
+          tenantWallets: true,
+        }
+      });
+    }
+
+    let licenseKey: string | null = null;
+    if (matchedOrgId) {
+      const existingLic = await this.prisma.orgLicense.findFirst({
+        where: {
+          OR: [
+            { tenantId: matchedOrgId },
+            { ownerId: matchedOrgId },
+          ],
+          status: { in: ['ACTIVE', 'AVAILABLE'] as OrgLicenseStatus[] }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (existingLic) {
+        try {
+          licenseKey = decryptLicenseKey(existingLic.key);
+        } catch {
+          licenseKey = existingLic.key;
+        }
+      }
+    }
+
+    const wallet = org?.tenantWallets?.[0];
+
+    return {
+      userId: user?.id || userId,
+      email: user?.email || '',
+      firstName: user?.firstName || (org?.name ? org.name : 'User'),
+      lastName: user?.lastName || '',
+      organizationId: matchedOrgId,
+      isSuperAdmin: user?.isSuperAdmin || false,
+      organization: org ? {
+        id: org.id,
+        name: org.name,
+        type: org.organizationType?.name || 'organization',
+      } : undefined,
+      licenseKey: licenseKey || undefined,
+      credits: wallet?.balance ?? 0,
     };
   }
 

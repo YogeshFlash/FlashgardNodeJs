@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MigrationController } from './migration.controller';
 import { MigrationService } from './migration.service';
+import { MigrationScheduleService } from './migration-schedule.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MulterModule } from '@nestjs/platform-express';
 
@@ -15,6 +16,7 @@ import { MulterModule } from '@nestjs/platform-express';
     }),
   ],
   controllers: [MigrationController],
-  providers: [MigrationService]
+  providers: [MigrationService, MigrationScheduleService],
+  exports: [MigrationScheduleService]
 })
 export class MigrationModule {}

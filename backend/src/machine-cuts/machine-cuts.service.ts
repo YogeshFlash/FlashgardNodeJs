@@ -11,8 +11,8 @@ export class MachineCutsService {
     private jwtService: JwtService
   ) {}
 
-  async validateCut(data: { licenseKey: string; organizationId: string; modelId: string; userId: string; appUniqueId?: string }) {
-    const { licenseKey, organizationId, modelId, userId, appUniqueId } = data;
+  async validateCut(data: { licenseKey: string; organizationId: string; modelId: string; userId: string; appUniqueId?: string; isCalibrationCut?: boolean }) {
+    const { licenseKey, organizationId, modelId, userId, appUniqueId, isCalibrationCut } = data;
 
     if (!organizationId) throw new BadRequestException('Organization ID is required');
 
@@ -29,15 +29,14 @@ export class MachineCutsService {
       if (license.tenantId !== organizationId) throw new BadRequestException('License does not belong to this organization');
     }
 
-    // 2. Check Wallet Balance
+    // 2. Check Wallet Balance (skip if calibration test cut)
     const wallet = await this.prisma.entityWallet.findFirst({
       where: { tenantId: organizationId }
     });
 
-    if (!wallet) throw new BadRequestException('Wallet not found for this organization');
+    if (!wallet && !isCalibrationCut) throw new BadRequestException('Wallet not found for this organization');
 
     // Determine if the org has an unlimited/lifetime plan currently active
-    // For simplicity, we check if they have enough balance or if they have an active non-USAGE plan
     const activeUnlimited = await this.prisma.cutCredit.findFirst({
       where: {
         tenantId: organizationId,
@@ -49,7 +48,7 @@ export class MachineCutsService {
       }
     });
 
-    if (!activeUnlimited && wallet.balance <= 0) {
+    if (!isCalibrationCut && !activeUnlimited && wallet && wallet.balance <= 0) {
       throw new BadRequestException('Insufficient credits');
     }
 
@@ -61,7 +60,8 @@ export class MachineCutsService {
       modelId,
       userId,
       appUniqueId,
-      hasUnlimited: !!activeUnlimited
+      hasUnlimited: !!activeUnlimited,
+      isCalibrationCut: !!isCalibrationCut,
     };
 
     const cutToken = this.jwtService.sign(payload, { expiresIn: '15m' });
@@ -69,7 +69,7 @@ export class MachineCutsService {
     return {
       valid: true,
       cutToken,
-      balance: wallet.balance,
+      balance: wallet?.balance ?? 0,
       hasUnlimited: !!activeUnlimited
     };
   }
@@ -96,7 +96,7 @@ export class MachineCutsService {
       throw new UnauthorizedException('Invalid token type');
     }
 
-    const { organizationId, licenseId, modelId, appUniqueId, hasUnlimited } = payload;
+    const { organizationId, licenseId, modelId, appUniqueId, hasUnlimited, isCalibrationCut } = payload;
     const isPositiveCut = data.isPositiveCut !== false; // defaults to true
 
     return this.prisma.$transaction(async (tx) => {
@@ -114,12 +114,12 @@ export class MachineCutsService {
           latitude: data.latitude,
           longitude: data.longitude,
           isPositiveCut,
-          reviews: data.reviews,
+          reviews: isCalibrationCut ? (data.reviews ? `[CALIBRATION] ${data.reviews}` : 'Calibration Sample Cut') : data.reviews,
         }
       });
 
-      // 2. Deduct Credit (only if Positive Cut and NO unlimited plan)
-      if (isPositiveCut && !hasUnlimited) {
+      // 2. Deduct Credit (only if Positive Cut, NOT calibration cut, and NO unlimited plan)
+      if (isPositiveCut && !hasUnlimited && !isCalibrationCut) {
         const wallet = await tx.entityWallet.findFirst({
           where: { tenantId: organizationId }
         });

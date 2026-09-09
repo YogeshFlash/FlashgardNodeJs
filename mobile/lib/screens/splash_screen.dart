@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../providers/auth_provider.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -12,22 +14,22 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  late Animation<double> _scaleAnimation;
+  late Animation<Offset> _slideAnimation;
 
   @override
   void initState() {
     super.initState();
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 1200),
     );
     
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
+    _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.25), end: Offset.zero).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOutCubic),
     );
 
     _animationController.forward();
@@ -40,8 +42,29 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     super.dispose();
   }
 
+  Future<void> _requestAppPermissions() async {
+    try {
+      final permissions = [
+        Permission.camera,
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.location,
+        Permission.microphone,
+      ];
+      final statuses = await permissions.request();
+      debugPrint('[Permissions] Startup request results: $statuses');
+    } catch (e) {
+      debugPrint('[Permissions] Error requesting startup permissions: $e');
+    }
+  }
+
   Future<void> _navigateToNext() async {
-    await Future.delayed(const Duration(seconds: 3));
+    // Show splash animation smoothly before prompting
+    await Future.delayed(const Duration(milliseconds: 1500));
+    if (!mounted) return;
+
+    // Request all setup & necessary runtime permissions on startup
+    await _requestAppPermissions();
     if (!mounted) return;
     
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -49,6 +72,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     while (!authProvider.isInitialized) {
       await Future.delayed(const Duration(milliseconds: 100));
     }
+
+    if (!mounted) return;
 
     if (authProvider.isAuthenticated) {
       Navigator.pushReplacementNamed(context, '/home');
@@ -61,8 +86,15 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     final brandColor = const Color(0xFFCE1D19);
     
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F172A), // Premium deep slate background for high-contrast graphics
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: Color(0xFF0F172A),
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0F172A), // Premium deep slate background for high-contrast graphics
       body: Stack(
         children: [
           // Background Graphic - Subtle glowing gradients in corners
@@ -102,78 +134,84 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           ),
           
           Center(
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: ScaleTransition(
-                scale: _scaleAnimation,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Graphic Logo Container with Glow
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E293B),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: brandColor.withOpacity(0.4), width: 2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: brandColor.withOpacity(0.2),
-                            blurRadius: 30,
-                            spreadRadius: 5,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Graphic Logo Container with Glow - immediately visible to seamlessly match native splash
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: brandColor.withOpacity(0.4), width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: brandColor.withOpacity(0.2),
+                        blurRadius: 30,
+                        spreadRadius: 5,
+                        offset: const Offset(0, 8),
                       ),
-                      child: Hero(
-                        tag: 'logo',
-                        child: Image.asset(
-                          'assets/logo.png',
-                          width: 140,
-                          height: 140,
-                        ),
-                      ),
+                    ],
+                  ),
+                  child: Hero(
+                    tag: 'logo',
+                    child: Image.asset(
+                      'assets/logo.png',
+                      width: 140,
+                      height: 140,
                     ),
-                    const SizedBox(height: 40),
-                    
-                    // Maroon Gradient Text
-                    ShaderMask(
-                      shaderCallback: (bounds) => LinearGradient(
-                        colors: [brandColor, const Color(0xFFFF5E5B), brandColor],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ).createShader(bounds),
-                      child: const Text(
-                        'FLASHGARD',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 36,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 3,
-                        ),
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 8),
-                    
-                    // Slogan
-                    Text(
-                      'PREMIUM PROTECTION',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 2.0,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+                const SizedBox(height: 40),
+                
+                // Animated text branding smoothly fading and sliding in
+                FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: Column(
+                      children: [
+                        // Maroon Gradient Text
+                        ShaderMask(
+                          shaderCallback: (bounds) => LinearGradient(
+                            colors: [brandColor, const Color(0xFFFF5E5B), brandColor],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ).createShader(bounds),
+                          child: const Text(
+                            'FLASHGARD',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 36,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 3,
+                            ),
+                          ),
+                        ),
+                        
+                        const SizedBox(height: 8),
+                        
+                        // Slogan
+                        Text(
+                          'PREMIUM PROTECTION',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 2.0,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 }
 
@@ -192,11 +230,6 @@ class GridPainter extends CustomPainter {
     for (double i = 0; i < size.height; i += spacing) {
       canvas.drawLine(Offset(0, i), Offset(size.width, i), paint);
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container();
   }
 
   @override

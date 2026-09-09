@@ -12,10 +12,22 @@ export class OrganizationsController {
     return this.organizationsService.create(body, req.user);
   }
 
+  @Post('onboard-retailer')
+  @RequirePermissions('orgs:write')
+  onboardRetailer(@Body() body: any, @Req() req: any) {
+    return this.organizationsService.onboardRetailer(body, req.user);
+  }
+
   @Get()
   @RequirePermissions('orgs:read')
   findAll(@Query('search') search?: string, @Query('includeDeleted') includeDeleted?: string, @Req() req?: any) {
     return this.organizationsService.findAll(search, req?.user, includeDeleted === 'true');
+  }
+
+  @Get(':id/welcome-kit')
+  @RequirePermissions('orgs:read')
+  getWelcomeKit(@Param('id') id: string, @Req() req?: any) {
+    return this.organizationsService.getWelcomeKit(id, req?.user);
   }
 
   @Get(':id')

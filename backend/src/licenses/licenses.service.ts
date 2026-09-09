@@ -74,7 +74,7 @@ export class LicensesService implements OnModuleInit {
     const startDate = new Date();
     const expiryDate = data.validityDays ? new Date(startDate.getTime() + data.validityDays * 24 * 60 * 60 * 1000) : null;
 
-    const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\//g, '');
+    const dateStr = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\//g, '');
     const orgPart = targetOrg.name.substring(0, 3).toUpperCase();
     const batchCode = `LB-${dateStr}-${orgPart}-${Date.now().toString().slice(-6)}`;
 
