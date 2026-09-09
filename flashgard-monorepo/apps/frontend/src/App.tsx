@@ -47,7 +47,8 @@ function App() {
               <Route path="inventory" element={<InventoryPage />} />
               <Route path="licenses" element={<LicensesPage />} />
               <Route path="migration" element={<DataMigration />} />
-              <Route path="mobile-home" element={<MobileHomeManager />} />
+              <Route path="mobile-management" element={<MobileHomeManager />} />
+              <Route path="mobile-home" element={<Navigate to="/mobile-management" replace />} />
             </Route>
 
             {/* Catch-all → redirect to dashboard */}

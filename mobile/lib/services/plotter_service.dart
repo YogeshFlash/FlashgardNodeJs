@@ -1,21 +1,51 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 
+/// Represents a single logged command sent to the machine for safety audits.
+class PlotterLogEntry {
+  final DateTime timestamp;
+  final String command;
+  final String? responseText;
+  final Uint8List? responseBytes;
+  final bool success;
+  final String? error;
+  final String transport;
+
+  PlotterLogEntry({
+    required this.timestamp,
+    required this.command,
+    this.responseText,
+    this.responseBytes,
+    required this.success,
+    this.error,
+    required this.transport,
+  });
+}
+
 class PlotterDevice {
   final String name;
   final String address;
   final int rssi;
-  final String type; // "sdk" or "classic"
+  final String type; // "sdk", "classic", or "usb"
+  final bool hasUsbPermission;
+  final int? vendorId;
+  final int? productId;
+  final String? serialNumber;
 
   PlotterDevice({
     required this.name,
     required this.address,
     required this.rssi,
     this.type = 'sdk',
+    this.hasUsbPermission = false,
+    this.vendorId,
+    this.productId,
+    this.serialNumber,
   });
 
   factory PlotterDevice.fromMap(Map<dynamic, dynamic> map) {
@@ -24,21 +54,43 @@ class PlotterDevice {
       address: map['address'] ?? '',
       rssi: map['rssi'] ?? 0,
       type: map['type'] ?? 'sdk',
+      hasUsbPermission: map['hasPermission'] == true,
+      vendorId: map['vendorId'] as int?,
+      productId: map['productId'] as int?,
+      serialNumber: map['serialNumber'] as String?,
     );
   }
 
   /// True if this device was found via standard Bluetooth (not SDK)
   bool get isClassic => type == 'classic';
+
+  /// True if this device is connected via USB OTG cable
+  bool get isUsb => type == 'usb';
+}
+
+/// Thrown when Bluetooth operation is attempted while Bluetooth radio is disabled.
+class BluetoothDisabledException implements Exception {
+  final String message;
+  BluetoothDisabledException([this.message = 'Bluetooth is turned off on this device.']);
+  @override
+  String toString() => message;
 }
 
 class PlotterService extends ChangeNotifier {
   static final PlotterService _instance = PlotterService._internal();
   factory PlotterService() => _instance;
   PlotterService._internal() {
-    // Forward native progress to our custom stream controller
+    // Forward native progress or hardware events
     _nativeProgressSub = _eventChannel.receiveBroadcastStream().listen((event) {
-      if (_connectionType == 'sdk') {
-        _progressController.add(event as int);
+      if (event is int) {
+        if (_connectionType == 'sdk' || _connectionType == 'usb') {
+          _progressController.add(event);
+        }
+      } else if (event is Map) {
+        final ev = event['event'];
+        if (ev == 'usb_attached' || ev == 'usb_detached') {
+          notifyListeners();
+        }
       }
     });
   }
@@ -51,13 +103,14 @@ class PlotterService extends ChangeNotifier {
   Timer? _classicCutTimer;
   bool _isCutCancelled = false;
 
-  /// The type of the currently connected plotter ("sdk", "classic", or null)
+  /// The type of the currently connected plotter ("sdk", "classic", "usb", or null)
   String? _connectedAddress;
   String? _connectedName;
   String? _connectionType;
   String? get connectionType => _connectionType;
   bool get isClassicPlotter => _connectionType == 'classic';
   bool get isSdkPlotter => _connectionType == 'sdk';
+  bool get isUsbPlotter => _connectionType == 'usb';
   String? get connectedName => _connectedName;
   String? get connectedAddress => _connectedAddress;
 
@@ -72,7 +125,221 @@ class PlotterService extends ChangeNotifier {
       });
       return result.map((e) => PlotterDevice.fromMap(e as Map<dynamic, dynamic>)).toList();
     } on PlatformException catch (e) {
+      if (e.code == 'BLUETOOTH_OFF') {
+        throw BluetoothDisabledException(e.message ?? 'Bluetooth is turned off on this device.');
+      }
       print('Failed to search for devices: ${e.message}');
+      return [];
+    }
+  }
+
+  /// Checks if the device's Bluetooth radio is currently enabled.
+  Future<bool> isBluetoothEnabled() async {
+    try {
+      final bool? enabled = await _channel.invokeMethod('isBluetoothEnabled');
+      return enabled ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Requests the system to turn on Bluetooth or opens Bluetooth settings.
+  Future<bool> requestEnableBluetooth() async {
+    try {
+      final bool? res = await _channel.invokeMethod('requestEnableBluetooth');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Opens the device system Bluetooth settings screen.
+  Future<void> openBluetoothSettings() async {
+    try {
+      await _channel.invokeMethod('openBluetoothSettings');
+    } catch (_) {}
+  }
+
+  /// Opens the device system OTG / System settings screen so user can enable OTG Connection.
+  Future<void> openOtgSettings() async {
+    try {
+      await _channel.invokeMethod('openOtgSettings');
+    } catch (_) {}
+  }
+
+  /// Requests USB permission directly for a specific device.
+  Future<bool> requestUsbPermission(String address) async {
+    try {
+      final bool? res = await _channel.invokeMethod('requestUsbPermission', {'address': address});
+      return res ?? false;
+    } catch (e) {
+      print('Failed to request USB permission: $e');
+      return false;
+    }
+  }
+
+  /// Current head pressure / force (strictly 1 - 33 for Portrait 2)
+  int _currentForce = 33;
+  int get currentForce => _currentForce;
+
+  Timer? _headDownSafetyTimer;
+  bool _isHeadDown = false;
+  bool get isHeadDown => _isHeadDown;
+
+  final List<PlotterLogEntry> _commandLogs = [];
+  List<PlotterLogEntry> get commandLogs => List.unmodifiable(_commandLogs);
+
+  /// Sends a test packet to the USB plotter (e.g. Portrait 2) and reads response
+  Future<Map<String, dynamic>> testUsbPlotter() async {
+    try {
+      final Map<dynamic, dynamic>? res = await _channel.invokeMethod('testUsbPlotter');
+      if (res != null) {
+        return Map<String, dynamic>.from(res);
+      }
+      return {'success': false, 'error': 'No response'};
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Generic command sender fulfilling protocol verification:
+  /// Converts string to ASCII bytes, ensures terminator (\u0003),
+  /// sends over active transport (Bluetooth Classic / USB),
+  /// and returns raw Uint8List response bytes.
+  Future<Uint8List?> sendCommand(String command, {Duration timeout = const Duration(seconds: 3)}) async {
+    if (command.trim().isEmpty) return null;
+    try {
+      final Map<dynamic, dynamic>? res = await _channel.invokeMethod('sendCommand', {
+        'command': command,
+        'timeout': timeout.inMilliseconds,
+      });
+      if (res != null) {
+        final success = res['success'] == true;
+        final dynamic rawBytes = res['response'];
+        Uint8List? bytes;
+        if (rawBytes is Uint8List) {
+          bytes = rawBytes;
+        } else if (rawBytes is List) {
+          bytes = Uint8List.fromList(rawBytes.cast<int>());
+        }
+        final text = res['text'] as String?;
+        final transport = (res['transport'] as String?) ?? (_connectionType ?? 'unknown');
+
+        _addCommandLog(PlotterLogEntry(
+          timestamp: DateTime.now(),
+          command: command,
+          responseText: text,
+          responseBytes: bytes,
+          success: success,
+          transport: transport,
+        ));
+        return bytes;
+      }
+      return null;
+    } catch (e) {
+      _addCommandLog(PlotterLogEntry(
+        timestamp: DateTime.now(),
+        command: command,
+        success: false,
+        error: e.toString(),
+        transport: _connectionType ?? 'none',
+      ));
+      return null;
+    }
+  }
+
+  /// Sets cutting force strictly clamped to verified Portrait 2 safe range [1..33].
+  /// Sends verified GP-GL command: FX<force>,<tool>
+  Future<bool> setHeadForce(int force, {int tool = 1}) async {
+    // Strict safety range validation (1 - 33)
+    final clampedForce = force.clamp(1, 33);
+    final cmd = 'FX$clampedForce,$tool';
+
+    final res = await sendCommand(cmd);
+    _currentForce = clampedForce;
+    notifyListeners();
+    return res != null;
+  }
+
+  /// Test Head Down (Pen Down):
+  /// CRITICAL SAFETY: Never continuously energize the head solenoid!
+  /// Automatically lifts head after [durationMs] (default 500ms, max 1000ms).
+  Future<bool> testHeadDown({int durationMs = 500}) async {
+    _headDownSafetyTimer?.cancel();
+
+    // Send GP-GL Pen Down command 'D'
+    final res = await sendCommand('D');
+    _isHeadDown = true;
+    notifyListeners();
+
+    // Auto-lift safety timer to protect head solenoid from burnout
+    final safeDuration = durationMs.clamp(100, 1000);
+    _headDownSafetyTimer = Timer(Duration(milliseconds: safeDuration), () {
+      testHeadUp();
+    });
+
+    return res != null;
+  }
+
+  /// Test Head Up (Pen Up):
+  /// Lifts cutting head immediately using GP-GL command 'M'
+  Future<bool> testHeadUp() async {
+    _headDownSafetyTimer?.cancel();
+    _headDownSafetyTimer = null;
+
+    final res = await sendCommand('M');
+    _isHeadDown = false;
+    notifyListeners();
+    return res != null;
+  }
+
+  /// Emergency Stop:
+  /// Immediately aborts motion, sends break and lifts head ('PU;M0,0;'),
+  /// cancels all safety timers and cut loops.
+  Future<bool> emergencyStop() async {
+    _headDownSafetyTimer?.cancel();
+    _headDownSafetyTimer = null;
+    _isHeadDown = false;
+
+    try {
+      final bool? res = await _channel.invokeMethod('emergencyStop');
+      _addCommandLog(PlotterLogEntry(
+        timestamp: DateTime.now(),
+        command: '<EMERGENCY STOP>',
+        success: res == true,
+        transport: _connectionType ?? 'none',
+      ));
+      notifyListeners();
+      return res ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  void _addCommandLog(PlotterLogEntry entry) {
+    if (_commandLogs.length >= 50) {
+      _commandLogs.removeAt(0);
+    }
+    _commandLogs.add(entry);
+    notifyListeners();
+  }
+
+  void clearCommandLogs() {
+    _commandLogs.clear();
+    notifyListeners();
+  }
+
+  /// Immediately returns currently connected USB OTG plotters without Bluetooth overhead.
+  Future<List<PlotterDevice>> getConnectedUsbDevices() async {
+    try {
+      final List<dynamic>? result = await _channel.invokeMethod('getUsbDevices');
+      if (result == null) return [];
+      return result.map((e) => PlotterDevice.fromMap(e as Map<dynamic, dynamic>)).toList();
+    } on PlatformException catch (e) {
+      print('Failed to get USB devices: ${e.message}');
+      return [];
+    } catch (e) {
+      print('Failed to get USB devices: $e');
       return [];
     }
   }
@@ -93,6 +360,7 @@ class PlotterService extends ChangeNotifier {
     try {
       final Map<dynamic, dynamic> result = await _channel.invokeMethod('connect', {
         'address': device.address,
+        'type': device.type,
       });
       final success = result['success'] == true;
       if (success) {
@@ -144,7 +412,10 @@ class PlotterService extends ChangeNotifier {
       print('Failed to connect to ${device.address}: ${e.message}');
       _connectionType = null;
       notifyListeners();
-      return {'success': false, 'type': 'none', 'error': e.message};
+      final errorMsg = e.code == 'BLUETOOTH_OFF'
+          ? 'Bluetooth is turned off. Please turn on Bluetooth.'
+          : (e.message ?? 'Connection failed');
+      return {'success': false, 'type': 'none', 'error': errorMsg};
     }
   }
 
@@ -301,6 +572,7 @@ class PlotterService extends ChangeNotifier {
     required String name,
     int speed = 300,
     int force = 300,
+    int passes = 1,
     double? width,
     double? height,
   }) async {
@@ -317,8 +589,8 @@ class PlotterService extends ChangeNotifier {
       _classicCutTimer?.cancel();
       _classicCutTimer = null;
 
-      final double estimatedSeconds = estimateCutDuration(content, speed, isClassic: isClassicPlotter);
-      print('[PlotterService] Starting cut. Estimated physical cutting duration: ${estimatedSeconds.toStringAsFixed(1)} seconds');
+      final double estimatedSeconds = estimateCutDuration(content, speed, isClassic: isClassicPlotter) * passes;
+      print('[PlotterService] Starting cut ($passes pass(es)). Estimated physical cutting duration: ${estimatedSeconds.toStringAsFixed(1)} seconds');
 
       if (isClassicPlotter) {
         _progressController.add(0);
@@ -331,6 +603,8 @@ class PlotterService extends ChangeNotifier {
         'name': name,
         'speed': speed,
         'force': force,
+        'passes': passes,
+        'plotterName': _connectedName,
         'width': width,
         'height': height,
         'startString': startString,
@@ -420,5 +694,12 @@ class PlotterService extends ChangeNotifier {
       print('[PlotterService] Auto-connect failed: $e');
     }
     return false;
+  }
+
+  @override
+  void dispose() {
+    _nativeProgressSub.cancel();
+    _progressController.close();
+    super.dispose();
   }
 }

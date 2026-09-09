@@ -50,13 +50,31 @@ function RoleModal({ role, onClose, onSave }: { role: any; onClose: () => void; 
       id: 'catalog_module',
       label: 'Catalog & Hardware',
       icon: '📦',
-      groups: ['catalog', 'production', 'plotters']
+      groups: ['catalog', 'plotters']
     },
     {
       id: 'inventory_module',
       label: 'Inventory & Warehouse',
       icon: '🏬',
-      groups: ['inventory', 'inward']
+      groups: [
+        'inventory',
+        'inventory_inward',
+        'inventory_batches',
+        'inventory_workorders',
+        'inventory_packaged',
+        'inventory_dispatch',
+        'inventory_filmtypes',
+        'inward',
+        'dispatch',
+        'production',
+        'qr'
+      ]
+    },
+    {
+      id: 'nav_module',
+      label: 'Sidebar Navigation & Pages',
+      icon: '🧭',
+      groups: ['nav']
     },
     {
       id: 'system_module',
@@ -73,9 +91,18 @@ function RoleModal({ role, onClose, onSave }: { role: any; onClose: () => void; 
     users: { label: 'Users & Staff', icon: '👥' },
     roles: { label: 'Access Roles & Permissions', icon: '🛡️' },
     catalog: { label: 'Catalog & Cut Patterns', icon: '📦' },
-    inventory: { label: 'Film Inventory & Stock', icon: '🏬' },
-    inward: { label: 'Inward Receipts', icon: '📥' },
+    nav: { label: 'Sidebar Navigation Controls', icon: '🧭' },
+    inventory: { label: 'Inventory (Full Access)', icon: '🏬' },
+    inventory_inward: { label: 'Tab: Inward Receipts', icon: '📥' },
+    inventory_batches: { label: 'Tab: Stock Batches', icon: '📦' },
+    inventory_workorders: { label: 'Tab: Work Orders', icon: '⚙️' },
+    inventory_packaged: { label: 'Tab: Packaged Stock', icon: '🎁' },
+    inventory_dispatch: { label: 'Tab: Dispatch Orders', icon: '🚚' },
+    inventory_filmtypes: { label: 'Tab: Flash Products & Categories', icon: '🏷️' },
+    inward: { label: 'Inward Receipts & Stock Entry', icon: '📥' },
+    dispatch: { label: 'Dispatch Orders & Logistics', icon: '🚚' },
     production: { label: 'Production & Work Orders', icon: '⚙️' },
+    qr: { label: 'QR Code Generation & Auditing', icon: '🔳' },
     audit_logs: { label: 'Audit Logs', icon: '📋' },
     licenses: { label: 'Licenses & Transfers', icon: '🔑' },
     plotters: { label: 'Plotters & Hardware', icon: '🖥️' },
@@ -529,6 +556,7 @@ const RolesPage = () => {
             <table className="w-full text-sm min-w-[600px]">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
                   <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Role Name</th>
                   <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Description</th>
                   <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Type</th>
@@ -536,8 +564,11 @@ const RolesPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {filtered.map(role => (
+                {filtered.map((role, idx) => (
                   <tr key={role.id} className="hover:bg-slate-50/70 group transition-colors">
+                    <td className="px-6 py-4 font-mono text-xs font-bold text-slate-400">
+                      {idx + 1}
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-lg bg-[var(--color-primary)]/10 flex items-center justify-center">

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Plus, Search, Edit2, Trash2, Loader2, AlertCircle, X, Shield, ChevronLeft, ChevronRight, ChevronDown, Key, RotateCcw } from 'lucide-react';
+import { Users, Plus, Search, Edit2, Trash2, Loader2, AlertCircle, X, Shield, ChevronDown, Key, RotateCcw } from 'lucide-react';
 import { usersApi, rolesApi, orgsApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -277,6 +277,65 @@ export function UserModal({ user: u, defaultOrgId, onClose, onSave }: { user: an
 }
 import { UserPermissionsModal } from '../components/UserPermissionsModal';
 
+const PaginationBar = ({ meta, page, setPage, pageSize, setPageSize }: { meta: any; page: number; setPage: (fn: any) => void; pageSize?: number; setPageSize?: (sz: number) => void }) => {
+  if (!meta || !meta.totalPages || meta.totalPages <= 1) return null;
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-2.5 bg-slate-50 border-t border-slate-200 text-xs gap-3 shadow-xs">
+      <div className="flex items-center gap-2 text-slate-600 font-medium flex-wrap">
+        <span>Showing Page <strong className="text-slate-900 font-bold">{meta.page || page}</strong> of <strong className="text-slate-900 font-bold">{meta.totalPages}</strong></span>
+        <span className="text-slate-300">|</span>
+        <span className="text-slate-500 font-mono"><strong className="text-slate-800">{meta.total}</strong> total records</span>
+        {pageSize && setPageSize && (
+          <>
+            <span className="text-slate-300">|</span>
+            <div className="flex items-center gap-1">
+              <span className="text-slate-500 font-medium">Rows:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                className="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs font-bold text-slate-800 cursor-pointer shadow-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+          disabled={page <= 1}
+          className="px-3 py-1.5 font-semibold text-xs border border-slate-200 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition bg-white text-slate-700 shadow-xs flex items-center gap-1 cursor-pointer"
+        >
+          ← Previous
+        </button>
+        <div className="flex items-center gap-1 px-1">
+          <span className="text-slate-500">Page</span>
+          <select
+            value={page}
+            onChange={(e) => setPage(Number(e.target.value))}
+            className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-800 cursor-pointer shadow-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            {Array.from({ length: meta.totalPages }, (_, i) => i + 1).map(pNum => (
+              <option key={pNum} value={pNum}>Page {pNum}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={() => setPage((p: number) => Math.min(meta.totalPages, p + 1))}
+          disabled={page >= meta.totalPages}
+          className="px-3 py-1.5 font-semibold text-xs border border-slate-200 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition bg-white text-slate-700 shadow-xs flex items-center gap-1 cursor-pointer"
+        >
+          Next →
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const UsersPage = () => {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<any[]>([]);
@@ -285,7 +344,7 @@ const UsersPage = () => {
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalUsers, setTotalUsers] = useState(0);
-  const itemsPerPage = 50;
+  const [itemsPerPage, setItemsPerPage] = useState(25);
 
   const [modal, setModal] = useState<any>(null);
   const [permissionsModal, setPermissionsModal] = useState<any>(null); // For the new shield modal
@@ -343,7 +402,7 @@ const UsersPage = () => {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchUsers(); }, [currentPage, search]);
+  useEffect(() => { fetchUsers(); }, [currentPage, itemsPerPage, search]);
 
   const handleDelete = async (id: string) => {
     showConfirm(
@@ -355,6 +414,18 @@ const UsersPage = () => {
       }
     );
   };
+
+  const totalPages = Math.ceil(totalUsers / itemsPerPage) || 1;
+
+  const renderPagination = () => (
+    <PaginationBar
+      meta={{ totalPages, total: totalUsers, page: currentPage }}
+      page={currentPage}
+      setPage={setCurrentPage}
+      pageSize={itemsPerPage}
+      setPageSize={setItemsPerPage}
+    />
+  );
 
   return (
     <div className="space-y-6">
@@ -386,7 +457,7 @@ const UsersPage = () => {
         </div>
       </div>
 
-      <div className="card bg-white">
+      <div className="card bg-white overflow-hidden shadow-sm border border-slate-100 rounded-xl">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
           <div className="relative flex-1 max-w-sm">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -397,8 +468,10 @@ const UsersPage = () => {
               onChange={e => { setSearch(e.target.value); setCurrentPage(1); }} 
             />
           </div>
-          <span className="text-sm text-slate-500">{totalUsers} users</span>
+          <span className="text-sm font-semibold text-slate-500">{totalUsers} users</span>
         </div>
+
+        {renderPagination()}
 
         {loading ? (
           <div className="flex justify-center items-center h-48"><Loader2 className="w-7 h-7 text-[var(--color-primary)] animate-spin" /></div>
@@ -411,20 +484,23 @@ const UsersPage = () => {
             <button onClick={() => setModal('new')} className="text-[var(--color-primary)] text-sm mt-2 hover:underline">Create the first user</button>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-100">
+                <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    {['Name', 'Email', 'Organizations & Roles', 'Status', 'Actions'].map(h => (
-                      <th key={h} className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                    {['#', 'Name', 'Email', 'Organizations & Roles', 'Status', 'Actions'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {users.map(u => (
-                    <tr key={u.id} className="hover:bg-slate-50/70 group transition-colors">
-                      <td className="px-6 py-4">
+                <tbody className="divide-y divide-slate-100">
+                  {users.map((u, idx) => (
+                    <tr key={u.id} className="group hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3.5 font-bold text-slate-400 text-xs font-mono">
+                        {(currentPage - 1) * itemsPerPage + idx + 1}
+                      </td>
+                      <td className="px-4 py-3.5">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold text-xs flex items-center justify-center">
                             {(u.firstName?.[0] || u.email?.[0] || '?').toUpperCase()}
@@ -432,8 +508,8 @@ const UsersPage = () => {
                           <span className="font-medium text-slate-800">{[u.firstName, u.lastName].filter(Boolean).join(' ') || '—'}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-slate-600">{u.email}</td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-3.5 text-slate-600">{u.email}</td>
+                      <td className="px-4 py-3.5">
                         <div className="flex flex-wrap gap-1.5 max-w-[280px]">
                           {u.organizations?.map((o: any) => (
                              <span key={o.organizationId} className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs whitespace-nowrap border ${o.isPrimary ? 'bg-[var(--color-primary)]/5 text-[var(--color-primary)] border-[var(--color-primary)]/20 font-medium' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
@@ -442,12 +518,12 @@ const UsersPage = () => {
                           )) || <span className="text-slate-400">—</span>}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-3.5">
                         <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${u.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                           {u.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-3.5">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => setModal(u)} className="p-1.5 rounded-lg text-slate-400 hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-colors" title="Edit User"><Edit2 className="w-4 h-4" /></button>
                           {currentUser?.isSuperAdmin && (
@@ -465,30 +541,7 @@ const UsersPage = () => {
               </table>
             </div>
 
-            {/* Pagination Controls */}
-            {totalUsers > itemsPerPage && (
-              <div className="px-6 py-4 flex items-center justify-between border-t border-slate-100">
-                <p className="text-[10px] font-bold text-slate-400 uppercase">
-                  Page {currentPage} of {Math.ceil(totalUsers / itemsPerPage)}
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all text-slate-600"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage(p => Math.min(Math.ceil(totalUsers / itemsPerPage), p + 1))}
-                    disabled={currentPage * itemsPerPage >= totalUsers}
-                    className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all text-slate-600"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )}
+            {renderPagination()}
           </div>
         )}
       </div>

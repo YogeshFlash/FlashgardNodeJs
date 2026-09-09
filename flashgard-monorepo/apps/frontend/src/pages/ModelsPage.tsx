@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import XLSX from 'xlsx-js-style';
 import {
   Plus,
   Search,
@@ -17,6 +16,7 @@ import {
   Download,
   RefreshCw,
   Image,
+  ImageOff,
   Wand2,
   Loader2,
   Check,
@@ -40,8 +40,68 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { HasPermission } from '../components/HasPermission';
 
 import { getApiBase } from '../lib/api';
+import { formatISTDate } from '../lib/dateUtils';
 
 type TabType = 'catalog' | 'categories' | 'brands' | 'patterns' | 'designs';
+
+const PaginationBar = ({ meta, page, setPage, pageSize, setPageSize }: { meta: any; page: number; setPage: (fn: any) => void; pageSize?: number; setPageSize?: (sz: number) => void }) => {
+  if (!meta || !meta.totalPages || meta.totalPages <= 1) return null;
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs gap-3 shadow-sm my-2">
+      <div className="flex items-center gap-2 text-slate-600 font-medium flex-wrap">
+        <span>Showing Page <strong className="text-slate-900 font-bold">{meta.page || page}</strong> of <strong className="text-slate-900 font-bold">{meta.totalPages}</strong></span>
+        <span className="text-slate-300">|</span>
+        <span className="text-slate-500 font-mono"><strong className="text-slate-800">{meta.total}</strong> total records</span>
+        {pageSize && setPageSize && (
+          <>
+            <span className="text-slate-300">|</span>
+            <div className="flex items-center gap-1">
+              <span className="text-slate-500 font-medium">Rows:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs font-bold text-slate-800 cursor-pointer shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+          disabled={page <= 1}
+          className="px-3 py-1.5 font-semibold text-xs border border-slate-200 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition bg-white text-slate-700 shadow-sm flex items-center gap-1 cursor-pointer"
+        >
+          ← Previous
+        </button>
+        <div className="flex items-center gap-1 px-1">
+          <span className="text-slate-500">Page</span>
+          <select
+            value={page}
+            onChange={(e) => setPage(Number(e.target.value))}
+            className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-800 cursor-pointer shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            {Array.from({ length: meta.totalPages }, (_, i) => i + 1).map(pNum => (
+              <option key={pNum} value={pNum}>Page {pNum}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={() => setPage((p: number) => Math.min(meta.totalPages, p + 1))}
+          disabled={page >= meta.totalPages}
+          className="px-3 py-1.5 font-semibold text-xs border border-slate-200 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition bg-white text-slate-700 shadow-sm flex items-center gap-1 cursor-pointer"
+        >
+          Next →
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const ModelsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('categories');
@@ -384,6 +444,8 @@ const ModelsPage: React.FC = () => {
 
     setIsExportingExcel(true);
     try {
+      const xlsxMod = await import('xlsx-js-style');
+      const XLSX = xlsxMod.default || xlsxMod;
       // 1. Fetch listed models matching current filters (brand, category, search)
       const { items: allModels } = await modelsApi.getAll(
         selectedBrandId || undefined,
@@ -605,6 +667,8 @@ const ModelsPage: React.FC = () => {
   const handleExportCurrentTabExcel = async () => {
     setIsExportingTabExcel(true);
     try {
+      const xlsxMod = await import('xlsx-js-style');
+      const XLSX = xlsxMod.default || xlsxMod;
       if (activeTab === 'catalog') {
         const { items } = await modelsApi.getAll(
           selectedBrandId || undefined,
@@ -984,12 +1048,23 @@ const ModelsPage: React.FC = () => {
 
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 <div className="bg-white rounded-xl p-8 border border-slate-200 shadow-xl flex flex-col md:flex-row gap-6 md:gap-10">
-                  <div className="w-48 h-48 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  <div className="w-48 h-48 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0 relative">
                     {selected.imageUrl ? (
-                      <img src={getImageUrl(selected.imageUrl)} alt={selected.name} className="w-full h-full object-contain p-4" />
-                    ) : (
-                      <Smartphone className="w-16 h-16 text-slate-200" />
-                    )}
+                      <img
+                        src={getImageUrl(selected.imageUrl)}
+                        alt={selected.name}
+                        className="w-full h-full object-contain p-4"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = 'none';
+                          const sibling = e.currentTarget.nextElementSibling;
+                          if (sibling) (sibling as HTMLElement).style.display = 'flex';
+                        }}
+                      />
+                    ) : null}
+                    <div style={{ display: selected.imageUrl ? 'none' : 'flex' }} className="w-full h-full flex-col items-center justify-center gap-2 text-slate-300">
+                      <ImageOff className="w-12 h-12 text-slate-200/90 stroke-[1.5]" />
+                      <span className="text-[10px] font-medium text-slate-400">No image available</span>
+                    </div>
                   </div>
                   <div className="flex-1 space-y-4">
                     <div>
@@ -1015,31 +1090,35 @@ const ModelsPage: React.FC = () => {
                     </h3>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                          <th className="px-8 py-4">Preview</th>
-                          <th className="px-8 py-4">Pattern Name</th>
-                          <th className="px-8 py-4 text-right">Actions</th>
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Preview</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Pattern Name</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {cutFiles.map(file => (
-                          <tr key={file.id} className="hover:bg-slate-50/30 transition-colors group">
-                            <td className="px-8 py-4">
+                        {cutFiles.map((file, idx) => (
+                          <tr key={file.id} className="group hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">
+                              {idx + 1}
+                            </td>
+                            <td className="px-4 py-3">
                               {file.designFilePath ? (
-                                <div className="w-16 h-16 bg-slate-50 rounded-xl border border-slate-100 overflow-hidden cursor-pointer" onClick={() => setPreviewImage(getImageUrl(file.designFilePath))}>
-                                  <img src={getImageUrl(file.designFilePath)} alt="Preview" className="w-full h-full object-contain p-2" />
+                                <div className="w-12 h-12 bg-slate-50 rounded-xl border border-slate-200 overflow-hidden cursor-pointer shadow-2xs" onClick={() => setPreviewImage(getImageUrl(file.designFilePath))}>
+                                  <img src={getImageUrl(file.designFilePath)} alt="Preview" className="w-full h-full object-contain p-1.5" />
                                 </div>
                               ) : (
-                                <div className="w-16 h-16 bg-slate-50 rounded-xl border border-dashed border-slate-200 flex items-center justify-center"><Scissors className="w-4 h-4 text-slate-200" /></div>
+                                <div className="w-12 h-12 bg-slate-50 rounded-xl border border-dashed border-slate-200 flex items-center justify-center"><Scissors className="w-4 h-4 text-slate-300" /></div>
                               )}
                             </td>
-                            <td className="px-8 py-4">
-                              <p className="font-black text-slate-900 uppercase tracking-wider">{file.cutPattern?.name}</p>
-                              <p className="text-[10px] text-slate-400 font-bold mt-0.5">LEGACY ID: {file.legacyId}</p>
+                            <td className="px-4 py-3">
+                              <p className="font-bold text-slate-900 text-xs">{file.cutPattern?.name}</p>
+                              {file.legacyId && <p className="text-[10px] text-slate-400 font-mono font-semibold mt-0.5">LEGACY ID: {file.legacyId}</p>}
                             </td>
-                            <td className="px-8 py-4 text-right">
+                            <td className="px-4 py-3 text-right">
                               <HasPermission permission="catalog:write">
                                 <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button
@@ -1085,79 +1164,67 @@ const ModelsPage: React.FC = () => {
                 {/* Designs Tab */}
                 {activeTab === 'designs' && (
                   <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4">
-                    <div className="px-6 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">
-                        Showing {Math.min(designsTotal, (designsPage - 1) * itemsPerPage + 1)} - {Math.min(designsTotal, designsPage * itemsPerPage)} of {designsTotal}
-                      </p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setDesignsPage(p => Math.max(1, p - 1))}
-                          disabled={designsPage === 1}
-                          className="p-1.5 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all"
-                        >
-                          <ChevronLeft className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setDesignsPage(p => p + 1)}
-                          disabled={designsPage * itemsPerPage >= designsTotal}
-                          className="p-1.5 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all"
-                        >
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
+                    <PaginationBar meta={{ totalPages: Math.ceil(designsTotal / itemsPerPage), total: designsTotal, page: designsPage }} page={designsPage} setPage={setDesignsPage} />
                     <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse text-xs">
-                        <thead className="bg-slate-50/50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200">
                           <tr>
-                            <th className="px-6 py-4">Model & Brand</th>
-                            <th className="px-6 py-4">Category</th>
-                            <th className="px-6 py-4">Cut Pattern</th>
-                            <th className="px-6 py-4">Order</th>
-                            <th className="px-6 py-4">Legacy ID</th>
-                            <th className="px-6 py-4">Created At</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Model & Brand</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Category</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Cut Pattern</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Order</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Legacy ID</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Created At</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {loading ? (
-                            <tr><td colSpan={10} className="p-10 text-center"><RefreshCw className="w-6 h-6 animate-spin mx-auto text-slate-300" /></td></tr>
+                            <tr><td colSpan={7} className="p-10 text-center"><RefreshCw className="w-6 h-6 animate-spin mx-auto text-slate-300" /></td></tr>
                           ) : allDesigns.length === 0 ? (
-                            <tr><td colSpan={10} className="p-10 text-center text-slate-400">No items found.</td></tr>
+                            <tr><td colSpan={7} className="p-10 text-center text-slate-400">No items found.</td></tr>
                           ) : (
-                            allDesigns.map((design) => (
-                              <tr key={design.id} className="hover:bg-slate-50/50 transition-colors group">
-                                <td className="px-6 py-4">
-                                  <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400">
-                                      <Smartphone className="w-5 h-5" />
+                            allDesigns.map((design, idx) => (
+                              <tr key={design.id} className="group hover:bg-slate-50 transition-colors">
+                                <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">
+                                  {(designsPage - 1) * itemsPerPage + idx + 1}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
+                                      <Smartphone className="w-4 h-4" />
                                     </div>
                                     <div>
-                                      <p className="font-bold text-slate-900">{design.model?.name}</p>
-                                      <p className="text-xs text-slate-500">{design.model?.brand?.name}</p>
+                                      <p className="font-bold text-slate-900 text-xs">{design.model?.name}</p>
+                                      <p className="text-[10px] text-slate-400 font-semibold">{design.model?.brand?.name}</p>
                                     </div>
                                   </div>
                                 </td>
-                                <td className="px-6 py-4">
-                                  <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold">
+                                <td className="px-4 py-3">
+                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md text-[10px] font-bold">
                                     {design.model?.category?.name}
                                   </span>
                                 </td>
-                                <td className="px-6 py-4">
-                                  <div className="flex items-center gap-2 text-indigo-600 font-bold">
-                                    <Scissors className="w-3 h-3" />
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-1.5 text-indigo-600 font-bold text-xs">
+                                    <Scissors className="w-3.5 h-3.5" />
                                     {design.cutPattern?.name}
                                   </div>
                                 </td>
-                                <td className="px-6 py-4">
-                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-400 rounded text-[10px] font-bold">
+                                <td className="px-4 py-3">
+                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-bold font-mono">
                                     {design.cutPattern?.sortOrder || 0}
                                   </span>
                                 </td>
-                                <td className="px-6 py-4 font-mono text-xs text-slate-400">
-                                  {design.legacyId}
+                                <td className="px-4 py-3 font-mono text-xs font-bold text-slate-700">
+                                  {design.legacyId ? (
+                                    <span className="bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md inline-block">
+                                      {design.legacyId}
+                                    </span>
+                                  ) : '—'}
                                 </td>
-                                <td className="px-6 py-4 text-slate-500">
-                                  {new Date(design.createdAt).toLocaleDateString()}
+                                <td className="px-4 py-3 text-slate-500 text-xs">
+                                  {formatISTDate(design.createdAt)}
                                 </td>
                               </tr>
                             ))
@@ -1166,67 +1233,61 @@ const ModelsPage: React.FC = () => {
                       </table>
                     </div>
 
-                    {/* Designs Pagination */}
-                    <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/30">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">
-                        Showing {Math.min(designsTotal, (designsPage - 1) * itemsPerPage + 1)} to{' '}
-                        {Math.min(designsTotal, designsPage * itemsPerPage)} of{' '}
-                        {designsTotal} designs
-                      </p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setDesignsPage(p => Math.max(1, p - 1))}
-                          disabled={designsPage === 1}
-                          className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all"
-                        >
-                          <ChevronLeft className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setDesignsPage(p => p + 1)}
-                          disabled={designsPage * itemsPerPage >= designsTotal}
-                          className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all"
-                        >
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
+                    {/* Designs Bottom Pagination */}
+                    <PaginationBar meta={{ totalPages: Math.ceil(designsTotal / itemsPerPage), total: designsTotal, page: designsPage }} page={designsPage} setPage={setDesignsPage} />
                   </div>
                 )}
 
                 {activeTab !== 'designs' && (
                   <>
-                    <div className="flex items-center justify-between">
-                      <h2 className="text-xl font-bold text-slate-900">Manage {activeTab}</h2>
-                      {(selectedBrandId || selectedCategoryId) && (
-                        <div className="flex gap-2">
-                          <span className="px-3 py-1 bg-indigo-50 text-[var(--color-accent)] rounded-full text-xs font-bold flex items-center gap-2">
-                            Filtered <X className="w-3 h-3 cursor-pointer" onClick={() => { setSelectedBrandId(null); setSelectedCategoryId(null); }} />
-                          </span>
-                        </div>
-                      )}
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-xl font-bold text-slate-900">Manage {activeTab}</h2>
+                        {(selectedBrandId || selectedCategoryId) && (
+                          <div className="flex items-center gap-1.5 px-3 py-1 bg-indigo-50/80 border border-indigo-100 rounded-lg text-xs font-medium text-slate-600">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tree</span>
+                            {selectedCategoryId && (
+                              <>
+                                <ChevronRight className="w-3 h-3 text-slate-400" />
+                                <span className={selectedBrandId ? 'text-slate-600' : 'text-[var(--color-accent)] font-bold'}>
+                                  {categories.find(c => c.id === selectedCategoryId)?.name || 'Category'}
+                                </span>
+                              </>
+                            )}
+                            {selectedBrandId && (
+                              <>
+                                <ChevronRight className="w-3 h-3 text-slate-400" />
+                                <span className="text-[var(--color-accent)] font-bold">
+                                  {brands.find(b => b.id === selectedBrandId)?.name || 'Brand'}
+                                </span>
+                              </>
+                            )}
+                            <button
+                              onClick={() => { setSelectedBrandId(null); setSelectedCategoryId(null); }}
+                              className="ml-1 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-indigo-100/50 cursor-pointer"
+                              title="Clear filter"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                      {totalPages > 1 && (
-                        <div className="px-6 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">Page {currentPage} of {totalPages}</p>
-                          <div className="flex gap-2">
-                            <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 border rounded-lg disabled:opacity-50 bg-white hover:bg-slate-50"><ChevronLeft className="w-3.5 h-3.5" /></button>
-                            <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 border rounded-lg disabled:opacity-50 bg-white hover:bg-slate-50"><ChevronRight className="w-3.5 h-3.5" /></button>
-                          </div>
-                        </div>
-                      )}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                      <PaginationBar meta={{ totalPages, total: activeTab === 'catalog' ? totalModels : filteredItems.length, page: currentPage }} page={currentPage} setPage={setCurrentPage} />
                       <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-slate-50/50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-50 border-b border-slate-200">
                             <tr>
-                              {activeTab !== 'patterns' && <th className="px-6 py-4">Image</th>}
-                              <th className="px-6 py-4">Name</th>
-                              {activeTab === 'catalog' && <th className="px-6 py-4">Brand</th>}
-                              {activeTab === 'patterns' && <th className="px-6 py-4">Cut For</th>}
-                              {['categories', 'brands', 'patterns', 'catalog'].includes(activeTab) && <th className="px-6 py-4">Order</th>}
-                              <th className="px-6 py-4">Status</th>
-                              <th className="px-6 py-4 text-right">Actions</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
+                              {activeTab !== 'patterns' && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Image</th>}
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Name</th>
+                              {activeTab === 'catalog' && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Brand</th>}
+                              {activeTab === 'patterns' && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Cut For</th>}
+                              {['categories', 'brands', 'patterns', 'catalog'].includes(activeTab) && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Order</th>}
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                              <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -1234,11 +1295,14 @@ const ModelsPage: React.FC = () => {
                               <tr><td colSpan={10} className="p-10 text-center"><RefreshCw className="w-6 h-6 animate-spin mx-auto text-slate-300" /></td></tr>
                             ) : paginatedItems.length === 0 ? (
                               <tr><td colSpan={10} className="p-10 text-center text-slate-400">No items found.</td></tr>
-                            ) : paginatedItems.map((item: any) => (
-                              <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                            ) : paginatedItems.map((item: any, idx: number) => (
+                              <tr key={item.id} className="group hover:bg-slate-50 transition-colors">
+                                <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">
+                                  {(currentPage - 1) * itemsPerPage + idx + 1}
+                                </td>
                                 {activeTab !== 'patterns' && (
-                                  <td className="px-6 py-4">
-                                    <div className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => setPreviewImage(getImageUrl(item.imageUrl, item.name))}>
+                                  <td className="px-4 py-3">
+                                    <div className="w-10 h-10 bg-slate-50 border border-slate-200/80 rounded-lg flex items-center justify-center overflow-hidden cursor-pointer shadow-2xs" onClick={() => setPreviewImage(getImageUrl(item.imageUrl, item.name))}>
                                       <img
                                         src={getImageUrl(item.imageUrl, item.name)}
                                         alt={item.name}
@@ -1249,35 +1313,35 @@ const ModelsPage: React.FC = () => {
                                           if (sibling) (sibling as HTMLElement).style.display = 'flex';
                                         }}
                                       />
-                                      <div style={{ display: 'none' }} className="w-full h-full items-center justify-center text-slate-300">
-                                        {activeTab === 'catalog' ? <Smartphone className="w-5 h-5" /> : <Box className="w-5 h-5" />}
+                                      <div style={{ display: 'none' }} className="w-full h-full items-center justify-center text-slate-300/70" title="No image found">
+                                        <ImageOff className="w-4 h-4 text-slate-300/80" />
                                       </div>
                                     </div>
                                   </td>
                                 )}
-                                <td className="px-6 py-4 font-bold">
+                                <td className="px-4 py-3 font-bold text-xs text-slate-900">
                                   {activeTab === 'catalog' ? (
-                                    <button onClick={() => fetchModelDetails(item.id)} className="hover:text-[var(--color-accent)] text-left">{item.name}</button>
+                                    <button onClick={() => fetchModelDetails(item.id)} className="hover:text-[var(--color-accent)] text-left font-bold">{item.name}</button>
                                   ) : <span>{item.name}</span>}
                                 </td>
-                                {activeTab === 'catalog' && <td className="px-6 py-4 text-slate-500">{item.brand?.name || '-'}</td>}
-                                {activeTab === 'patterns' && <td className="px-6 py-4 text-slate-500">{item.cutFor === 1 ? 'Mobile' : 'Other'}</td>}
+                                {activeTab === 'catalog' && <td className="px-4 py-3 text-slate-600 text-xs font-medium">{item.brand?.name || '-'}</td>}
+                                {activeTab === 'patterns' && <td className="px-4 py-3 text-slate-600 text-xs font-medium">{item.cutFor === 1 ? 'Mobile' : 'Other'}</td>}
                                 {['categories', 'brands', 'patterns', 'catalog'].includes(activeTab) && (
-                                  <td className="px-6 py-4">
-                                    <span className="px-2 py-0.5 bg-slate-100 text-slate-400 rounded text-[10px] font-bold">
+                                  <td className="px-4 py-3">
+                                    <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-bold font-mono">
                                       {item.sortOrder || 0}
                                     </span>
                                   </td>
                                 )}
-                                <td className="px-6 py-4">
-                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${item.isActive === false
-                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400'
-                                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                <td className="px-4 py-3">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${item.isActive === false
+                                    ? 'bg-slate-100 text-slate-600 border border-slate-200'
+                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
                                     }`}>
                                     {item.isActive === false ? 'Inactive' : 'Active'}
                                   </span>
                                 </td>
-                                <td className="px-6 py-4 text-right">
+                                <td className="px-4 py-3 text-right">
                                   <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                     {activeTab === 'categories' && (
                                       <>
@@ -1408,15 +1472,7 @@ const ModelsPage: React.FC = () => {
                         </table>
                       </div>
 
-                      {totalPages > 1 && (
-                        <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/30">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">Page {currentPage} of {totalPages}</p>
-                          <div className="flex gap-2">
-                            <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 border rounded-lg disabled:opacity-50"><ChevronLeft className="w-4 h-4" /></button>
-                            <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-2 border rounded-lg disabled:opacity-50"><ChevronRight className="w-4 h-4" /></button>
-                          </div>
-                        </div>
-                      )}
+                      <PaginationBar meta={{ totalPages, total: activeTab === 'catalog' ? totalModels : filteredItems.length, page: currentPage }} page={currentPage} setPage={setCurrentPage} />
                     </div>
                   </>
                 )}

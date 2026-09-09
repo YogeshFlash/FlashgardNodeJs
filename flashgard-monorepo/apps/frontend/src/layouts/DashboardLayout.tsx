@@ -4,11 +4,12 @@ import {
   Building2, LayoutDashboard,
   LogOut, Bell, Search, Settings, ChevronDown,
   UserCircle, Menu, X, Boxes, Warehouse, Key, Database, BarChart2, Smartphone,
-  Sun, Moon
+  Sun, Moon, Sparkles
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { usePermissions } from '../components/HasPermission';
+import { usePermissions, HasPermission } from '../components/HasPermission';
 import { useTranslation } from '../contexts/LanguageContext';
+import { RetailerOnboardingModal } from '../components/RetailerOnboardingModal';
 import logo from '../assets/logo.png';
 
 interface NavItem {
@@ -28,7 +29,7 @@ const navItems: NavItem[] = [
   { name: 'Inventory', translationKey: 'inventory', path: '/inventory', icon: Warehouse, permission: 'nav:inventory' },
   { name: 'Licenses', translationKey: 'licenses', path: '/licenses', icon: Key, permission: 'nav:licenses' },
   { name: 'Data Migration', translationKey: 'migration', path: '/migration', icon: Database, permission: 'nav:migration' },
-  { name: 'Mobile Home', translationKey: 'mobile-home', path: '/mobile-home', icon: Smartphone, permission: 'nav:mobile-home' },
+  { name: 'Mobile Management', translationKey: 'mobile-management', path: '/mobile-management', icon: Smartphone, permission: 'nav:mobile-home' },
   { name: 'Settings', translationKey: 'settings', path: '/settings', icon: Settings, permission: 'nav:settings' },
 ];
 
@@ -125,11 +126,13 @@ const Topbar = ({
   collapsed = false, 
   theme = 'light',
   onToggleTheme,
+  onOpenOnboarding,
 }: { 
   onMenuClick: () => void; 
   collapsed?: boolean; 
   theme?: string;
   onToggleTheme: () => void;
+  onOpenOnboarding: () => void;
 }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -166,6 +169,18 @@ const Topbar = ({
       </div>
 
       <div className="flex items-center gap-3">
+        {/* Global Onboard Retailer Action Button */}
+        <HasPermission permission="orgs:write">
+          <button
+            onClick={onOpenOnboarding}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-slate-900 hover:from-indigo-700 hover:to-indigo-950 text-white text-xs font-bold shadow-sm shadow-indigo-500/20 hover:shadow-indigo-500/35 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer border border-indigo-400/20"
+            title="Fast Onboard New Retailer & Allocate Plotter"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+            <span className="hidden sm:inline">Onboard Retailer</span>
+          </button>
+        </HasPermission>
+
         {/* Light / Dark Mode Toggle */}
         <button 
           onClick={onToggleTheme} 
@@ -237,6 +252,8 @@ const DashboardLayout = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -271,6 +288,17 @@ const DashboardLayout = () => {
         collapsed={isCollapsed}
         theme={theme}
         onToggleTheme={toggleTheme}
+        onOpenOnboarding={() => setOnboardingOpen(true)}
+      />
+
+      <RetailerOnboardingModal
+        isOpen={onboardingOpen}
+        onClose={() => setOnboardingOpen(false)}
+        onSuccess={() => {
+          if (window.location.pathname !== '/organizations') {
+            navigate('/organizations');
+          }
+        }}
       />
 
       <main className={`transition-all duration-300 pt-16 min-h-screen overflow-y-auto ${isCollapsed ? 'md:pl-20' : 'md:pl-64'}`}>

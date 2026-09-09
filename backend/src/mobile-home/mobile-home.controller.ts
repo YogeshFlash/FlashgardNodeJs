@@ -10,6 +10,7 @@ export class MobileHomeController {
   constructor(private readonly service: MobileHomeService) {}
 
   // Mobile App Content Retrieval Endpoint (Optional Auth: returns live promotions & cuts even if token is missing/expired)
+  @Public()
   @UseGuards(OptionalJwtAuthGuard)
   @Get('content')
   getMobileContent(@Request() req: any) {

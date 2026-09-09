@@ -22,11 +22,12 @@ import {
   Ticket,
   Cpu
 } from 'lucide-react';
+import { formatISTDate, formatISTTime } from '../lib/dateUtils';
 import { migrationApi, getApiBase } from '../lib/api';
 import { SearchableSelect } from '../components/SearchableSelect';
 
 type MainTab = 'legacy' | 'mssql' | 'bulk' | 'history';
-type LegacySubTab = 'catalog' | 'skins' | 'designs' | 'roles' | 'users' | 'licenses' | 'mobile-users' | 'cut-credits' | 'mobile-app-cuts' | 'dealer-master-qrs' | 'plotter-masters' | 'materials' | 'orders';
+type LegacySubTab = 'catalog' | 'skins' | 'designs' | 'roles' | 'users' | 'licenses' | 'mobile-users' | 'cut-credits' | 'mobile-app-cuts' | 'dealer-master-qrs' | 'plotter-masters' | 'materials' | 'stock' | 'orders';
 
 const DataMigration: React.FC = () => {
   const [activeTab, setActiveTab] = useState<MainTab>('mssql');
@@ -48,7 +49,7 @@ const DataMigration: React.FC = () => {
   const [isCleaning, setIsCleaning] = useState(false);
   const [confirmCleanModule, setConfirmCleanModule] = useState<string | null>(null);
 
-  const [dbConfig, setDbConfig] = useState({ user: '', password: '', server: '', database: '', port: 1433 });
+  const [dbConfig, setDbConfig] = useState({ user: 'sa', password: 'sqldb2023', server: 'Yogesh', database: 'scratchgard', port: 1433 });
   const [dbConnected, setDbConnected] = useState(false);
   const [dbTables, setDbTables] = useState<string[]>([]);
   const [dbMapFile1, setDbMapFile1] = useState('');
@@ -218,6 +219,15 @@ const DataMigration: React.FC = () => {
           file2,
           file4
         );
+      } else if (legacySubTab === 'stock') {
+        data = await migrationApi.migrateStock(
+          file1 || undefined,
+          file2 || undefined,
+          file3 || undefined,
+          file4 || undefined,
+          file5 || undefined,
+          file6 || undefined
+        );
       }
       
       setResult(data);
@@ -243,6 +253,7 @@ const DataMigration: React.FC = () => {
     { id: 'dealer-master-qrs', label: '10. Dealer Master QRs', icon: FileSpreadsheet, description: 'Migrate legacy DealerMasterQR table to database.', file1Label: 'DealerMasterQR CSV', file1Name: 'DealerMasterQR' },
     { id: 'plotter-masters', label: '11. Plotter Masters', icon: Cpu, description: 'Migrate legacy PlotterMaster configuration to database.', file1Label: 'PlotterMaster CSV', file1Name: 'PlotterMaster' },
     { id: 'materials', label: '12. Materials System', icon: Layers, description: 'Migrate legacy ProductType, Material, Categories & config.', file1Label: 'ProductType CSV', file1Name: 'ProductTypeMaster.csv', file2Label: 'MaterialMaster CSV', file2Name: 'MaterialMaster.csv', file3Label: 'FilmCategory CSV', file3Name: 'ReportCategoryMaster.csv', file4Label: 'ProductDisplayMaster CSV', file4Name: 'ProductDisplayMaster.csv' },
+    { id: 'stock', label: '13. Stock & Dispatches', icon: Database, description: 'Migrate legacy StockHeader, StockLine, StockAssign & StockReverse into modern film_batches, qr_codes & dispatch_orders tables.', file1Label: 'StockHeaderMaster → film_batches', file1Name: 'StockHedaerMaster', file2Label: 'StockLineMaster → qr_codes', file2Name: 'StockLineMaster', file3Label: 'StockAssignHeader → dispatch_orders', file3Name: 'StockAssignHeaderMaster', file4Label: 'StockAssignLine → dispatch_order_items', file4Name: 'StockAssignLineMaster', file5Label: 'StockReverseHeader → return dispatch_orders', file5Name: 'StockReverseHeaderMaster', file6Label: 'StockReverseLine → return items', file6Name: 'StockReverseLineMaster' },
     { id: 'orders', label: 'Order History', icon: ShoppingCart, description: 'Sync past transactions.', file1Label: 'Orders CSV', file1Name: 'OrderMaster.csv' },
   ];
 
@@ -305,7 +316,6 @@ const DataMigration: React.FC = () => {
       const res = await migrationApi.dbConnect(dbConfig);
       setDbTables(res.tables || []);
       setDbConnected(true);
-      
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -313,22 +323,112 @@ const DataMigration: React.FC = () => {
     }
   };
 
+  const [jobStatus, setJobStatus] = useState<any>(null);
+
+  useEffect(() => {
+    if (activeTab === 'mssql') {
+      if (legacySubTab === 'stock') {
+        migrationApi.getStockMigrationStatus().then((st) => {
+          if (st && st.isRunning) {
+            setIsMigrating(true);
+            setJobStatus(st);
+            const pollInterval = setInterval(async () => {
+              try {
+                const currentSt = await migrationApi.getStockMigrationStatus();
+                setJobStatus(currentSt);
+                if (currentSt && !currentSt.isRunning) {
+                  clearInterval(pollInterval);
+                  setIsMigrating(false);
+                  if (currentSt.error) setError(currentSt.error);
+                  else if (currentSt.result) setResult(currentSt.result);
+                }
+              } catch {}
+            }, 1500);
+          }
+        }).catch(() => {});
+      } else {
+        migrationApi.getDbStatus().then((st) => {
+          if (st && st.isRunning) {
+            setIsMigrating(true);
+            setJobStatus(st);
+            const pollInterval = setInterval(async () => {
+              try {
+                const currentSt = await migrationApi.getDbStatus();
+                setJobStatus(currentSt);
+                if (currentSt && !currentSt.isRunning) {
+                  clearInterval(pollInterval);
+                  setIsMigrating(false);
+                  if (currentSt.error) setError(currentSt.error);
+                  else if (currentSt.result) setResult(currentSt.result);
+                }
+              } catch {}
+            }, 1500);
+          }
+        }).catch(() => {});
+      }
+    }
+  }, [activeTab, legacySubTab]);
+
   const handleDbMigration = async () => {
-    if (!dbMapFile1) return;
     setIsMigrating(true);
     setError(null);
     setResult(null);
+    setJobStatus(null);
     try {
-      const data = await migrationApi.dbRun({ 
-        credentials: dbConfig,
-        moduleType: legacySubTab, 
-        tableMap: { file1: dbMapFile1, file2: dbMapFile2, file3: dbMapFile3, file4: dbMapFile4, file5: dbMapFile5 }
-      });
-      setResult(data);
-      
+      if (legacySubTab === 'stock') {
+        const initData = await migrationApi.migrateStockDirectSqlServer(dbConfig);
+        if (initData.status === 'STARTED' || initData.status === 'RUNNING') {
+          setJobStatus(initData.job);
+          const pollInterval = setInterval(async () => {
+            try {
+              const st = await migrationApi.getStockMigrationStatus();
+              setJobStatus(st);
+              if (st && !st.isRunning) {
+                clearInterval(pollInterval);
+                setIsMigrating(false);
+                if (st.error) setError(st.error);
+                else if (st.result) setResult(st.result);
+              }
+            } catch {}
+          }, 1500);
+          return;
+        } else {
+          setResult(initData);
+          setIsMigrating(false);
+        }
+      } else {
+        if (!dbMapFile1) {
+          setIsMigrating(false);
+          return;
+        }
+        const initData = await migrationApi.dbRun({ 
+          credentials: dbConfig,
+          moduleType: legacySubTab, 
+          tableMap: { file1: dbMapFile1, file2: dbMapFile2, file3: dbMapFile3, file4: dbMapFile4, file5: dbMapFile5 }
+        });
+        
+        if (initData && (initData.status === 'STARTED' || initData.status === 'RUNNING')) {
+          setJobStatus(initData.job);
+          const pollInterval = setInterval(async () => {
+            try {
+              const st = await migrationApi.getDbStatus();
+              setJobStatus(st);
+              if (st && !st.isRunning) {
+                clearInterval(pollInterval);
+                setIsMigrating(false);
+                if (st.error) setError(st.error);
+                else if (st.result) setResult(st.result);
+              }
+            } catch {}
+          }, 1500);
+          return;
+        } else {
+          setResult(initData);
+          setIsMigrating(false);
+        }
+      }
     } catch (err: any) {
       setError(err.message);
-    } finally {
       setIsMigrating(false);
     }
   };
@@ -348,12 +448,12 @@ const DataMigration: React.FC = () => {
       </div>
 
       {/* Main Tab Navigation */}
-      <div className="flex gap-1 p-1 bg-slate-100/50 rounded-2xl mb-8 w-fit border border-slate-200/50">
-                <button
+      <div className="flex gap-2 p-1.5 bg-slate-100/80 rounded-2xl w-fit mb-8 border border-slate-200/60">
+        <button
           onClick={() => setActiveTab('mssql')}
           className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'mssql' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
         >
-          <Database className="w-4 h-4" /> Direct DB Link
+          <Database className="w-4 h-4 text-amber-500" /> Direct MSSQL Sync
         </button>
         <button
           onClick={() => setActiveTab('legacy')}
@@ -382,7 +482,7 @@ const DataMigration: React.FC = () => {
           <div className="w-full md:w-80 shrink-0 space-y-6">
             {[
               { title: 'Models Management', ids: ['catalog', 'skins', 'designs'] },
-              { title: 'System & Core', ids: ['roles', 'users', 'licenses', 'mobile-users', 'cut-credits', 'mobile-app-cuts', 'dealer-master-qrs', 'plotter-masters', 'materials', 'orders'] }
+              { title: 'System & Core', ids: ['roles', 'users', 'licenses', 'mobile-users', 'cut-credits', 'mobile-app-cuts', 'dealer-master-qrs', 'plotter-masters', 'materials', 'stock', 'orders'] }
             ].map((group) => (
               <div key={group.title} className="space-y-2">
                 <div className="px-4">
@@ -417,7 +517,7 @@ const DataMigration: React.FC = () => {
           <div className="flex-1 min-w-0">
             <div className="bg-white rounded-[2rem] border border-slate-200 shadow-xl overflow-hidden min-h-[550px] flex flex-col">
               
-              {['catalog', 'skins', 'designs', 'roles', 'users', 'licenses', 'mobile-users', 'cut-credits', 'mobile-app-cuts', 'dealer-master-qrs', 'plotter-masters', 'materials'].includes(legacySubTab) ? (
+              {['catalog', 'skins', 'designs', 'roles', 'users', 'licenses', 'mobile-users', 'cut-credits', 'mobile-app-cuts', 'dealer-master-qrs', 'plotter-masters', 'materials', 'stock'].includes(legacySubTab) ? (
                 <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4">
                   <div className="p-8 bg-slate-50 border-b border-slate-100">
                     <div className="flex items-center gap-3 mb-1">
@@ -521,6 +621,30 @@ const DataMigration: React.FC = () => {
                                   </div>
                                 )}
                               </div>
+                              {jobStatus?.isRunning && (
+                                <div className="p-5 bg-slate-900 text-white rounded-2xl shadow-xl border border-slate-800 space-y-3 animate-in fade-in">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                      <Loader2 className="w-5 h-5 animate-spin text-amber-400" />
+                                      <span className="font-bold text-sm text-slate-100">
+                                        {jobStatus.step || 'Stock Migration running...'}
+                                      </span>
+                                    </div>
+                                    <span className="text-xs font-mono font-bold bg-amber-500/20 text-amber-400 px-2.5 py-1 rounded border border-amber-500/30">
+                                      {jobStatus.progress || 0}%
+                                    </span>
+                                  </div>
+                                  <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                                    <div 
+                                      className="bg-gradient-to-r from-indigo-500 to-amber-400 h-2 rounded-full transition-all duration-500" 
+                                      style={{ width: `${jobStatus.progress || 5}%` }} 
+                                    />
+                                  </div>
+                                  <p className="text-xs text-slate-400 font-mono italic">
+                                    {jobStatus.message || 'Processing background job on server...'}
+                                  </p>
+                                </div>
+                              )}
                               <button
                                 onClick={handleDbMigration}
                                 disabled={!dbMapFile1 || isMigrating || (currentTab?.id === 'users' && !dbMapFile2) || (currentTab?.id === 'materials' && (!dbMapFile2 || !dbMapFile3 || !dbMapFile4))}
@@ -686,20 +810,43 @@ const DataMigration: React.FC = () => {
 
                       {result && (
                         <div className="mt-8 animate-in fade-in zoom-in-95">
-                          <div className="bg-emerald-900 text-white p-8 rounded-[2.5rem] shadow-2xl">
-                            <h3 className="text-xl font-black mb-6 flex items-center gap-3">
+                          <div className="bg-emerald-950 text-white p-8 rounded-[2.5rem] shadow-2xl border border-emerald-800/60">
+                            <h3 className="text-xl font-black mb-6 flex items-center gap-3 text-emerald-400">
                                <CheckCircle2 className="w-6 h-6 text-emerald-400" /> Step Complete
                             </h3>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                               {result && typeof result === 'object' && !Array.isArray(result) && 
                                 Object.entries(result)
-                                  .filter(([k]) => !['totalRows', 'totalModelRows', 'totalRowsProcessed', 'failures'].includes(k))
-                                  .map(([key, val]) => (
-                                    <div key={key} className="bg-white/10 p-4 rounded-2xl">
-                                      <p className="text-2xl font-black">{val as any}</p>
-                                      <p className="text-[10px] uppercase font-bold tracking-widest opacity-60">{key.replace(/([A-Z])/g, ' $1')}</p>
-                                    </div>
-                                  ))
+                                  .filter(([k]) => !['totalRows', 'totalModelRows', 'totalRowsProcessed', 'failures', 'failuresCount'].includes(k))
+                                  .map(([key, val]) => {
+                                    const METRIC_LABELS: Record<string, string> = {
+                                      importedCategories: 'imported Categories',
+                                      importedBrands: 'imported Brands',
+                                      importedModels: 'imported Models',
+                                      skippedRows: 'skipped Rows',
+                                      skipped: 'skipped Rows',
+                                      updatedCategories: 'updated Categories',
+                                      updatedBrands: 'updated Brands',
+                                      updatedModels: 'updated Models',
+                                      importedHeaders: 'imported Stock Headers',
+                                      importedLines: 'imported QR Lines',
+                                      importedDispatches: 'imported Dispatches',
+                                      importedDispatchItems: 'imported Dispatch Items',
+                                      importedReversals: 'imported Reversals',
+                                    };
+                                    const label = METRIC_LABELS[key] || key.replace(/([A-Z])/g, ' $1').toLowerCase().trim();
+                                    const numVal = typeof val === 'number' ? val.toLocaleString() : (val as any);
+                                    return (
+                                       <div key={key} className="bg-white/10 p-5 rounded-2xl border border-white/10 backdrop-blur-md flex flex-col justify-between space-y-3 shadow-sm hover:bg-white/15 transition-colors">
+                                         <span className="text-2xl sm:text-3xl font-black text-emerald-300 font-mono tracking-tight leading-none whitespace-normal break-words">
+                                           {numVal}
+                                         </span>
+                                         <span className="text-xs font-bold text-emerald-100/90 leading-snug">
+                                           {label}
+                                         </span>
+                                       </div>
+                                    );
+                                  })
                               }
                             </div>
                           </div>
@@ -769,7 +916,7 @@ const DataMigration: React.FC = () => {
                       )}
 
                       {/* Danger Zone / Clean Data */}
-                      {['catalog', 'skins', 'designs', 'roles', 'users', 'licenses', 'mobile-users', 'cut-credits', 'mobile-app-cuts', 'dealer-master-qrs', 'plotter-masters', 'materials'].includes(legacySubTab) && (
+                      {['catalog', 'skins', 'designs', 'roles', 'users', 'licenses', 'mobile-users', 'cut-credits', 'mobile-app-cuts', 'dealer-master-qrs', 'plotter-masters', 'materials', 'stock'].includes(legacySubTab) && (
                         <div className="pt-6 border-t border-slate-100 mt-8 space-y-4">
                           <div className="flex items-center gap-2 text-rose-600 px-1">
                             <AlertTriangle className="w-4 h-4" />
@@ -792,6 +939,8 @@ const DataMigration: React.FC = () => {
                                     ? 'Mobile App Cuts'
                                     : legacySubTab === 'plotter-masters'
                                     ? 'Plotter Masters'
+                                    : legacySubTab === 'stock'
+                                    ? 'Stock & Dispatches'
                                     : legacySubTab.charAt(0).toUpperCase() + legacySubTab.slice(1)
                                 } Migration Data
                               </h4>
@@ -902,36 +1051,40 @@ const DataMigration: React.FC = () => {
                  <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No migration history found</p>
                </div>
              ) : (
-               <table className="w-full text-left border-collapse">
-                 <thead>
-                   <tr className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                     <th className="px-8 py-4">Date & Time</th>
-                     <th className="px-6 py-4 text-center">Module</th>
-                     <th className="px-6 py-4">File Name</th>
-                     <th className="px-6 py-4 text-center">Status</th>
-                     <th className="px-6 py-4 text-right">Processed</th>
-                     <th className="px-6 py-4 text-right text-emerald-600">Created</th>
-                     <th className="px-6 py-4 text-right text-amber-500">Updated</th>
-                     <th className="px-6 py-4 text-right text-red-500">Failed</th>
-                     <th className="px-8 py-4 text-center">Actions</th>
-                   </tr>
-                 </thead>
-                 <tbody className="divide-y divide-slate-50">
-                   {migrationLogs.map((log: any) => (
-                     <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
-                       <td className="px-8 py-4 whitespace-nowrap">
-                         <p className="text-sm font-bold text-slate-900">{new Date(log.createdAt).toLocaleDateString()}</p>
-                         <p className="text-[10px] text-slate-400">{new Date(log.createdAt).toLocaleTimeString()}</p>
+               <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Date & Time</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Module</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">File Name</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Processed</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-emerald-600 uppercase tracking-wide">Created</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-amber-500 uppercase tracking-wide">Updated</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-red-500 uppercase tracking-wide">Failed</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {migrationLogs.map((log: any, idx: number) => (
+                      <tr key={log.id} className="group hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3.5 font-mono text-xs font-bold text-slate-400 whitespace-nowrap">
+                          {idx + 1}
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                         <p className="text-sm font-bold text-slate-900">{formatISTDate(log.createdAt)}</p>
+                         <p className="text-[10px] text-slate-400">{formatISTTime(log.createdAt)}</p>
                        </td>
-                       <td className="px-6 py-4 text-center">
+                       <td className="px-4 py-3.5 text-center">
                          <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-wider">
                            {log.module}
                          </span>
                        </td>
-                       <td className="px-6 py-4 max-w-xs truncate font-medium text-slate-600 text-sm">
+                       <td className="px-4 py-3.5 max-w-xs truncate font-medium text-slate-600 text-sm">
                          {log.fileName}
                        </td>
-                       <td className="px-6 py-4 text-center">
+                       <td className="px-4 py-3.5 text-center">
                          <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider
                            ${log.status === 'SUCCESS' ? 'bg-emerald-100 text-emerald-700' : 
                              log.status === 'PARTIAL' ? 'bg-amber-100 text-amber-700' : 
@@ -939,19 +1092,19 @@ const DataMigration: React.FC = () => {
                            {log.status}
                          </span>
                        </td>
-                       <td className="px-6 py-4 text-right font-mono text-xs font-bold text-slate-400">
+                       <td className="px-4 py-3.5 text-right font-mono text-xs font-bold text-slate-400">
                          {log.recordsProcessed}
                        </td>
-                       <td className="px-6 py-4 text-right font-mono text-xs font-bold text-emerald-600">
+                       <td className="px-4 py-3.5 text-right font-mono text-xs font-bold text-emerald-600">
                          {log.recordsCreated}
                        </td>
-                       <td className="px-6 py-4 text-right font-mono text-xs font-bold text-amber-500">
+                       <td className="px-4 py-3.5 text-right font-mono text-xs font-bold text-amber-500">
                          {log.recordsUpdated || 0}
                        </td>
-                       <td className="px-6 py-4 text-right font-mono text-xs font-bold text-red-500">
+                       <td className="px-4 py-3.5 text-right font-mono text-xs font-bold text-red-500">
                          {log.recordsFailed}
                        </td>
-                       <td className="px-8 py-4 text-center">
+                       <td className="px-4 py-3.5 text-center">
                          {log.recordsFailed > 0 && (
                            <button
                              onClick={() => handleDownloadFailures(log.id)}

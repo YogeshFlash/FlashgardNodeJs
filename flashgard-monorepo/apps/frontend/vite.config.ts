@@ -15,6 +15,9 @@ export default defineConfig({
       '@config': path.resolve(__dirname, '../../../backend/src/app-config.ts')
     }
   },
+  optimizeDeps: {
+    include: ['xlsx-js-style']
+  },
   server: {
     proxy: {
       '/api': {

@@ -1,5 +1,8 @@
-// API Base URL (Proxied to http://localhost:3000 locally by Vite, and proxied by Nginx on production)
-export const API_BASE = '/api';
+// API Base URL: in local dev (/api is proxied to http://localhost:3000 by Vite); in production, uses VITE_API_BASE or live proapi domain
+const rawApiBase = (import.meta.env.VITE_API_BASE as string | undefined)?.trim();
+export const API_BASE = rawApiBase && rawApiBase.length > 0
+  ? rawApiBase
+  : (import.meta.env.PROD ? 'https://proapi.flashgard.in/api' : '/api');
 export const getApiBase = () => API_BASE;
 
 function getToken() {
@@ -18,7 +21,9 @@ async function request<T>(
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const cleanBase = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE;
+  const res = await fetch(`${cleanBase}${normalizedPath}`, { ...options, headers });
 
   if (res.status === 401) {
     localStorage.removeItem('access_token');
@@ -73,8 +78,11 @@ export const orgsApi = {
     return request<any[]>(`/organizations${params.toString() ? `?${params.toString()}` : ''}`);
   },
   getOne: (id: string) => request<any>(`/organizations/${id}`),
+  getWelcomeKit: (id: string) => request<any>(`/organizations/${id}/welcome-kit`),
   create: (data: any) =>
     request<any>('/organizations', { method: 'POST', body: JSON.stringify(data) }),
+  onboardRetailer: (data: any) =>
+    request<any>('/organizations/onboard-retailer', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: any) =>
     request<any>(`/organizations/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) =>
@@ -234,9 +242,10 @@ export const productTypesApi = {
 };
 
 export const materialCategoriesApi = {
-  getAll: (productTypeId?: string, search?: string, includeDeleted?: boolean) => {
+  getAll: (productTypeId?: string, search?: string, includeDeleted?: boolean, parentId?: string) => {
     const params = new URLSearchParams();
     if (productTypeId) params.append('productTypeId', productTypeId);
+    if (parentId) params.append('parentId', parentId);
     if (search) params.append('search', search);
     if (includeDeleted) params.append('includeDeleted', 'true');
     return request<any[]>(`/material-categories${params.toString() ? `?${params.toString()}` : ''}`);
@@ -408,6 +417,7 @@ export const inventoryApi = {
     if (params) Object.entries(params).forEach(([k, v]) => v != null && q.append(k, String(v)));
     return request<any>(`/inventory/dispatch${q.toString() ? `?${q}` : ''}`);
   },
+  getDispatch: (id: string) => request<any>(`/inventory/dispatch/${id}`),
   createDispatch: (data: any) => request<any>('/inventory/dispatch', { method: 'POST', body: JSON.stringify(data) }),
   receiveDispatch: (id: string, data: any) =>
     request<any>(`/inventory/dispatch/${id}/receive`, { method: 'POST', body: JSON.stringify(data) }),
@@ -650,6 +660,31 @@ export const migrationApi = {
     formData.append('displayMaster', displayMaster);
     return request<any>('/migration/legacy/materials', { method: 'POST', body: formData });
   },
+  migrateStock: (
+    stockHeaders?: File,
+    stockLines?: File,
+    stockAssignHeaders?: File,
+    stockAssignLines?: File,
+    stockReverseHeaders?: File,
+    stockReverseLines?: File
+  ) => {
+    const formData = new FormData();
+    if (stockHeaders) formData.append('stockHeaders', stockHeaders);
+    if (stockLines) formData.append('stockLines', stockLines);
+    if (stockAssignHeaders) formData.append('stockAssignHeaders', stockAssignHeaders);
+    if (stockAssignLines) formData.append('stockAssignLines', stockAssignLines);
+    if (stockReverseHeaders) formData.append('stockReverseHeaders', stockReverseHeaders);
+    if (stockReverseLines) formData.append('stockReverseLines', stockReverseLines);
+    return request<any>('/migration/legacy/stock', { method: 'POST', body: formData });
+  },
+  migrateStockDirectSqlServer: (config?: any) => {
+    return request<any>('/migration/legacy/stock', {
+      method: 'POST',
+      body: JSON.stringify({ useDirectSqlServer: true, ...config })
+    });
+  },
+  getStockMigrationStatus: () => request<any>('/migration/legacy/stock/status'),
+  getDbStatus: () => request<any>('/migration/db/status'),
 };
 
 // ─── Plotters ─────────────────────────────────────────
@@ -683,6 +718,8 @@ export const plotterDevicesApi = {
   getOne: (id: string) => request<any>(`/plotter-devices/${id}`),
   create: (data: any) =>
     request<any>('/plotter-devices', { method: 'POST', body: JSON.stringify(data) }),
+  bindDevice: (data: { licenseKey: string; serialNumber?: string; macAddress?: string; deviceHash?: string }) =>
+    request<any>('/plotter-devices/bind', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: any) =>
     request<any>(`/plotter-devices/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) =>
@@ -722,6 +759,15 @@ export const paymentGatewayApi = {
   saveSettings: (data: { razorpayKeyId: string; razorpayKeySecret: string; rechargeDistributorId: string }) =>
     request<any>('/recharge/gateway-settings', { method: 'POST', body: JSON.stringify(data) }),
 };
+
+export const migrationScheduleApi = {
+  getSettings: () => request<any>('/migration/schedule/settings'),
+  saveSettings: (data: any) => request<any>('/migration/schedule/settings', { method: 'POST', body: JSON.stringify(data) }),
+  triggerSync: () => request<any>('/migration/schedule/trigger', { method: 'POST' }),
+  getLogs: () => request<any[]>('/migration/schedule/logs'),
+  clearLogs: () => request<any>('/migration/schedule/logs', { method: 'DELETE' }),
+};
+
 
 
 

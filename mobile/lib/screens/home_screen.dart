@@ -1,11 +1,14 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/plotter_status_action.dart';
 import 'cut_selection_screen.dart';
 import 'diy_designer_screen.dart';
 import 'recharge_screen.dart';
+import '../services/cut_transaction_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,6 +18,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static Map<String, dynamic>? _cachedHomeData;
+
   bool _isLoading = true;
   List<dynamic> _promotions = [];
   List<dynamic> _actions = [];
@@ -30,83 +35,136 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadHomeContent();
+    _loadFromCacheAndFetch();
   }
 
-  Future<void> _loadHomeContent() async {
-    setState(() {
-      _isLoading = true;
-      _activePage = 0;
-    });
+  Future<void> _loadFromCacheAndFetch() async {
+    // 1. Instantly use memory cache if available
+    if (_cachedHomeData != null) {
+      if (mounted) {
+        setState(() {
+          _applyHomeData(_cachedHomeData!);
+          _isLoading = false;
+        });
+      }
+    } else {
+      // 2. Otherwise load from local storage cache instantly (0ms load)
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cachedString = prefs.getString('cached_mobile_home_content');
+        if (cachedString != null && cachedString.isNotEmpty) {
+          final decoded = jsonDecode(cachedString) as Map<String, dynamic>;
+          _cachedHomeData = decoded;
+          if (mounted) {
+            setState(() {
+              _applyHomeData(decoded);
+              _isLoading = false;
+            });
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 3. Fetch fresh live data in background without blocking the UI
+    await _loadHomeContent();
+  }
+
+  Future<void> _loadHomeContent({bool isManualRefresh = false}) async {
+    // Automatically flush any pending offline cut logs
+    CutTransactionService.syncPendingLogs();
+
+    if (_cachedHomeData == null) {
+      if (mounted) {
+        setState(() {
+          _isLoading = true;
+          _activePage = 0;
+        });
+      }
+    }
 
     final data = await ApiService.fetchMobileHomeContent();
     if (data != null && mounted) {
+      _cachedHomeData = data;
       setState(() {
-        _promotions = data['promotions'] ?? [];
-        _actions = data['actions'] ?? [];
-        _infocards = data['infocards'] ?? [];
-        _recentCuts = data['recentCuts'] ?? [];
-        _topCuts = data['topCuts'] ?? [];
-        
-        final walletData = data['wallet'];
-        if (walletData != null) {
-          _walletBalance = walletData['balance'];
-          _hasUnlimited = walletData['hasUnlimited'] ?? false;
-          _unlimitedPlanType = walletData['unlimitedPlanType'];
-          _unlimitedEndDate = walletData['unlimitedEndDate'];
-        } else {
-          _walletBalance = null;
-          _hasUnlimited = false;
-          _unlimitedPlanType = null;
-          _unlimitedEndDate = null;
-        }
+        _applyHomeData(data);
         _isLoading = false;
       });
-    } else if (mounted) {
-      // Fallback/Default static values if offline or error
+
+      // Persist for instant next launch
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('cached_mobile_home_content', jsonEncode(data));
+      } catch (_) {}
+    } else if (mounted && _cachedHomeData == null) {
+      // Fallback/Default static values if no cache exists
       setState(() {
-        _recentCuts = [];
-        _topCuts = [];
-        _promotions = [
-          {
-            'title': 'Exclusive iPhone 17 Launch',
-            'subtitle': 'Get 20% off on all iPhone 17 Pro designs!',
-            'backgroundColor': '#FF2D55', // Vibrant Hot Pink
-            'iconName': 'phone_iphone',
-          },
-          {
-            'title': 'New Galaxy S25 Skins',
-            'subtitle': 'Explore the latest styles for Samsung S25.',
-            'backgroundColor': '#FF9500', // Vibrant Neon Orange
-            'iconName': 'smartphone',
-          }
-        ];
-        _actions = [
-          {'label': 'Scan QR', 'iconName': 'qr_code_scanner', 'action': 'scan'},
-          {'label': 'DIY Custom', 'iconName': 'brush', 'action': 'diy'},
-          {'label': 'Stock', 'iconName': 'inventory_2_outlined', 'action': 'stock'},
-          {'label': 'Help Support', 'iconName': 'support_agent', 'action': 'help'},
-        ];
-        _infocards = [
-          {
-            'title': 'How to apply Flashgard Skins',
-            'excerpt': 'Learn the best techniques for a perfect application every time.',
-            'timeText': '💡 TIPS • 5 min read',
-          },
-          {
-            'title': 'New Machine Firmware v2.1',
-            'excerpt': 'Stability improvements and 15% faster cutting speeds.',
-            'timeText': '⚙️ UPDATE • Yesterday',
-          },
-          {
-            'title': 'System Maintenance Info',
-            'excerpt': 'The CRM will be undergoing maintenance on Sunday at 2 AM GMT.',
-            'timeText': '⚠️ NOTICE • 2 days ago',
-          }
-        ];
+        _applyFallbackData();
         _isLoading = false;
       });
     }
+  }
+
+  void _applyHomeData(Map<String, dynamic> data) {
+    _promotions = data['promotions'] ?? [];
+    _actions = data['actions'] ?? [];
+    _infocards = data['infocards'] ?? [];
+    _recentCuts = data['recentCuts'] ?? [];
+    _topCuts = data['topCuts'] ?? [];
+
+    final walletData = data['wallet'];
+    if (walletData != null) {
+      _walletBalance = walletData['balance'];
+      _hasUnlimited = walletData['hasUnlimited'] ?? false;
+      _unlimitedPlanType = walletData['unlimitedPlanType'];
+      _unlimitedEndDate = walletData['unlimitedEndDate'];
+    } else {
+      _walletBalance = null;
+      _hasUnlimited = false;
+      _unlimitedPlanType = null;
+      _unlimitedEndDate = null;
+    }
+  }
+
+  void _applyFallbackData() {
+    _recentCuts = [];
+    _topCuts = [];
+    _promotions = [
+      {
+        'title': 'Exclusive iPhone 17 Launch',
+        'subtitle': 'Get 20% off on all iPhone 17 Pro designs!',
+        'backgroundColor': '#FF2D55', // Vibrant Hot Pink
+        'iconName': 'phone_iphone',
+      },
+      {
+        'title': 'New Galaxy S25 Skins',
+        'subtitle': 'Explore the latest styles for Samsung S25.',
+        'backgroundColor': '#FF9500', // Vibrant Neon Orange
+        'iconName': 'smartphone',
+      }
+    ];
+    _actions = [
+      {'label': 'Scan QR', 'iconName': 'qr_code_scanner', 'action': 'scan'},
+      {'label': 'DIY Custom', 'iconName': 'brush', 'action': 'diy'},
+      {'label': 'Stock', 'iconName': 'inventory_2_outlined', 'action': 'stock'},
+      {'label': 'Help Support', 'iconName': 'support_agent', 'action': 'help'},
+    ];
+    _infocards = [
+      {
+        'title': 'How to apply Flashgard Skins',
+        'excerpt': 'Learn the best techniques for a perfect application every time.',
+        'timeText': '💡 TIPS • 5 min read',
+      },
+      {
+        'title': 'New Machine Firmware v2.1',
+        'excerpt': 'Stability improvements and 15% faster cutting speeds.',
+        'timeText': '⚙️ UPDATE • Yesterday',
+      },
+      {
+        'title': 'System Maintenance Info',
+        'excerpt': 'The CRM will be undergoing maintenance on Sunday at 2 AM GMT.',
+        'timeText': '⚠️ NOTICE • 2 days ago',
+      }
+    ];
   }
 
   IconData _getIconData(String name) {
@@ -345,7 +403,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       // Promotions Carousel
                       if (_promotions.isNotEmpty) ...[
                         SizedBox(
-                          height: 210,
+                          height: 220,
                           child: PageView.builder(
                             itemCount: _promotions.length,
                             onPageChanged: (int page) {
@@ -567,7 +625,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildPromotionCard(String title, String subtitle, Color color, IconData icon) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -601,32 +659,37 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(24.0),
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 14.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white, 
-                      fontSize: 22, 
+                      fontSize: 20, 
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0.2,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   Text(
                     subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.9), 
-                      fontSize: 14,
+                      fontSize: 13, 
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 10),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(30),
@@ -643,7 +706,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: TextStyle(
                         color: color, 
                         fontWeight: FontWeight.w900, 
-                        fontSize: 12,
+                        fontSize: 11,
                       ),
                     ),
                   ),

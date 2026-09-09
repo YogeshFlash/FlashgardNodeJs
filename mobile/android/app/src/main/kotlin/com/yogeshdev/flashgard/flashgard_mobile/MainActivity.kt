@@ -9,6 +9,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.hardware.usb.UsbManager
+import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbDeviceConnection
+import android.hardware.usb.UsbInterface
+import android.hardware.usb.UsbEndpoint
+import android.hardware.usb.UsbConstants
+import android.app.PendingIntent
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -32,11 +40,80 @@ class MainActivity : FlutterFragmentActivity() {
     // SPP (Serial Port Profile) UUID - standard for Bluetooth serial communication
     private val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
 
-    // Track connection type: "sdk" or "classic" or null
+    // Track connection type: "sdk" or "classic" or "usb" or null
     private var connectionType: String? = null
     private var classicSocket: BluetoothSocket? = null
     private var classicOutputStream: OutputStream? = null
     private var lastConnectedAddress: String? = null
+    private var lastConnectedName: String? = null
+
+    // USB OTG Plotter fields
+    private val ACTION_USB_PERMISSION = "com.flashgard.plotter.USB_PERMISSION"
+    private var usbManager: UsbManager? = null
+    private var usbDevice: UsbDevice? = null
+    private var usbConnection: UsbDeviceConnection? = null
+    private var usbInterface: UsbInterface? = null
+    private var usbOutEndpoint: UsbEndpoint? = null
+    private var usbInEndpoint: UsbEndpoint? = null
+    private var pendingUsbResult: MethodChannel.Result? = null
+
+    // USB permission receiver (must be RECEIVER_NOT_EXPORTED on Android 13+ because of explicit intent)
+    private val usbPermissionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_USB_PERMISSION) {
+                synchronized(this) {
+                    val device: UsbDevice? = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                    }
+                    val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+                    val res = pendingUsbResult
+                    pendingUsbResult = null
+                    val manager = usbManager ?: (getSystemService(Context.USB_SERVICE) as UsbManager)
+                    val targetDevice = device ?: usbDevice ?: manager.deviceList.values.firstOrNull()
+                    if (granted && targetDevice != null) {
+                        finishUsbConnect(targetDevice, res)
+                    } else {
+                        runOnUiThread {
+                            res?.error("PERMISSION_DENIED", "USB Permission Denied. Please tap 'Allow' when prompted to grant plotter access.", null)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // USB hardware attach / detach receiver (must be RECEIVER_EXPORTED on Android 13+ as it comes from system)
+    private val usbStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
+                    android.util.Log.i("FlashgardUSB", "ACTION_USB_DEVICE_ATTACHED received!")
+                    usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+                    runOnUiThread {
+                        progressSink?.success(mapOf("event" to "usb_attached"))
+                    }
+                }
+                UsbManager.ACTION_USB_DEVICE_DETACHED -> {
+                    android.util.Log.i("FlashgardUSB", "ACTION_USB_DEVICE_DETACHED received!")
+                    val device: UsbDevice? = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                    }
+                    if (device != null && (device.deviceName == usbDevice?.deviceName || connectionType == "usb")) {
+                        disconnectUsb()
+                    }
+                    runOnUiThread {
+                        progressSink?.success(mapOf("event" to "usb_detached"))
+                    }
+                }
+            }
+        }
+    }
 
     // Classic Bluetooth discovery
     private var discoveryDevices = mutableListOf<Map<String, Any?>>()
@@ -67,16 +144,51 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            splashScreen.setOnExitAnimationListener { splashScreenView ->
+                splashScreenView.remove()
+            }
+        }
         super.onCreate(savedInstanceState)
         BluetoothSDK.init(applicationContext, "hsznqmji")
-        registerReceiver(pairingReceiver, IntentFilter(BluetoothDevice.ACTION_PAIRING_REQUEST).apply { priority = 100 })
+        val pairingFilter = IntentFilter(BluetoothDevice.ACTION_PAIRING_REQUEST).apply { priority = 100 }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(pairingReceiver, pairingFilter, Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(pairingReceiver, pairingFilter)
+        }
+
+        // Initialize usbManager
+        usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+
+        // Register USB permission receiver (RECEIVER_NOT_EXPORTED for explicit in-app broadcasts on Android 13+)
+        val permFilter = IntentFilter(ACTION_USB_PERMISSION)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(usbPermissionReceiver, permFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(usbPermissionReceiver, permFilter)
+        }
+
+        // Register USB attach/detach receiver (RECEIVER_EXPORTED for system hardware broadcasts on Android 13+)
+        val stateFilter = IntentFilter().apply {
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(usbStateReceiver, stateFilter, Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(usbStateReceiver, stateFilter)
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         disconnectClassic()
+        disconnectUsb()
         try { unregisterReceiver(discoveryReceiver) } catch (_: Exception) {}
         try { unregisterReceiver(pairingReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(usbPermissionReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(usbStateReceiver) } catch (_: Exception) {}
     }
 
     private fun disconnectClassic() {
@@ -87,6 +199,155 @@ class MainActivity : FlutterFragmentActivity() {
         classicOutputStream = null
         classicSocket = null
         if (connectionType == "classic") connectionType = null
+    }
+
+    private fun disconnectUsb() {
+        try {
+            usbInterface?.let { usbConnection?.releaseInterface(it) }
+            usbConnection?.close()
+        } catch (_: Exception) {}
+        usbDevice = null
+        usbConnection = null
+        usbInterface = null
+        usbOutEndpoint = null
+        usbInEndpoint = null
+        if (connectionType == "usb") connectionType = null
+    }
+
+    private fun getUsbDeviceDisplayName(device: UsbDevice): String {
+        return if (device.vendorId == 0x0B4D && device.productId == 0x1132) {
+            "Silhouette Portrait 2"
+        } else if (device.vendorId == 0x0B4D && device.productId == 0x112F) {
+            "Silhouette Cameo 3"
+        } else if (device.vendorId == 0x0B4D && device.productId == 0x1137) {
+            "Silhouette Cameo 4"
+        } else if (device.vendorId == 0x0B4D && device.productId == 0x1138) {
+            "Silhouette Portrait 3"
+        } else if (device.vendorId == 0x0B4D) {
+            val hex = String.format("0x%04X:0x%04X", device.vendorId, device.productId)
+            "Silhouette Plotter ($hex)"
+        } else {
+            val name = try {
+                device.productName ?: device.manufacturerName
+            } catch (_: Exception) { null }
+            name ?: "USB Plotter (${String.format("0x%04X:0x%04X", device.vendorId, device.productId)})"
+        }
+    }
+
+    private fun finishUsbConnect(device: UsbDevice, result: MethodChannel.Result?) {
+        Thread {
+            try {
+                disconnectClassic()
+                disconnectUsb()
+                val manager = usbManager ?: (getSystemService(Context.USB_SERVICE) as UsbManager)
+                val connection = manager.openDevice(device) ?: run {
+                    runOnUiThread { result?.error("CONNECT_FAIL", "Failed to open USB connection to device", null) }
+                    return@Thread
+                }
+
+                var claimedInterface: UsbInterface? = null
+                var outEp: UsbEndpoint? = null
+                var inEp: UsbEndpoint? = null
+
+                // 1. First pass: look for bulk OUT and IN endpoints across all interfaces
+                for (i in 0 until device.interfaceCount) {
+                    val intf = device.getInterface(i)
+                    var foundOut: UsbEndpoint? = null
+                    var foundIn: UsbEndpoint? = null
+                    for (j in 0 until intf.endpointCount) {
+                        val ep = intf.getEndpoint(j)
+                        if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK) {
+                            if (ep.direction == UsbConstants.USB_DIR_OUT && foundOut == null) {
+                                foundOut = ep
+                            } else if (ep.direction == UsbConstants.USB_DIR_IN && foundIn == null) {
+                                foundIn = ep
+                            }
+                        }
+                    }
+                    if (foundOut != null && connection.claimInterface(intf, true)) {
+                        claimedInterface = intf
+                        outEp = foundOut
+                        inEp = foundIn
+                        break
+                    }
+                }
+
+                // 2. Second pass (fallback like Xamarin C#): check any OUT endpoint on any interface
+                if (claimedInterface == null || outEp == null) {
+                    for (i in 0 until device.interfaceCount) {
+                        val intf = device.getInterface(i)
+                        var foundOut: UsbEndpoint? = null
+                        var foundIn: UsbEndpoint? = null
+                        for (j in 0 until intf.endpointCount) {
+                            val ep = intf.getEndpoint(j)
+                            if (ep.direction == UsbConstants.USB_DIR_OUT && foundOut == null) {
+                                foundOut = ep
+                            } else if (ep.direction == UsbConstants.USB_DIR_IN && foundIn == null) {
+                                foundIn = ep
+                            }
+                        }
+                        if (foundOut != null && connection.claimInterface(intf, true)) {
+                            claimedInterface = intf
+                            outEp = foundOut
+                            inEp = foundIn
+                            break
+                        }
+                    }
+                }
+
+                // 3. Third pass (direct interface 0 fallback matching Xamarin C# GetInterface(0)):
+                if ((claimedInterface == null || outEp == null) && device.interfaceCount > 0) {
+                    val intf0 = device.getInterface(0)
+                    if (connection.claimInterface(intf0, true) && intf0.endpointCount > 0) {
+                        claimedInterface = intf0
+                        outEp = intf0.getEndpoint(0)
+                        if (intf0.endpointCount > 1) {
+                            inEp = intf0.getEndpoint(1)
+                        }
+                    }
+                }
+
+                if (claimedInterface == null || outEp == null) {
+                    connection.close()
+                    runOnUiThread { result?.error("CONNECT_FAIL", "No compatible USB endpoint found on device (tested ${device.interfaceCount} interfaces)", null) }
+                    return@Thread
+                }
+
+                usbDevice = device
+                usbConnection = connection
+                usbInterface = claimedInterface
+                usbOutEndpoint = outEp
+                usbInEndpoint = inEp
+                connectionType = "usb"
+                lastConnectedAddress = device.deviceName
+
+                try {
+                    // Set Control Line State (DTR = 1, RTS = 1) for CDC ACM / Serial
+                    connection.controlTransfer(0x21, 0x22, 0x03, claimedInterface.id, null, 0, 1000)
+                } catch (_: Exception) {}
+
+                val devName = getUsbDeviceDisplayName(device)
+                lastConnectedName = devName
+
+                val serial = try {
+                    device.serialNumber
+                } catch (_: Exception) { null }
+
+                runOnUiThread {
+                    result?.success(mapOf(
+                        "success" to true,
+                        "type" to "usb",
+                        "name" to devName,
+                        "address" to device.deviceName,
+                        "vendorId" to device.vendorId,
+                        "productId" to device.productId,
+                        "serialNumber" to serial
+                    ))
+                }
+            } catch (e: Exception) {
+                runOnUiThread { result?.error("CONNECT_FAIL", e.message, null) }
+            }
+        }.start()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -108,6 +369,11 @@ class MainActivity : FlutterFragmentActivity() {
             
             when (call.method) {
                 "search" -> {
+                    val adapter = BluetoothAdapter.getDefaultAdapter()
+                    if (adapter == null || !adapter.isEnabled) {
+                        result.error("BLUETOOTH_OFF", "Bluetooth is turned off. Please turn on Bluetooth to scan.", null)
+                        return@setMethodCallHandler
+                    }
                     val timeout = call.argument<Int>("timeout") ?: 5000
                     val allDevices = mutableListOf<Map<String, Any?>>()
                     val sdkDevices = mutableListOf<Map<String, Any?>>()
@@ -152,6 +418,28 @@ class MainActivity : FlutterFragmentActivity() {
                                 merged.add(dev + mapOf("type" to "classic"))
                             }
                         }
+
+                        // Enumerate connected USB OTG devices (always list at top)
+                        try {
+                            val manager = usbManager ?: (getSystemService(Context.USB_SERVICE) as UsbManager)
+                            for ((_, uDev) in manager.deviceList) {
+                                val prod = getUsbDeviceDisplayName(uDev)
+                                val hasPerm = manager.hasPermission(uDev)
+                                val serial = try {
+                                    if (hasPerm) uDev.serialNumber else null
+                                } catch (_: Exception) { null }
+                                merged.add(0, mapOf(
+                                    "name" to prod,
+                                    "address" to uDev.deviceName,
+                                    "rssi" to 100,
+                                    "type" to "usb",
+                                    "hasPermission" to hasPerm,
+                                    "vendorId" to uDev.vendorId,
+                                    "productId" to uDev.productId,
+                                    "serialNumber" to serial
+                                ))
+                            }
+                        } catch (_: Exception) {}
 
                         result.success(merged)
                     }
@@ -213,7 +501,11 @@ class MainActivity : FlutterFragmentActivity() {
                             addAction(BluetoothDevice.ACTION_FOUND)
                             addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
                         }
-                        registerReceiver(discoveryReceiver, filter)
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                            registerReceiver(discoveryReceiver, filter, Context.RECEIVER_EXPORTED)
+                        } else {
+                            registerReceiver(discoveryReceiver, filter)
+                        }
                         adapter?.startDiscovery()
 
                         // Timeout fallback for Classic discovery
@@ -237,12 +529,393 @@ class MainActivity : FlutterFragmentActivity() {
                     } catch (_: SecurityException) {}
                     result.success(true)
                 }
-                "connect" -> {
-                    val address = call.argument<String>("address") ?: return@setMethodCallHandler result.error("INVALID_ARGUMENT", "Address required", null)
-                    
+                "getUsbDevices" -> {
+                    try {
+                        val manager = usbManager ?: (getSystemService(Context.USB_SERVICE) as UsbManager)
+                        val devList = manager.deviceList
+                        android.util.Log.i("FlashgardUSB", "getUsbDevices queried: deviceCount=${devList.size}")
+                        val list = mutableListOf<Map<String, Any?>>()
+                        for ((_, uDev) in devList) {
+                            val prod = getUsbDeviceDisplayName(uDev)
+                            val hasPerm = manager.hasPermission(uDev)
+                            val serial = try {
+                                if (hasPerm) uDev.serialNumber else null
+                            } catch (_: Exception) { null }
+                            android.util.Log.i("FlashgardUSB", "Found USB Device: name=$prod, VID=${uDev.vendorId}, PID=${uDev.productId}, hasPerm=$hasPerm")
+                            list.add(mapOf(
+                                "name" to prod,
+                                "address" to uDev.deviceName,
+                                "rssi" to 100,
+                                "type" to "usb",
+                                "hasPermission" to hasPerm,
+                                "vendorId" to uDev.vendorId,
+                                "productId" to uDev.productId,
+                                "serialNumber" to serial
+                            ))
+                        }
+                        result.success(list)
+                    } catch (e: Exception) {
+                        android.util.Log.e("FlashgardUSB", "getUsbDevices failed: ${e.message}", e)
+                        result.error("USB_ERROR", e.message, null)
+                    }
+                }
+                "isBluetoothEnabled" -> {
                     try {
                         val adapter = BluetoothAdapter.getDefaultAdapter()
-                        adapter?.cancelDiscovery()
+                        result.success(adapter != null && adapter.isEnabled)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "requestEnableBluetooth" -> {
+                    try {
+                        val adapter = BluetoothAdapter.getDefaultAdapter()
+                        if (adapter == null) {
+                            result.success(false)
+                            return@setMethodCallHandler
+                        }
+                        if (adapter.isEnabled) {
+                            result.success(true)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            val intent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (_: Exception) {
+                            val intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+                            startActivity(intent)
+                            result.success(true)
+                        }
+                    } catch (e: Exception) {
+                        try {
+                            val intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (ex: Exception) {
+                            result.error("ENABLE_BT_FAILED", ex.message, null)
+                        }
+                    }
+                }
+                "openBluetoothSettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SETTINGS_FAILED", e.message, null)
+                    }
+                }
+                "openOtgSettings" -> {
+                    try {
+                        val intents = listOf(
+                            Intent("android.settings.OTG_SETTINGS"),
+                            Intent("android.settings.SYSTEM_SETTINGS"),
+                            Intent(Settings.ACTION_SETTINGS)
+                        )
+                        var launched = false
+                        for (it in intents) {
+                            try {
+                                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                startActivity(it)
+                                launched = true
+                                break
+                            } catch (_: Exception) {}
+                        }
+                        result.success(launched)
+                    } catch (e: Exception) {
+                        result.error("SETTINGS_FAILED", e.message, null)
+                    }
+                }
+                "requestUsbPermission" -> {
+                    val address = call.argument<String>("address")
+                    val manager = usbManager ?: (getSystemService(Context.USB_SERVICE) as UsbManager)
+                    val targetUsb = (if (address != null) manager.deviceList.values.find { it.deviceName == address } else null)
+                        ?: usbDevice
+                        ?: manager.deviceList.values.firstOrNull()
+
+                    if (targetUsb != null) {
+                        usbDevice = targetUsb
+                        if (manager.hasPermission(targetUsb)) {
+                            result.success(true)
+                        } else {
+                            pendingUsbResult = result
+                            val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                            } else {
+                                PendingIntent.FLAG_UPDATE_CURRENT
+                            }
+                            val intent = Intent(ACTION_USB_PERMISSION).apply {
+                                setPackage(packageName)
+                            }
+                            val pi = PendingIntent.getBroadcast(this, 0, intent, flags)
+                            manager.requestPermission(targetUsb, pi)
+                        }
+                    } else {
+                        result.error("NO_DEVICE", "No USB device found", null)
+                    }
+                }
+                "testUsbPlotter" -> {
+                    Thread {
+                        try {
+                            val manager = usbManager ?: (getSystemService(Context.USB_SERVICE) as UsbManager)
+                            val dev = usbDevice ?: manager.deviceList.values.firstOrNull()
+                            if (dev == null) {
+                                runOnUiThread { result.error("NO_DEVICE", "No USB device attached", null) }
+                                return@Thread
+                            }
+                            if (!manager.hasPermission(dev)) {
+                                runOnUiThread { result.error("NO_PERMISSION", "USB permission not granted. Please allow access first.", null) }
+                                return@Thread
+                            }
+                            var conn = usbConnection
+                            var outEp = usbOutEndpoint
+                            var inEp = usbInEndpoint
+
+                            if (conn == null || outEp == null) {
+                                conn = manager.openDevice(dev) ?: run {
+                                    runOnUiThread { result.error("OPEN_FAIL", "Failed to open USB connection", null) }
+                                    return@Thread
+                                }
+                                for (i in 0 until dev.interfaceCount) {
+                                    val intf = dev.getInterface(i)
+                                    for (j in 0 until intf.endpointCount) {
+                                        val ep = intf.getEndpoint(j)
+                                        if (ep.direction == UsbConstants.USB_DIR_OUT && outEp == null) outEp = ep
+                                        if (ep.direction == UsbConstants.USB_DIR_IN && inEp == null) inEp = ep
+                                    }
+                                    if (outEp != null && conn.claimInterface(intf, true)) {
+                                        usbInterface = intf
+                                        break
+                                    }
+                                }
+                                usbConnection = conn
+                                usbOutEndpoint = outEp
+                                usbInEndpoint = inEp
+                                usbDevice = dev
+                                connectionType = "usb"
+                            }
+
+                            if (outEp == null) {
+                                runOnUiThread { result.error("NO_ENDPOINT", "No USB OUT endpoint found", null) }
+                                return@Thread
+                            }
+
+                            // Send test enquiry / status packet (ESC + ENQ / 0x1B 0x05)
+                            val testCommand = byteArrayOf(0x1B.toByte(), 0x05.toByte())
+                            val sent = conn.bulkTransfer(outEp, testCommand, testCommand.size, 5000)
+
+                            var responseStr = ""
+                            if (inEp != null) {
+                                val buffer = ByteArray(64)
+                                val read = conn.bulkTransfer(inEp, buffer, buffer.size, 3000)
+                                if (read > 0) {
+                                    responseStr = String(buffer, 0, read, Charsets.US_ASCII)
+                                }
+                            }
+
+                            runOnUiThread {
+                                result.success(mapOf(
+                                    "success" to (sent >= 0),
+                                    "bytesSent" to sent,
+                                    "response" to responseStr,
+                                    "deviceName" to getUsbDeviceDisplayName(dev),
+                                    "vendorId" to dev.vendorId,
+                                    "productId" to dev.productId
+                                ))
+                            }
+                        } catch (e: Exception) {
+                            runOnUiThread { result.error("TEST_FAIL", e.message, null) }
+                        }
+                    }.start()
+                }
+                "sendCommand" -> {
+                    val rawCmd = call.argument<String>("command") ?: return@setMethodCallHandler result.error("INVALID_ARGUMENT", "Command required", null)
+                    val timeout = call.argument<Int>("timeout") ?: 3000
+
+                    // Format command: Graphtec / Silhouette GP-GL commands end with \u0003 (ETX) or ';'
+                    val formattedCmd = if (!rawCmd.endsWith("\u0003") && !rawCmd.endsWith(";")) {
+                        rawCmd + "\u0003"
+                    } else {
+                        rawCmd
+                    }
+                    val cmdBytes = formattedCmd.toByteArray(Charsets.US_ASCII)
+
+                    android.util.Log.i("FlashgardPlotterCmd", "Sending command: ${rawCmd.replace("\u0003", "<ETX>")} (bytes: ${cmdBytes.size}) via $connectionType")
+
+                    Thread {
+                        try {
+                            if (connectionType == "classic") {
+                                val socket = classicSocket ?: throw Exception("Bluetooth Classic socket not connected")
+                                val outputStream = classicOutputStream ?: socket.outputStream ?: throw Exception("Bluetooth output stream unavailable")
+                                val inputStream = socket.inputStream
+
+                                // Discard any stale pending bytes before sending
+                                try {
+                                    while (inputStream.available() > 0) {
+                                        inputStream.read()
+                                    }
+                                } catch (_: Exception) {}
+
+                                outputStream.write(cmdBytes)
+                                outputStream.flush()
+
+                                // Read response bytes if available within timeout
+                                val responseBuf = ByteArray(256)
+                                var bytesRead = 0
+                                val startTime = System.currentTimeMillis()
+                                while (System.currentTimeMillis() - startTime < timeout) {
+                                    if (inputStream.available() > 0) {
+                                        val read = inputStream.read(responseBuf, bytesRead, responseBuf.size - bytesRead)
+                                        if (read > 0) {
+                                            bytesRead += read
+                                            if (bytesRead >= responseBuf.size || responseBuf[bytesRead - 1] == 0x03.toByte() || responseBuf[bytesRead - 1] == 0x0A.toByte()) {
+                                                break
+                                            }
+                                        }
+                                    }
+                                    Thread.sleep(25)
+                                }
+
+                                val respBytes = if (bytesRead > 0) responseBuf.copyOf(bytesRead) else ByteArray(0)
+                                val respText = if (bytesRead > 0) String(respBytes, Charsets.US_ASCII) else ""
+                                android.util.Log.i("FlashgardPlotterCmd", "Classic Response received (${respBytes.size} bytes): $respText")
+
+                                runOnUiThread {
+                                    result.success(mapOf(
+                                        "success" to true,
+                                        "bytesSent" to cmdBytes.size,
+                                        "response" to respBytes,
+                                        "text" to respText,
+                                        "transport" to "classic"
+                                    ))
+                                }
+                            } else if (connectionType == "usb") {
+                                val manager = usbManager ?: (getSystemService(Context.USB_SERVICE) as UsbManager)
+                                val dev = usbDevice ?: manager.deviceList.values.firstOrNull() ?: throw Exception("USB device not connected")
+                                var conn = usbConnection
+                                var outEp = usbOutEndpoint
+                                var inEp = usbInEndpoint
+
+                                if (conn == null || outEp == null) {
+                                    conn = manager.openDevice(dev) ?: throw Exception("Failed to open USB device")
+                                    for (i in 0 until dev.interfaceCount) {
+                                        val intf = dev.getInterface(i)
+                                        for (j in 0 until intf.endpointCount) {
+                                            val ep = intf.getEndpoint(j)
+                                            if (ep.direction == UsbConstants.USB_DIR_OUT && outEp == null) outEp = ep
+                                            if (ep.direction == UsbConstants.USB_DIR_IN && inEp == null) inEp = ep
+                                        }
+                                        if (outEp != null && conn.claimInterface(intf, true)) {
+                                            usbInterface = intf
+                                            break
+                                        }
+                                    }
+                                    usbConnection = conn
+                                    usbOutEndpoint = outEp
+                                    usbInEndpoint = inEp
+                                    connectionType = "usb"
+                                }
+
+                                if (outEp == null) throw Exception("No USB OUT endpoint found")
+
+                                val sent = conn.bulkTransfer(outEp, cmdBytes, cmdBytes.size, timeout)
+                                if (sent < 0) throw Exception("USB bulk transfer failed ($sent)")
+
+                                var respBytes = ByteArray(0)
+                                var respText = ""
+                                if (inEp != null) {
+                                    val buffer = ByteArray(256)
+                                    val read = conn.bulkTransfer(inEp, buffer, buffer.size, minOf(timeout, 1500))
+                                    if (read > 0) {
+                                        respBytes = buffer.copyOf(read)
+                                        respText = String(respBytes, Charsets.US_ASCII)
+                                    }
+                                }
+                                android.util.Log.i("FlashgardPlotterCmd", "USB Response received (${respBytes.size} bytes): $respText")
+
+                                runOnUiThread {
+                                    result.success(mapOf(
+                                        "success" to true,
+                                        "bytesSent" to sent,
+                                        "response" to respBytes,
+                                        "text" to respText,
+                                        "transport" to "usb"
+                                    ))
+                                }
+                            } else {
+                                throw Exception("Plotter not connected (connectionType=$connectionType)")
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("FlashgardPlotterCmd", "sendCommand error: ${e.message}", e)
+                            runOnUiThread {
+                                result.error("COMMAND_FAIL", e.message, null)
+                            }
+                        }
+                    }.start()
+                }
+                "emergencyStop" -> {
+                    android.util.Log.w("FlashgardPlotterCmd", "EMERGENCY STOP TRIGGERED!")
+                    Thread {
+                        try {
+                            val stopCmd = byteArrayOf(0x1B.toByte(), 0x00.toByte(), 0x03.toByte()) + "PU;M0,0;\u0003".toByteArray(Charsets.US_ASCII)
+                            if (connectionType == "classic") {
+                                classicOutputStream?.write(stopCmd)
+                                classicOutputStream?.flush()
+                            } else if (connectionType == "usb") {
+                                val conn = usbConnection
+                                val ep = usbOutEndpoint
+                                if (conn != null && ep != null) {
+                                    conn.bulkTransfer(ep, stopCmd, stopCmd.size, 1000)
+                                }
+                            }
+                            runOnUiThread { result.success(true) }
+                        } catch (e: Exception) {
+                            runOnUiThread { result.success(false) }
+                        }
+                    }.start()
+                }
+                "connect" -> {
+                    val address = call.argument<String>("address") ?: return@setMethodCallHandler result.error("INVALID_ARGUMENT", "Address required", null)
+                    val devType = call.argument<String>("type")
+
+                    // 1. Check if target is a connected USB device
+                    val manager = usbManager ?: (getSystemService(Context.USB_SERVICE) as UsbManager)
+                    val uDev = manager.deviceList.values.find { it.deviceName == address }
+                    if (devType == "usb" || uDev != null) {
+                        val targetUsb = uDev ?: manager.deviceList.values.firstOrNull()
+                        if (targetUsb != null) {
+                            usbDevice = targetUsb
+                            if (!manager.hasPermission(targetUsb)) {
+                                pendingUsbResult = result
+                                val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                    PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                                } else {
+                                    PendingIntent.FLAG_UPDATE_CURRENT
+                                }
+                                val intent = Intent(ACTION_USB_PERMISSION).apply {
+                                    setPackage(packageName)
+                                }
+                                val pi = PendingIntent.getBroadcast(this, 0, intent, flags)
+                                manager.requestPermission(targetUsb, pi)
+                            } else {
+                                finishUsbConnect(targetUsb, result)
+                            }
+                        } else {
+                            result.error("CONNECT_FAIL", "No USB plotter detected. Please plug in your OTG cable, power ON the plotter, and ensure OTG is enabled in phone settings.", null)
+                        }
+                        return@setMethodCallHandler
+                    }
+                    
+                    val adapter = BluetoothAdapter.getDefaultAdapter()
+                    if (adapter == null || !adapter.isEnabled) {
+                        result.error("BLUETOOTH_OFF", "Bluetooth is turned off on this device. Please turn on Bluetooth to connect.", null)
+                        return@setMethodCallHandler
+                    }
+
+                    try {
+                        adapter.cancelDiscovery()
                         val device = adapter.getRemoteDevice(address)
                         val name = device.name ?: "Unknown"
                         val isClassicOnly = name.contains("Portrait2", ignoreCase = true)
@@ -316,6 +989,7 @@ class MainActivity : FlutterFragmentActivity() {
                                     classicOutputStream = socket?.outputStream
                                     connectionType = "classic"
                                     lastConnectedAddress = address
+                                    lastConnectedName = name
                                     runOnUiThread {
                                         result.success(mapOf("success" to true, "type" to "classic"))
                                     }
@@ -346,7 +1020,9 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                 }
                 "disconnect" -> {
-                    if (connectionType == "classic") {
+                    if (connectionType == "usb") {
+                        disconnectUsb()
+                    } else if (connectionType == "classic") {
                         disconnectClassic()
                     } else {
                         sdk.disConnected()
@@ -355,7 +1031,21 @@ class MainActivity : FlutterFragmentActivity() {
                     result.success(true)
                 }
                 "reset" -> {
-                    if (connectionType == "classic") {
+                    if (connectionType == "usb") {
+                        Thread {
+                            try {
+                                val conn = usbConnection
+                                val ep = usbOutEndpoint
+                                if (conn != null && ep != null) {
+                                    val resetData = "IN;\u0003".toByteArray(Charsets.UTF_8)
+                                    conn.bulkTransfer(ep, resetData, resetData.size, 2000)
+                                }
+                                runOnUiThread { result.success(true) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("RESET_FAIL", e.message, null) }
+                            }
+                        }.start()
+                    } else if (connectionType == "classic") {
                         Thread {
                             try {
                                 val socket = classicSocket
@@ -405,9 +1095,25 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 "isConnected" -> {
                     val connected = when (connectionType) {
+                        "usb" -> {
+                            val manager = usbManager ?: (getSystemService(Context.USB_SERVICE) as UsbManager)
+                            val dev = usbDevice ?: manager.deviceList.values.firstOrNull()
+                            dev != null && manager.hasPermission(dev)
+                        }
                         "sdk" -> sdk.isConnected()
                         "classic" -> classicSocket?.isConnected == true
-                        else -> false
+                        else -> {
+                            // If USB device is attached and has permission, restore connection seamlessly
+                            val manager = usbManager ?: (getSystemService(Context.USB_SERVICE) as UsbManager)
+                            val dev = usbDevice ?: manager.deviceList.values.firstOrNull()
+                            if (dev != null && manager.hasPermission(dev)) {
+                                usbDevice = dev
+                                connectionType = "usb"
+                                true
+                            } else {
+                                false
+                            }
+                        }
                     }
                     result.success(connected)
                 }
@@ -416,8 +1122,8 @@ class MainActivity : FlutterFragmentActivity() {
                 }
 
                 "getPageSize" -> {
-                    if (connectionType == "classic") {
-                        // Classic plotters don't support queries — return defaults
+                    if (connectionType == "usb" || connectionType == "classic") {
+                        // Plotters on USB / Classic return standard defaults
                         result.success(mapOf("width" to 180.0, "height" to 297.0))
                     } else {
                         if (!sdk.isConnected()) return@setMethodCallHandler result.error("NOT_CONNECTED", "Not connected", null)
@@ -438,8 +1144,8 @@ class MainActivity : FlutterFragmentActivity() {
                 }
 
                 "getMachineParameters" -> {
-                    if (connectionType == "classic") {
-                        // Classic plotters don't support parameter queries
+                    if (connectionType == "usb" || connectionType == "classic") {
+                        // Return default parameters
                         result.success(mapOf("speed" to 0, "pressure" to 0, "width" to 0, "height" to 0))
                     } else {
                         if (!sdk.isConnected()) return@setMethodCallHandler result.error("NOT_CONNECTED", "Not connected", null)
@@ -460,7 +1166,7 @@ class MainActivity : FlutterFragmentActivity() {
                                             override fun onError(code: Int, msg: String?) { runOnUiThread { result.success(params) } }
                                         })
                                     }
-                                    override fun onError(code: Int, msg: String?) { runOnUiThread { result.success(params) } }
+                                    override fun onError(code: Int, msg: String?) { runOnUiThread { result.error("QUERY_ERROR", msg ?: "Error code: $code", code) } }
                                 })
                             }
                             override fun onError(code: Int, msg: String?) { runOnUiThread { result.error("QUERY_ERROR", msg ?: "Error code: $code", code) } }
@@ -482,21 +1188,201 @@ class MainActivity : FlutterFragmentActivity() {
                     })
                 }
                 "cutFile" -> {
-                    val content = call.argument<String>("content") ?: ""
+                    val content = call.argument<String>("content") ?: return@setMethodCallHandler result.error("INVALID_ARGUMENT", "Content required", null)
                     val name = call.argument<String>("name") ?: "cut"
-                     val speed = call.argument<Int>("speed") ?: 300
-                     val force = call.argument<Int>("force") ?: 300
-                     val width = call.argument<Double>("width") ?: 180.0
+                    val speed = call.argument<Int>("speed") ?: 300
+                    val force = call.argument<Int>("force") ?: 33
+                    val passes = call.argument<Int>("passes") ?: 1
+                    val plotterNameArg = call.argument<String>("plotterName")
+                    val width = call.argument<Double>("width") ?: 180.0
                     val height = call.argument<Double>("height") ?: 297.0
-                    
+
+                    val targetName = plotterNameArg ?: lastConnectedName ?: ""
+                    val isPortrait = targetName.contains("Portrait", ignoreCase = true) ||
+                                     targetName.contains("Cameo", ignoreCase = true) ||
+                                     (connectionType == "usb" && usbDevice?.vendorId == 0x0B4D) ||
+                                     (lastConnectedAddress?.let { 
+                                         try { BluetoothAdapter.getDefaultAdapter()?.getRemoteDevice(it)?.name?.contains("Portrait", ignoreCase = true) } 
+                                         catch (_: Exception) { false } 
+                                     } == true)
+
+                    val gpglForce = force
+
+                    // Silhouette Portrait 2 Speed scale: 1 to 10 (cm/s, where 10 = 100 mm/s)
+                    // Slower speed (1..3 = 10..30 mm/s) ensures blade sinks fully and cuts deeply without skipping
+                    val gpglSpeed = when {
+                        speed in 1..10 -> speed
+                        speed in 11..100 -> (speed / 10).coerceIn(1, 10)
+                        else -> (speed / 100).coerceIn(1, 10)
+                    }
+
                     val startString = call.argument<String>("startString") ?: "IN;PA;"
                     val endString = call.argument<String>("endString") ?: "\u0003"
                     val xySeparator = call.argument<String>("xySeparator") ?: ","
                     val splitCommands = call.argument<Boolean>("splitCommands") ?: false
                     val mirrorX = call.argument<Boolean>("mirrorX") ?: false
                     val mirrorY = call.argument<Boolean>("mirrorY") ?: false
-                    
-                    if (connectionType == "classic") {
+
+                    if (connectionType == "usb") {
+                        // === USB OTG: Send raw PLT data via bulk OUT endpoint ===
+                        Thread {
+                            try {
+                                val manager = usbManager ?: (getSystemService(Context.USB_SERVICE) as UsbManager)
+                                val dev = usbDevice ?: manager.deviceList.values.firstOrNull()
+                                    ?: throw Exception("No USB plotter detected. Please connect OTG cable and power ON the plotter.")
+
+                                var conn = usbConnection
+                                var ep = usbOutEndpoint
+                                var intf = usbInterface
+
+                                // Auto-reconnect / open on demand if closed, exactly like Xamarin USBService.SendCut
+                                if (conn == null || ep == null || intf == null) {
+                                    conn = manager.openDevice(dev) ?: throw Exception("Failed to open USB plotter connection.")
+                                    for (i in 0 until dev.interfaceCount) {
+                                        val testIntf = dev.getInterface(i)
+                                        for (j in 0 until testIntf.endpointCount) {
+                                            val testEp = testIntf.getEndpoint(j)
+                                            if (testEp.direction == UsbConstants.USB_DIR_OUT) {
+                                                if (conn.claimInterface(testIntf, true)) {
+                                                    intf = testIntf
+                                                    ep = testEp
+                                                    break
+                                                }
+                                            }
+                                        }
+                                        if (ep != null) break
+                                    }
+                                    if (ep == null && dev.interfaceCount > 0) {
+                                        val intf0 = dev.getInterface(0)
+                                        conn.claimInterface(intf0, true)
+                                        intf = intf0
+                                        ep = if (intf0.endpointCount > 0) intf0.getEndpoint(0) else null
+                                    }
+                                    usbConnection = conn
+                                    usbInterface = intf
+                                    usbOutEndpoint = ep
+                                }
+
+                                if (conn == null || ep == null) {
+                                    throw Exception("USB OUT endpoint not available.")
+                                }
+
+                                // Match legacy Xamarin ModelCutPage: Regex.Replace(cutString, @"(?<=SP1;).*?(?=M)", "")
+                                var rawContent = content
+                                val sp1MPattern = Regex("(?<=SP1;).*?(?=M)", RegexOption.IGNORE_CASE)
+                                rawContent = sp1MPattern.replace(rawContent, "")
+
+                                val initPrefixRegex = Regex("^(?:IN;|PA;|SP\\d+;)+", RegexOption.IGNORE_CASE)
+                                val cleanContent = initPrefixRegex.replace(rawContent.trim(), "")
+
+                                val initialRegex = Regex("([A-Za-z]+)(-?\\d+),(-?\\d+)")
+                                var minX = Float.MAX_VALUE; var maxX = Float.MIN_VALUE
+                                var minY = Float.MAX_VALUE; var maxY = Float.MIN_VALUE
+
+                                initialRegex.findAll(cleanContent).forEach { match ->
+                                    val x = match.groupValues[2].toFloat()
+                                    val y = match.groupValues[3].toFloat()
+                                    if (x < minX) minX = x; if (x > maxX) maxX = x
+                                    if (y < minY) minY = y; if (y > maxY) maxY = y
+                                }
+
+                                val designCenterX = (minX + maxX) / 2
+                                val targetCenterX = (width * 40 / 2).toFloat()
+                                val offsetX = targetCenterX - designCenterX
+                                val marginY = 400.0f
+
+                                val coordRegex = Regex("([A-Za-z]+)(-?\\d+)(?:,(-?\\d+))?")
+                                val finalContent = if (isPortrait) {
+                                    val gpglBody = cleanContent.replace(coordRegex) { match ->
+                                        val cmd = match.groupValues[1]
+                                        val xStr = match.groupValues[2]
+                                        val yStr = match.groupValues[3]
+                                        if (yStr.isNotEmpty()) {
+                                            val rawX = xStr.toFloat()
+                                            val rawY = yStr.toFloat()
+                                            val x = (rawX * 0.5f + 411.5f).toInt()
+                                            val y = (rawY * 0.5f + 350.0f).toInt()
+                                            val gpglCmd = when (cmd) {
+                                                "PU" -> "M"
+                                                "PD" -> "D"
+                                                else -> cmd
+                                            }
+                                            "${gpglCmd}${x} ${y}"
+                                        } else {
+                                            match.value
+                                        }
+                                    }
+                                    val start = "IN; \\30,30 FX$gpglForce,1 !$gpglSpeed,1 LT;SP1;"
+                                    val end = "M0 0;\u0003"
+                                    val cutBody = if (passes > 1) {
+                                        val sb = java.lang.StringBuilder()
+                                        for (p in 1..passes) {
+                                            sb.append(gpglBody.trim())
+                                        }
+                                        sb.toString()
+                                    } else {
+                                        gpglBody.trim()
+                                    }
+                                    android.util.Log.i("FlashgardPlotterCmd", "USB OTG Portrait Cut: force=$gpglForce, speed=$gpglSpeed/10, passes=$passes")
+                                    start + cutBody + end
+                                } else {
+                                    val scaledContent = cleanContent.replace(coordRegex) { match ->
+                                        val cmd = match.groupValues[1]
+                                        val xStr = match.groupValues[2]
+                                        val yStr = match.groupValues[3]
+
+                                        if (yStr.isNotEmpty()) {
+                                            var rawX = xStr.toFloat()
+                                            var rawY = yStr.toFloat()
+                                            if (mirrorX) rawX = (minX + maxX) - rawX
+                                            if (mirrorY) rawY = (minY + maxY) - rawY
+                                            val x = ((rawX + offsetX) * 1.0f).toInt()
+                                            val y = ((rawY - minY + marginY) * 1.0f).toInt()
+                                            if (splitCommands && (cmd == "PU" || cmd == "PD")) {
+                                                "${cmd};PA${x}${xySeparator}${y}"
+                                            } else {
+                                                "${cmd}${x}${xySeparator}${y}"
+                                            }
+                                        } else {
+                                            match.value
+                                        }
+                                    }
+                                    val cutBody = if (passes > 1) {
+                                        val sb = java.lang.StringBuilder()
+                                        for (p in 1..passes) {
+                                            sb.append(scaledContent.trim())
+                                        }
+                                        sb.toString()
+                                    } else {
+                                        scaledContent.trim()
+                                    }
+                                    startString + cutBody + endString
+                                }
+                                val data = finalContent.toByteArray(Charsets.UTF_8)
+                                val totalBytes = data.size
+                                var offset = 0
+                                val chunkSize = 2048
+
+                                while (offset < totalBytes) {
+                                    val len = minOf(chunkSize, totalBytes - offset)
+                                    val chunk = data.copyOfRange(offset, offset + len)
+                                    // Generous timeout (60s) allowing plotter buffer to execute cut motion smoothly
+                                    val transferred = conn.bulkTransfer(ep, chunk, len, 60000)
+                                    if (transferred < 0) {
+                                        throw IOException("USB bulk transfer failed with status $transferred")
+                                    }
+                                    offset += len
+                                    val progress = (offset * 100 / totalBytes)
+                                    runOnUiThread { progressSink?.success(progress) }
+                                    Thread.sleep(10)
+                                }
+
+                                runOnUiThread { result.success(true) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("CUT_FAIL", e.message, null) }
+                            }
+                        }.start()
+                    } else if (connectionType == "classic") {
                         // === CLASSIC SPP: Send raw PLT data with Portrait2 compatibility ===
                         Thread {
                             try {
@@ -529,11 +1415,6 @@ class MainActivity : FlutterFragmentActivity() {
   
                                  // 3. APPLY SCALING, CENTERING OFFSET AND MIRRORING
                                  val coordRegex = Regex("([A-Za-z]+)(-?\\d+)(?:,(-?\\d+))?")
-                                 val adapter = BluetoothAdapter.getDefaultAdapter()
-                                 val connDevice = lastConnectedAddress?.let { adapter?.getRemoteDevice(it) }
-                                 val name = connDevice?.name ?: "Unknown"
-                                 val isPortrait = name.contains("Portrait", ignoreCase = true)
-                                 
                                  val finalContent = if (isPortrait) {
                                       // GPGL Translation Mode
                                       val gpglBody = cleanContent.replace(coordRegex) { match ->
@@ -558,11 +1439,19 @@ class MainActivity : FlutterFragmentActivity() {
                                               match.value
                                           }
                                       }
-                                      val gpglSpeed = (speed / 10).coerceIn(1, 10)
-                                      val gpglForce = (force / 10).coerceIn(1, 33)
                                       val start = "IN; \\30,30 FX$gpglForce,1 !$gpglSpeed,1 LT;SP1;"
-                                      val end = "M0 0;"
-                                      start + gpglBody.trim() + end
+                                      val end = "M0 0;\u0003"
+                                      val cutBody = if (passes > 1) {
+                                          val sb = java.lang.StringBuilder()
+                                          for (p in 1..passes) {
+                                              sb.append(gpglBody.trim())
+                                          }
+                                          sb.toString()
+                                      } else {
+                                          gpglBody.trim()
+                                      }
+                                      android.util.Log.i("FlashgardPlotterCmd", "Classic Bluetooth Portrait Cut: force=$gpglForce, speed=$gpglSpeed/10, passes=$passes")
+                                      start + cutBody + end
                                  } else {
                                      // Standard HPGL Mode
                                      val scaledContent = cleanContent.replace(coordRegex) { match ->
@@ -594,7 +1483,16 @@ class MainActivity : FlutterFragmentActivity() {
                                              match.value
                                          }
                                      }
-                                     startString + scaledContent.trim() + endString
+                                     val cutBody = if (passes > 1) {
+                                         val sb = java.lang.StringBuilder()
+                                         for (p in 1..passes) {
+                                             sb.append(scaledContent.trim())
+                                         }
+                                         sb.toString()
+                                     } else {
+                                         scaledContent.trim()
+                                     }
+                                     startString + cutBody + endString
                                  }
                                  
                                  println("DEBUG CUT: startString='$startString' endString='$endString'")

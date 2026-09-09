@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import {
   Bell, ShieldCheck, Database, Globe,
-  Plus, Edit2, Trash2, Loader2, Users, Search, Key, Check, List, X, Shield, RotateCcw, Building, ScrollText,
-  ChevronLeft, ChevronRight, ChevronDown, Cpu, CreditCard
+  Plus, Edit2, Trash2, Loader2, Users, Search, Key, Check, List, X, Shield, RotateCcw, Building,
+  ChevronLeft, ChevronRight, ChevronDown, Cpu, CreditCard, Calendar, Clock, Play, CheckCircle2, AlertCircle, RefreshCw
 } from 'lucide-react';
-import { rolesApi, usersApi, permissionsApi, auditLogsApi, orgsApi, organizationTypesApi, productTypesApi, materialCategoriesApi, filmCategoriesApi, materialsApi, plottersApi, plotterDevicesApi, paymentGatewayApi } from '../lib/api';
+import { rolesApi, usersApi, permissionsApi, auditLogsApi, orgsApi, organizationTypesApi, productTypesApi, materialCategoriesApi, filmCategoriesApi, materialsApi, plottersApi, plotterDevicesApi, paymentGatewayApi, migrationScheduleApi } from '../lib/api';
 import { HasPermission, usePermissions } from '../components/HasPermission';
 import { useAuth } from '../contexts/AuthContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UserPermissionsModal } from '../components/UserPermissionsModal';
 import { ResetPasswordModal } from '../components/ResetPasswordModal';
+import { formatISTDateTime } from '../lib/dateUtils';
 import { useTranslation } from '../contexts/LanguageContext';
 
 function buildOrgRows(orgs: any[], rootOrgId?: number) {
@@ -72,6 +73,61 @@ function buildOrgRows(orgs: any[], rootOrgId?: number) {
   return rows;
 }
 
+
+const PaginationBar = ({ meta, page, setPage, pageSize, setPageSize }: { meta: any; page: number; setPage: (fn: any) => void; pageSize?: number; setPageSize?: (sz: number) => void }) => {
+  if (!meta || !meta.totalPages || meta.totalPages <= 0) return null;
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs gap-3 shadow-sm my-3">
+      <div className="flex items-center gap-2 text-slate-600 font-medium">
+        <span>Showing Page <strong className="text-slate-900 font-bold">{meta.page || page}</strong> of <strong className="text-slate-900 font-bold">{meta.totalPages}</strong></span>
+        <span className="text-slate-300">|</span>
+        <span className="text-slate-500 font-mono"><strong className="text-slate-800">{meta.total}</strong> total records</span>
+      </div>
+      <div className="flex items-center gap-2">
+        {setPageSize && pageSize && (
+          <div className="flex items-center gap-1.5 mr-2">
+            <span className="text-slate-500 font-medium">Rows:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+              className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 cursor-pointer shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            >
+              {[10, 20, 50, 100].map(sz => (
+                <option key={sz} value={sz}>{sz}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        <button
+          onClick={() => setPage((p: any) => typeof p === 'function' ? p(page) : Math.max(1, page - 1))}
+          disabled={page <= 1}
+          className="px-3 py-1.5 font-semibold text-xs border border-slate-200 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition bg-white text-slate-700 shadow-sm flex items-center gap-1 cursor-pointer"
+        >
+          ← Previous
+        </button>
+        <div className="flex items-center gap-1 px-1">
+          <span className="text-slate-500 font-medium">Page</span>
+          <select
+            value={page}
+            onChange={(e) => setPage(Number(e.target.value))}
+            className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 cursor-pointer shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          >
+            {Array.from({ length: meta.totalPages }, (_, i) => i + 1).map(pNum => (
+              <option key={pNum} value={pNum}>Page {pNum}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={() => setPage((p: any) => typeof p === 'function' ? p(page) : Math.min(meta.totalPages, page + 1))}
+          disabled={page >= meta.totalPages}
+          className="px-3 py-1.5 font-semibold text-xs border border-slate-200 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition bg-white text-slate-700 shadow-sm flex items-center gap-1 cursor-pointer"
+        >
+          Next →
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // ─── General Settings Tab ───────────────────────────
 const Toggle = ({ checked, onChange, label, desc }: any) => (
@@ -389,13 +445,31 @@ const RoleModal = ({ role, onClose, onSave }: any) => {
       id: 'catalog_module',
       label: 'Catalog & Hardware',
       icon: '📦',
-      groups: ['catalog', 'production', 'plotters']
+      groups: ['catalog', 'plotters']
     },
     {
       id: 'inventory_module',
       label: 'Inventory & Warehouse',
       icon: '🏬',
-      groups: ['inventory', 'inward']
+      groups: [
+        'inventory',
+        'inventory_inward',
+        'inventory_batches',
+        'inventory_workorders',
+        'inventory_packaged',
+        'inventory_dispatch',
+        'inventory_filmtypes',
+        'inward',
+        'dispatch',
+        'production',
+        'qr'
+      ]
+    },
+    {
+      id: 'nav_module',
+      label: 'Sidebar Navigation & Pages',
+      icon: '🧭',
+      groups: ['nav']
     },
     {
       id: 'system_module',
@@ -412,9 +486,18 @@ const RoleModal = ({ role, onClose, onSave }: any) => {
     users: { label: 'Users & Staff', icon: '👥' },
     roles: { label: 'Access Roles & Permissions', icon: '🛡️' },
     catalog: { label: 'Catalog & Cut Patterns', icon: '📦' },
-    inventory: { label: 'Film Inventory & Stock', icon: '🏬' },
-    inward: { label: 'Inward Receipts', icon: '📥' },
+    nav: { label: 'Sidebar Navigation Controls', icon: '🧭' },
+    inventory: { label: 'Inventory (Full Access)', icon: '🏬' },
+    inventory_inward: { label: 'Tab: Inward Receipts', icon: '📥' },
+    inventory_batches: { label: 'Tab: Stock Batches', icon: '📦' },
+    inventory_workorders: { label: 'Tab: Work Orders', icon: '⚙️' },
+    inventory_packaged: { label: 'Tab: Packaged Stock', icon: '🎁' },
+    inventory_dispatch: { label: 'Tab: Dispatch Orders', icon: '🚚' },
+    inventory_filmtypes: { label: 'Tab: Flash Products & Categories', icon: '🏷️' },
+    inward: { label: 'Inward Receipts & Stock Entry', icon: '📥' },
+    dispatch: { label: 'Dispatch Orders & Logistics', icon: '🚚' },
     production: { label: 'Production & Work Orders', icon: '⚙️' },
+    qr: { label: 'QR Code Generation & Auditing', icon: '🔳' },
     audit_logs: { label: 'Audit Logs', icon: '📋' },
     licenses: { label: 'Licenses & Transfers', icon: '🔑' },
     plotters: { label: 'Plotters & Hardware', icon: '🖥️' },
@@ -820,10 +903,16 @@ const RolesTabSettings = () => {
 
   useEffect(() => { load(); }, []);
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
   const filtered = roles.filter(r =>
     r.name.toLowerCase().includes(search.toLowerCase()) ||
     (r.description || '').toLowerCase().includes(search.toLowerCase())
   );
+
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.ceil(filtered.length / pageSize);
 
   const handleDelete = async (id: string, name: string, isSystem: boolean) => {
     if (isSystem) { 
@@ -888,8 +977,16 @@ const RolesTabSettings = () => {
 
       <div className="relative max-w-xs">
         <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-        <input className="input-field pl-9 py-1.5 text-sm" placeholder="Search roles..." value={search} onChange={e => setSearch(e.target.value)} />
+        <input className="input-field pl-9 py-1.5 text-sm" placeholder="Search roles..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
       </div>
+
+      <PaginationBar
+        meta={{ totalPages, total: filtered.length, page }}
+        page={page}
+        setPage={setPage}
+        pageSize={pageSize}
+        setPageSize={setPageSize}
+      />
 
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-[var(--color-accent)] animate-spin" /></div>
@@ -902,29 +999,31 @@ const RolesTabSettings = () => {
             </div>
           ) : (
             <table className="w-full text-sm table-fixed">
-              <thead className="bg-slate-50 border-b border-slate-100">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-[40%]">Role Name</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-[40%]">Description</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-[8%]">#</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-[36%]">Role Name</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-[36%]">Description</th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-[20%]">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
-                {filtered.map(role => (
-                  <tr key={role.id} className={`hover:bg-slate-50/70 group transition-colors ${role.isDeleted ? 'bg-red-50/50' : ''}`}>
-                    <td className="px-4 py-3.5 min-w-0">
+              <tbody className="divide-y divide-slate-100">
+                {paginated.map((role, idx) => (
+                  <tr key={role.id} className={`hover:bg-slate-50 group transition-colors ${role.isDeleted ? 'bg-red-50/50' : ''}`}>
+                    <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">{(page - 1) * pageSize + idx + 1}</td>
+                    <td className="px-4 py-3 min-w-0">
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${role.isDeleted ? 'bg-red-100 text-red-500' : 'bg-[var(--color-gold-muted)] text-[var(--color-accent)]'}`}>
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${role.isDeleted ? 'bg-red-100 text-red-500' : 'bg-indigo-50 text-indigo-600 border border-indigo-100'}`}>
                           <ShieldCheck className="w-3.5 h-3.5" />
                         </div>
                         <span className={`font-semibold text-xs truncate ${role.isDeleted ? 'line-through text-slate-400' : 'text-slate-800'}`}>{role.name}</span>
-                        {role.isSystemRole && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700 leading-none shrink-0">SYSTEM</span>}
-                        {role.isRestricted && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-100 text-red-700 leading-none shrink-0">RESTRICTED</span>}
-                        {role.isDeleted && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-100 text-red-600 leading-none uppercase tracking-tighter shrink-0">DELETED</span>}
+                        {role.isSystemRole && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-100 uppercase tracking-wider shrink-0">SYSTEM</span>}
+                        {role.isRestricted && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-100 uppercase tracking-wider shrink-0">RESTRICTED</span>}
+                        {role.isDeleted && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-600 border border-red-100 uppercase tracking-wider shrink-0">DELETED</span>}
                       </div>
                     </td>
-                    <td className={`px-4 py-3.5 text-xs min-w-0 truncate ${role.isDeleted ? 'text-slate-400 italic' : 'text-slate-500'}`}>{role.description || '—'}</td>
-                    <td className="px-4 py-3.5 text-right">
+                    <td className={`px-4 py-3 text-xs min-w-0 truncate ${role.isDeleted ? 'text-slate-400 italic' : 'text-slate-500'}`}>{role.description || '—'}</td>
+                    <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         {!role.isDeleted ? (
                           <>
@@ -963,6 +1062,14 @@ const RolesTabSettings = () => {
           )}
         </div>
       )}
+
+      <PaginationBar
+        meta={{ totalPages, total: filtered.length, page }}
+        page={page}
+        setPage={setPage}
+        pageSize={pageSize}
+        setPageSize={setPageSize}
+      />
 
       <ConfirmDialog 
         isOpen={confirm.isOpen}
@@ -1421,6 +1528,12 @@ const UsersTab = () => {
         />
       </div>
 
+      <PaginationBar
+        meta={{ totalPages: Math.ceil(totalUsers / itemsPerPage), total: totalUsers, page: currentPage }}
+        page={currentPage}
+        setPage={setCurrentPage}
+      />
+
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-[var(--color-accent)] animate-spin" /></div>
       ) : (
@@ -1513,30 +1626,11 @@ const UsersTab = () => {
                 </div>
               ))}
 
-              {/* Pagination Controls */}
-              {totalUsers > itemsPerPage && (
-                <div className="px-6 py-4 flex items-center justify-between bg-white rounded-xl border border-slate-100 shadow-sm mt-4">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">
-                    Page {currentPage} of {Math.ceil(totalUsers / itemsPerPage)}
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all text-slate-600"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setCurrentPage(p => Math.min(Math.ceil(totalUsers / itemsPerPage), p + 1))}
-                      disabled={currentPage * itemsPerPage >= totalUsers}
-                      className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all text-slate-600"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
+              <PaginationBar
+                meta={{ totalPages: Math.ceil(totalUsers / itemsPerPage), total: totalUsers, page: currentPage }}
+                page={currentPage}
+                setPage={setCurrentPage}
+              />
             </>
           )}
         </div>
@@ -1732,22 +1826,26 @@ const RolePermissionsTab = () => {
             </div>
           ) : (
             <table className="w-full text-sm table-fixed">
-              <thead className="bg-slate-50 border-b border-slate-100">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-[40%]">Action</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-[40%]">Description</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-[8%]">#</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-[36%]">Action</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-[36%]">Description</th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-[20%]">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
-                {filtered.map(perm => (
-                  <tr key={perm.id} className={`hover:bg-slate-50/70 group transition-colors ${perm.isDeleted ? 'bg-red-50/50' : ''}`}>
-                    <td className="px-4 py-3.5 font-mono text-xs font-semibold min-w-0 truncate">
-                      <span className={perm.isDeleted ? 'line-through text-slate-400' : 'text-slate-800'}>{perm.action}</span>
-                      {perm.isDeleted && <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-100 text-red-600 leading-none uppercase tracking-tighter shrink-0">DELETED</span>}
+              <tbody className="divide-y divide-slate-100">
+                {filtered.map((perm, idx) => (
+                  <tr key={perm.id} className={`hover:bg-slate-50 group transition-colors ${perm.isDeleted ? 'bg-red-50/50' : ''}`}>
+                    <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">{idx + 1}</td>
+                    <td className="px-4 py-3 min-w-0 truncate">
+                      <span className={`font-mono text-xs font-bold ${perm.isDeleted ? 'line-through text-slate-400 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-md inline-block shadow-2xs' : 'text-slate-800 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-md inline-block shadow-2xs'}`}>
+                        {perm.action}
+                      </span>
+                      {perm.isDeleted && <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-600 border border-red-100 uppercase tracking-wider shrink-0">DELETED</span>}
                     </td>
-                    <td className={`px-4 py-3.5 text-xs min-w-0 truncate ${perm.isDeleted ? 'text-slate-400 italic' : 'text-slate-500'}`}>{perm.description || '—'}</td>
-                    <td className="px-4 py-3.5 text-right">
+                    <td className={`px-4 py-3 text-xs min-w-0 truncate ${perm.isDeleted ? 'text-slate-400 italic' : 'text-slate-500 font-medium'}`}>{perm.description || '—'}</td>
+                    <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         {!perm.isDeleted ? (
                           <>
@@ -1837,6 +1935,8 @@ const OrganizationTypesTab = () => {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<any>(null);
   const { user } = useAuth();
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   
   const [confirm, setConfirm] = useState<any>({ isOpen: false, title: '', message: '', onConfirm: async () => {}, isLoading: false });
   const closeConfirm = () => setConfirm((p: any) => ({ ...p, isOpen: false }));
@@ -1847,6 +1947,9 @@ const OrganizationTypesTab = () => {
   };
 
   useEffect(() => { load(); }, []);
+
+  const paginatedItems = items.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.ceil(items.length / pageSize);
 
   const del = (id: string) => {
     setConfirm({
@@ -1885,36 +1988,70 @@ const OrganizationTypesTab = () => {
         </button>
       </div>
 
+      <PaginationBar
+        meta={{ totalPages, total: items.length, page }}
+        page={page}
+        setPage={setPage}
+        pageSize={pageSize}
+        setPageSize={setPageSize}
+      />
+
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-[var(--color-accent)] animate-spin" /></div>
       ) : (
-        <div className="space-y-3">
-          {items.map(t => (
-            <div key={t.id} className={`flex items-center justify-between p-4 rounded-xl border group transition-colors ${t.isDeleted ? 'bg-red-50 border-red-100 opacity-70' : 'bg-slate-50 border-slate-100 hover:border-slate-200'}`}>
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className={`text-sm font-semibold uppercase tracking-wide font-mono ${t.isDeleted ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.name}</p>
-                  {t.isDeleted && <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-600 rounded-full">Deleted</span>}
-                </div>
-                <p className="text-xs text-slate-500">{t.description || 'No description'}</p>
-              </div>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                {!t.isDeleted ? (
-                  <>
-                    <button onClick={() => setModal(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
-                    <button onClick={() => del(t.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                  </>
-                ) : user?.isSuperAdmin && (
-                  <>
-                    <button onClick={() => restore(t.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"><RotateCcw className="w-4 h-4" /></button>
-                    <button onClick={() => purge(t.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-700 hover:bg-red-100 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Type Name</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Description</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {paginatedItems.map((t, idx) => (
+                <tr key={t.id} className={`group hover:bg-slate-50 transition-colors ${t.isDeleted ? 'bg-red-50/50' : ''}`}>
+                  <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">{(page - 1) * pageSize + idx + 1}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className={`font-mono text-xs font-bold ${t.isDeleted ? 'line-through text-slate-400 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-md inline-block shadow-2xs' : 'text-slate-800 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-md inline-block shadow-2xs'}`}>
+                        {t.name}
+                      </span>
+                      {t.isDeleted && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-600 border border-red-100 uppercase tracking-wider">DELETED</span>}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-500 font-medium">{t.description || '—'}</td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      {!t.isDeleted ? (
+                        <>
+                          <button onClick={() => setModal(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => del(t.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                        </>
+                      ) : user?.isSuperAdmin && (
+                        <>
+                          <button onClick={() => restore(t.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"><RotateCcw className="w-4 h-4" /></button>
+                          <button onClick={() => purge(t.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-700 hover:bg-red-100 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
+
+      <PaginationBar
+        meta={{ totalPages, total: items.length, page }}
+        page={page}
+        setPage={setPage}
+        pageSize={pageSize}
+        setPageSize={setPageSize}
+      />
+
       <ConfirmDialog isOpen={confirm.isOpen} title={confirm.title} message={confirm.message} onConfirm={confirm.onConfirm} onClose={closeConfirm} isLoading={confirm.isLoading} />
     </div>
   );
@@ -2150,8 +2287,18 @@ const MaterialModal = ({ item, productTypes, materialCategories, filmCategories,
 
   // Filter categories by selected product type
   const filteredCategories = materialCategories.filter((mc: any) => mc.productTypeId === selectedProductTypeId);
-  // Film category is not dependent on category
-  const filteredFilmCategories = filmCategories;
+  // Film category hierarchical options
+  const buildFilmCatOptions = (parentId: string | null = null, level = 0): { id: string; name: string; level: number }[] => {
+    const nodes = filmCategories.filter((fc: any) => (parentId ? fc.parentId === parentId : (!fc.parentId || !filmCategories.some((p: any) => p.id === fc.parentId))));
+    let result: { id: string; name: string; level: number }[] = [];
+    nodes.forEach((node: any) => {
+      result.push({ id: node.id, name: node.name, level });
+      const children = buildFilmCatOptions(node.id, level + 1);
+      result = result.concat(children);
+    });
+    return result;
+  };
+  const hierarchicalFilmCategories = buildFilmCatOptions();
 
   // Cascading selections
   useEffect(() => {
@@ -2245,8 +2392,10 @@ const MaterialModal = ({ item, productTypes, materialCategories, filmCategories,
             <label className="text-sm font-medium text-slate-700 block mb-1">Film Category <span className="text-red-500">*</span></label>
             <select className="input-field" value={selectedFilmCategoryId} onChange={e => setSelectedFilmCategoryId(e.target.value)} required>
               <option value="" disabled>Select Film Category</option>
-              {filteredFilmCategories.map((fc: any) => (
-                <option key={fc.id} value={fc.id}>{fc.name}</option>
+              {hierarchicalFilmCategories.map((fc: any) => (
+                <option key={fc.id} value={fc.id}>
+                  {'\u00A0'.repeat(fc.level * 4)}{fc.level > 0 ? '└─ ' : ''}{fc.name}
+                </option>
               ))}
             </select>
           </div>
@@ -2296,7 +2445,7 @@ const MaterialModal = ({ item, productTypes, materialCategories, filmCategories,
 
 // MaterialCutConfigModal removed
 
-const MaterialsTab = () => {
+export const MaterialsTab = () => {
   const [subTab, setSubTab] = useState('product-types');
   const [search, setSearch] = useState('');
   const [includeDeleted, setIncludeDeleted] = useState(false);
@@ -2539,28 +2688,33 @@ const MaterialsTab = () => {
           <table className="w-full text-sm">
             {subTab === 'product-types' && (
               <>
-                <thead className="bg-slate-50 border-b border-slate-100">
+                <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    {['Name', 'Slug', 'Legacy ID', 'Status', 'Actions'].map(h => (
-                      <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                    {['#', 'Name', 'Slug', 'Legacy ID', 'Status', 'Actions'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-slate-100">
                   {productTypes.length === 0 ? (
-                    <tr><td colSpan={5} className="text-center py-8 text-slate-400">No product types found</td></tr>
-                  ) : productTypes.map(t => (
-                    <tr key={t.id} className={`hover:bg-slate-50/70 group transition-colors ${t.isDeleted ? 'bg-red-50/50' : ''}`}>
-                      <td className="px-5 py-4 font-semibold text-slate-800">{t.name}</td>
-                      <td className="px-5 py-4 text-slate-500 font-mono text-xs">{t.slug}</td>
-                      <td className="px-5 py-4 text-slate-500 font-mono text-xs">{t.legacyId}</td>
-                      <td className="px-5 py-4">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <tr><td colSpan={6} className="text-center py-8 text-slate-400">No product types found</td></tr>
+                  ) : productTypes.map((t, idx) => (
+                    <tr key={t.id} className={`group hover:bg-slate-50 transition-colors ${t.isDeleted ? 'bg-red-50/50' : ''}`}>
+                      <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">{idx + 1}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-800 text-xs">{t.name}</td>
+                      <td className="px-4 py-3 text-xs">
+                        <span className="font-mono text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md inline-block shadow-2xs">
+                          {t.slug}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs font-mono text-slate-500">{t.legacyId || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${t.isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-50 text-slate-600 border border-slate-200'}`}>
                           {t.isActive ? 'Active' : 'Inactive'}
                         </span>
-                        {t.isDeleted && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600 uppercase">DELETED</span>}
+                        {t.isDeleted && <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-600 border border-red-100 uppercase tracking-wider">DELETED</span>}
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           {!t.isDeleted ? (
                             <>
@@ -2583,31 +2737,32 @@ const MaterialsTab = () => {
 
             {subTab === 'material-categories' && (
               <>
-                <thead className="bg-slate-50 border-b border-slate-100">
+                <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    {['Name', 'Product Type', 'Description', 'Legacy ID', 'Status', 'Actions'].map(h => (
-                      <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                    {['#', 'Name', 'Product Type', 'Description', 'Legacy ID', 'Status', 'Actions'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-slate-100">
                   {materialCategories.length === 0 ? (
-                    <tr><td colSpan={6} className="text-center py-8 text-slate-400">No categories found</td></tr>
-                  ) : materialCategories.map(t => (
-                    <tr key={t.id} className={`hover:bg-slate-50/70 group transition-colors ${t.isDeleted ? 'bg-red-50/50' : ''}`}>
-                      <td className="px-5 py-4 font-semibold text-slate-800">{t.name}</td>
-                      <td className="px-5 py-4 text-slate-600">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-medium">{t.productType?.name || '—'}</span>
+                    <tr><td colSpan={7} className="text-center py-8 text-slate-400">No categories found</td></tr>
+                  ) : materialCategories.map((t, idx) => (
+                    <tr key={t.id} className={`group hover:bg-slate-50 transition-colors ${t.isDeleted ? 'bg-red-50/50' : ''}`}>
+                      <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">{idx + 1}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-800 text-xs">{t.name}</td>
+                      <td className="px-4 py-3 text-slate-600 text-xs">
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-semibold">{t.productType?.name || '—'}</span>
                       </td>
-                      <td className="px-5 py-4 text-slate-500 text-xs max-w-xs truncate">{t.description || '—'}</td>
-                      <td className="px-5 py-4 text-slate-500 font-mono text-xs">{t.legacyId}</td>
-                      <td className="px-5 py-4">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                      <td className="px-4 py-3 text-slate-500 text-xs max-w-xs truncate">{t.description || '—'}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-slate-500">{t.legacyId || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${t.isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-50 text-slate-600 border border-slate-200'}`}>
                           {t.isActive ? 'Active' : 'Inactive'}
                         </span>
-                        {t.isDeleted && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600 uppercase">DELETED</span>}
+                        {t.isDeleted && <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-600 border border-red-100 uppercase tracking-wider">DELETED</span>}
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           {!t.isDeleted ? (
                             <>
@@ -2630,29 +2785,30 @@ const MaterialsTab = () => {
 
             {subTab === 'film-categories' && (
               <>
-                <thead className="bg-slate-50 border-b border-slate-100">
+                <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    {['Name', 'Material Category', 'Legacy ID', 'Status', 'Actions'].map(h => (
-                      <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                    {['#', 'Name', 'Material Category', 'Legacy ID', 'Status', 'Actions'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-slate-100">
                   {filmCategories.length === 0 ? (
-                    <tr><td colSpan={5} className="text-center py-8 text-slate-400">No film categories found</td></tr>
-                  ) : filmCategories.map(t => (
-                    <tr key={t.id} className="hover:bg-slate-50/70 group transition-colors">
-                      <td className="px-5 py-4 font-semibold text-slate-800">{t.name}</td>
-                      <td className="px-5 py-4 text-slate-600">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-medium">{t.materialCategory?.name || '—'}</span>
+                    <tr><td colSpan={6} className="text-center py-8 text-slate-400">No film categories found</td></tr>
+                  ) : filmCategories.map((t, idx) => (
+                    <tr key={t.id} className="group hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">{idx + 1}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-800 text-xs">{t.name}</td>
+                      <td className="px-4 py-3 text-slate-600 text-xs">
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-semibold">{t.materialCategory?.name || '—'}</span>
                       </td>
-                      <td className="px-5 py-4 text-slate-500 font-mono text-xs">{t.legacyId}</td>
-                      <td className="px-5 py-4">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                      <td className="px-4 py-3 text-xs font-mono text-slate-500">{t.legacyId || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${t.isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-50 text-slate-600 border border-slate-200'}`}>
                           {t.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => setModal(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><Edit2 className="w-4 h-4" /></button>
                           <button onClick={() => deleteFilmCategory(t)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 className="w-4 h-4" /></button>
@@ -2669,23 +2825,24 @@ const MaterialsTab = () => {
 
             {subTab === 'materials' && (
               <>
-                <thead className="bg-slate-50 border-b border-slate-100">
+                <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    {['Name', 'Film Category', 'Thickness', 'Layers', 'Force/Speed', 'Status', 'Actions'].map(h => (
-                      <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                    {['#', 'Name', 'Film Category', 'Thickness', 'Layers', 'Force/Speed', 'Status', 'Actions'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-slate-100">
                   {materials.length === 0 ? (
-                    <tr><td colSpan={7} className="text-center py-8 text-slate-400">No materials found</td></tr>
-                  ) : materials.map(t => (
-                    <tr key={t.id} className={`hover:bg-slate-50/70 group transition-colors ${t.isDeleted ? 'bg-red-50/50' : ''}`}>
-                      <td className="px-5 py-4">
-                        <p className={`font-semibold ${t.isDeleted ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.name}</p>
-                        <p className="text-[10px] text-slate-400 font-mono">Legacy ID: {t.legacyId}</p>
+                    <tr><td colSpan={8} className="text-center py-8 text-slate-400">No materials found</td></tr>
+                  ) : materials.map((t, idx) => (
+                    <tr key={t.id} className={`group hover:bg-slate-50 transition-colors ${t.isDeleted ? 'bg-red-50/50' : ''}`}>
+                      <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">{idx + 1}</td>
+                      <td className="px-4 py-3">
+                        <p className={`font-semibold text-xs ${t.isDeleted ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.name}</p>
+                        {t.legacyId && <p className="text-[10px] text-slate-400 font-mono">Legacy ID: {t.legacyId}</p>}
                       </td>
-                      <td className="px-5 py-4 text-slate-600">
+                      <td className="px-4 py-3 text-slate-600">
                         <div className="space-y-0.5">
                           <p className="font-semibold text-xs text-slate-700">{t.filmCategory?.name || '—'}</p>
                           {t.filmCategory?.materialCategory && (
@@ -2695,16 +2852,16 @@ const MaterialsTab = () => {
                           )}
                         </div>
                       </td>
-                      <td className="px-5 py-4 text-slate-600 text-xs font-mono">{t.thickness ? `${t.thickness}mm` : '—'}</td>
-                      <td className="px-5 py-4 text-slate-600 text-xs">{t.layers}</td>
-                      <td className="px-5 py-4 text-slate-600 text-xs font-mono">{t.minForce || '—'} / {t.minSpeed || '—'}</td>
-                      <td className="px-5 py-4">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                      <td className="px-4 py-3 text-slate-600 text-xs font-mono">{t.thickness ? `${t.thickness}mm` : '—'}</td>
+                      <td className="px-4 py-3 text-slate-600 text-xs">{t.layers}</td>
+                      <td className="px-4 py-3 text-slate-600 text-xs font-mono">{t.minForce || '—'} / {t.minSpeed || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${t.isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-50 text-slate-600 border border-slate-200'}`}>
                           {t.isActive ? 'Active' : 'Inactive'}
                         </span>
-                        {t.isDeleted && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600 uppercase">DELETED</span>}
+                        {t.isDeleted && <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-600 border border-red-100 uppercase tracking-wider">DELETED</span>}
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           {!t.isDeleted ? (
                             <>
@@ -2803,7 +2960,7 @@ const AuditLogsTab = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 25;
+  const [pageSize, setPageSize] = useState(25);
 
   const load = async () => {
     setLoading(true);
@@ -2823,38 +2980,11 @@ const AuditLogsTab = () => {
   );
 
   const paginatedLogs = React.useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return filtered.slice(start, start + itemsPerPage);
-  }, [filtered, currentPage]);
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
 
-  const totalPages = Math.ceil(filtered.length / itemsPerPage);
-
-  const renderPagination = () => {
-    if (totalPages <= 1) return null;
-    return (
-      <div className="flex items-center justify-between px-6 py-4 bg-white border-t border-slate-100">
-        <p className="text-[10px] font-bold text-slate-400 uppercase">
-          Page {currentPage} of {totalPages} (Total {filtered.length} entries)
-        </p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all text-slate-600 cursor-pointer"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all text-slate-600 cursor-pointer"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    );
-  };
+  const totalPages = Math.ceil(filtered.length / pageSize);
 
   return (
     <div className="p-6 space-y-4">
@@ -2875,11 +3005,15 @@ const AuditLogsTab = () => {
             onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
           />
         </div>
-        {/* Top Pagination Controls */}
-        <div className="flex-shrink-0">
-          {renderPagination()}
-        </div>
       </div>
+
+      <PaginationBar
+        meta={{ totalPages, total: filtered.length, page: currentPage }}
+        page={currentPage}
+        setPage={setCurrentPage}
+        pageSize={pageSize}
+        setPageSize={setPageSize}
+      />
 
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-[var(--color-accent)] animate-spin" /></div>
@@ -2894,44 +3028,58 @@ const AuditLogsTab = () => {
             <>
               <div className="overflow-x-auto w-full">
                 <table className="w-full text-sm min-w-[800px]">
-                  <thead className="bg-slate-50 border-b border-slate-100">
+                  <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      {['Timestamp', 'User', 'Action', 'Entity', 'Details'].map(h => (
-                        <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                      {['#', 'Timestamp', 'User', 'Action', 'Entity', 'Details'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {paginatedLogs.map(log => (
-                      <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="px-5 py-4 whitespace-nowrap text-xs text-slate-500">{new Date(log.createdAt).toLocaleString()}</td>
-                        <td className="px-5 py-4">
+                  <tbody className="divide-y divide-slate-100">
+                    {paginatedLogs.map((log, idx) => (
+                      <tr key={log.id} className="group hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">
+                          {(currentPage - 1) * pageSize + idx + 1}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-xs text-slate-500">{formatISTDateTime(log.createdAt)}</td>
+                        <td className="px-4 py-3">
                           {log.user ? (
                             <div>
-                              <p className="font-semibold text-slate-800">{[log.user.firstName, log.user.lastName].filter(Boolean).join(' ') || '—'}</p>
+                              <p className="font-semibold text-slate-800 text-xs">{[log.user.firstName, log.user.lastName].filter(Boolean).join(' ') || '—'}</p>
                               <p className="text-xs text-slate-500">{log.user.email}</p>
                             </div>
                           ) : (
                             <span className="text-xs font-semibold text-slate-400">System Activity</span>
                           )}
                         </td>
-                        <td className="px-5 py-4">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold
-                            ${log.action === 'CREATE' ? 'bg-emerald-100 text-emerald-700' :
-                              log.action === 'UPDATE' ? 'bg-[var(--color-gold-muted)] text-[var(--color-accent)]' :
-                                'bg-red-100 text-red-700'}`}>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            log.action === 'CREATE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                            log.action === 'UPDATE' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
+                            'bg-rose-50 text-rose-700 border border-rose-100'
+                          }`}>
                             {log.action}
                           </span>
                         </td>
-                        <td className="px-5 py-4 font-mono text-xs text-slate-600">{log.entity} <br /><span className="text-slate-400 text-[10px] break-all">{log.entityId}</span></td>
-                        <td className="px-5 py-4 text-xs text-slate-500 max-w-xs truncate" title={JSON.stringify(log.details)}>{JSON.stringify(log.details)}</td>
+                        <td className="px-4 py-3 text-xs">
+                          <span className="font-mono text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md inline-block shadow-2xs">
+                            {log.entity}
+                          </span>
+                          {log.entityId && <p className="text-slate-400 text-[10px] font-mono mt-0.5 break-all">{log.entityId}</p>}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500 max-w-xs truncate" title={JSON.stringify(log.details)}>{JSON.stringify(log.details)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              {/* Bottom Pagination Controls */}
-              {renderPagination()}
+              <PaginationBar
+                meta={{ totalPages, total: filtered.length, page: currentPage }}
+                page={currentPage}
+                setPage={setCurrentPage}
+                pageSize={pageSize}
+                setPageSize={setPageSize}
+              />
             </>
           )}
         </div>
@@ -3401,7 +3549,7 @@ const PlottersTabSettings = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 15;
+  const [pageSize, setPageSize] = useState(15);
   const [modal, setModal] = useState<any>(null);
   
   const [confirm, setConfirm] = useState<{
@@ -3438,11 +3586,11 @@ const PlottersTabSettings = () => {
     setLoading(true);
     try {
       if (subTab === 'plotter-types') {
-        const result = await plottersApi.getAll(search, currentPage, itemsPerPage);
+        const result = await plottersApi.getAll(search, currentPage, pageSize);
         setPlotters(result.items || []);
         setTotal(result.total || 0);
       } else {
-        const result = await plotterDevicesApi.getAll(search, undefined, undefined, currentPage, itemsPerPage);
+        const result = await plotterDevicesApi.getAll(search, undefined, undefined, currentPage, pageSize);
         setDevices(result.items || []);
         setTotal(result.total || 0);
       }
@@ -3459,7 +3607,7 @@ const PlottersTabSettings = () => {
 
   useEffect(() => {
     loadData();
-  }, [subTab, search, currentPage]);
+  }, [subTab, search, currentPage, pageSize]);
 
   const handleDelete = (item: any) => {
     if (subTab === 'plotter-types') {
@@ -3501,7 +3649,7 @@ const PlottersTabSettings = () => {
     }
   };
 
-  const totalPages = Math.ceil(total / itemsPerPage);
+  const totalPages = Math.ceil(total / pageSize);
 
   const subTabsList = [
     { id: 'plotter-types', label: 'Plotter Types' },
@@ -3563,13 +3711,22 @@ const PlottersTabSettings = () => {
         </HasPermission>
       </div>
 
-      <div className="relative max-w-xs">
-        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-        <input
-          className="input-field pl-9 py-1.5 text-sm"
-          placeholder={subTab === 'plotter-types' ? 'Search types...' : 'Search hardware serial/MAC/name...'}
-          value={search}
-          onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="relative max-w-xs flex-1">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            className="input-field pl-9 py-1.5 text-sm w-full"
+            placeholder={subTab === 'plotter-types' ? 'Search types...' : 'Search hardware serial/MAC/name...'}
+            value={search}
+            onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+          />
+        </div>
+        <PaginationBar
+          meta={{ totalPages, total, page: currentPage }}
+          page={currentPage}
+          setPage={setCurrentPage}
+          pageSize={pageSize}
+          setPageSize={setPageSize}
         />
       </div>
 
@@ -3581,47 +3738,48 @@ const PlottersTabSettings = () => {
             <table className="w-full text-sm">
               {subTab === 'plotter-types' ? (
                 <>
-                  <thead className="bg-slate-50 border-b border-slate-100">
+                  <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      {['Plotter Name', 'Manufacturer', 'Connection', 'Max Speed/Force', 'Legacy Type', 'Status', 'Actions'].map(h => (
-                        <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                      {['#', 'Plotter Name', 'Manufacturer', 'Connection', 'Max Speed/Force', 'Legacy Type', 'Status', 'Actions'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-50">
+                  <tbody className="divide-y divide-slate-100">
                     {plotters.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-center py-8 text-slate-400 font-medium">No plotter templates found</td>
+                        <td colSpan={8} className="text-center py-8 text-slate-400 font-medium">No plotter templates found</td>
                       </tr>
-                    ) : plotters.map(item => (
-                      <tr key={item.id} className="hover:bg-slate-50/70 group transition-colors">
-                        <td className="px-5 py-4">
+                    ) : plotters.map((item, idx) => (
+                      <tr key={item.id} className="group hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">{(currentPage - 1) * pageSize + idx + 1}</td>
+                        <td className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-indigo-50 text-indigo-600">
-                              <Cpu className="w-4 h-4" />
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-indigo-50 text-indigo-600 border border-indigo-100">
+                              <Cpu className="w-3.5 h-3.5" />
                             </div>
                             <div>
-                              <p className="font-bold text-slate-800">{item.plotterName || '—'}</p>
+                              <p className="font-bold text-slate-800 text-xs">{item.plotterName || '—'}</p>
                               {item.description && <p className="text-[10px] text-slate-400 max-w-[200px] truncate">{item.description}</p>}
                             </div>
                           </div>
                         </td>
-                        <td className="px-5 py-4 text-slate-600 font-medium">{item.manufacturer || '—'}</td>
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-3 text-slate-700 text-xs font-medium">{item.manufacturer || '—'}</td>
+                        <td className="px-4 py-3 text-xs">
                           <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-semibold">{item.connectionType || '—'}</span>
                         </td>
-                        <td className="px-5 py-4 text-slate-600 font-mono text-xs">
+                        <td className="px-4 py-3 text-slate-600 font-mono text-xs">
                           {item.maxSpeed ? `${item.maxSpeed} mm/s` : '—'} / {item.maxForce ? `${item.maxForce} g` : '—'}
                         </td>
-                        <td className="px-5 py-4 text-slate-500 text-xs font-semibold">
+                        <td className="px-4 py-3 text-slate-500 text-xs font-semibold">
                           {item.legacySettings?.plotterType || '—'}
                         </td>
-                        <td className="px-5 py-4">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${item.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${item.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-50 text-slate-600 border border-slate-200'}`}>
                             {item.status}
                           </span>
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-3">
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <HasPermission permission="settings:write">
                               <button onClick={() => setModal(item)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Edit Plotter"><Edit2 className="w-4 h-4" /></button>
@@ -3635,27 +3793,28 @@ const PlottersTabSettings = () => {
                 </>
               ) : (
                 <>
-                  <thead className="bg-slate-50 border-b border-slate-100">
+                  <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      {['Name / Serial / MAC', 'Type (Template)', 'Assigned Organization', 'Connection Parameters', 'License Key', 'Status', 'Actions'].map(h => (
-                        <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                      {['#', 'Name / Serial / MAC', 'Type (Template)', 'Assigned Organization', 'Connection Parameters', 'License Key', 'Status', 'Actions'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-50">
+                  <tbody className="divide-y divide-slate-100">
                     {devices.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-center py-8 text-slate-400 font-medium">No physical plotters registered</td>
+                        <td colSpan={8} className="text-center py-8 text-slate-400 font-medium">No physical plotters registered</td>
                       </tr>
-                    ) : devices.map(item => (
-                      <tr key={item.id} className="hover:bg-slate-50/70 group transition-colors">
-                        <td className="px-5 py-4">
+                    ) : devices.map((item, idx) => (
+                      <tr key={item.id} className="group hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">{(currentPage - 1) * pageSize + idx + 1}</td>
+                        <td className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${item.status === 'ACTIVE' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>
-                              <Cpu className="w-4 h-4" />
+                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${item.status === 'ACTIVE' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-slate-100 text-slate-400'}`}>
+                              <Cpu className="w-3.5 h-3.5" />
                             </div>
                             <div>
-                              <p className="font-bold text-slate-800">{item.name}</p>
+                              <p className="font-bold text-slate-800 text-xs">{item.name}</p>
                               <div className="flex flex-col gap-0.5 text-[10px] text-slate-400">
                                 {item.serialNumber && <span>S/N: <span className="font-mono">{item.serialNumber}</span></span>}
                                 {item.macAddress && <span>MAC: <span className="font-mono">{item.macAddress}</span></span>}
@@ -3663,33 +3822,40 @@ const PlottersTabSettings = () => {
                             </div>
                           </div>
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-3 text-xs">
                           <span className="font-semibold text-slate-700">{item.plotterMaster?.plotterName || '—'}</span>
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-3 text-xs">
                           {item.organization ? (
-                            <span className="px-2 py-1 rounded-lg bg-indigo-50 border border-indigo-100/60 text-indigo-700 text-xs font-bold">{item.organization.name}</span>
+                            <span className="px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-bold">{item.organization.name}</span>
                           ) : (
                             <span className="text-slate-400 italic text-xs font-medium">System Stock</span>
                           )}
                         </td>
-                        <td className="px-5 py-4 text-xs">
+                        <td className="px-4 py-3 text-xs">
                           <div className="flex flex-col gap-0.5 font-mono text-slate-600">
                             {item.ipAddress && <span>IP: {item.ipAddress}</span>}
                             {item.comPort && <span>Port: {item.comPort}</span>}
                             {!item.ipAddress && !item.comPort && <span className="text-slate-400 italic font-sans">—</span>}
                           </div>
                         </td>
-                        <td className="px-5 py-4 font-mono text-xs text-slate-700">{item.licenseKey || '—'}</td>
-                        <td className="px-5 py-4">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold 
-                            ${item.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' :
-                              item.status === 'MAINTENANCE' ? 'bg-amber-100 text-amber-700' :
-                              'bg-slate-100 text-slate-500'}`}>
+                        <td className="px-4 py-3 text-xs">
+                          {item.licenseKey ? (
+                            <span className="font-mono text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md inline-block shadow-2xs">
+                              {item.licenseKey}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            item.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                            item.status === 'MAINTENANCE' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                            'bg-slate-50 text-slate-600 border border-slate-200'
+                          }`}>
                             {item.status}
                           </span>
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-3">
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <HasPermission permission="settings:write">
                               <button onClick={() => setModal(item)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Edit Plotter Device"><Edit2 className="w-4 h-4" /></button>
@@ -3705,29 +3871,13 @@ const PlottersTabSettings = () => {
             </table>
           </div>
 
-          {totalPages > 1 && (
-            <div className="px-6 py-4 flex items-center justify-between border-t border-slate-100 bg-white">
-              <p className="text-[10px] font-bold text-slate-400 uppercase">
-                Page {currentPage} of {totalPages} ({total} total items)
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all text-slate-600 cursor-pointer"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="p-2 border rounded-lg border-slate-200 bg-white disabled:opacity-50 hover:bg-slate-50 transition-all text-slate-600 cursor-pointer"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
+          <PaginationBar
+            meta={{ totalPages, total, page: currentPage }}
+            page={currentPage}
+            setPage={setCurrentPage}
+            pageSize={pageSize}
+            setPageSize={setPageSize}
+          />
         </div>
       )}
 
@@ -3741,6 +3891,748 @@ const PlottersTabSettings = () => {
         confirmLabel="Delete"
         variant="danger"
       />
+    </div>
+  );
+};
+
+// ─── Migration Schedule Settings Tab ─────────────────────
+const MigrationScheduleTab = () => {
+  const [settings, setSettings] = useState<any>({
+    enabled: false,
+    frequency: '12h',
+    lookbackDays: 3,
+    entities: {
+      stock: true,
+      cutCredits: true,
+      orders: false,
+      users: false,
+    },
+    lastRunAt: null,
+    nextRunAt: null,
+    lastStatus: 'IDLE',
+    lastError: null,
+  });
+
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [triggering, setTriggering] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [logPage, setLogPage] = useState(1);
+  const [logPageSize, setLogPageSize] = useState(10);
+  const [selectedLog, setSelectedLog] = useState<any | null>(null);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [stg, lgList] = await Promise.all([
+        migrationScheduleApi.getSettings(),
+        migrationScheduleApi.getLogs()
+      ]);
+      if (stg) setSettings(stg);
+      if (Array.isArray(lgList)) setLogs(lgList);
+    } catch (err: any) {
+      console.error('Failed to load migration schedule settings', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(loadData, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setSaving(true);
+    setSuccessMsg('');
+    setErrorMsg('');
+    try {
+      const updated = await migrationScheduleApi.saveSettings(settings);
+      setSettings(updated);
+      setSuccessMsg('Migration schedule settings saved successfully.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to save settings.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTriggerNow = async () => {
+    setTriggering(true);
+    setSuccessMsg('');
+    setErrorMsg('');
+    try {
+      const res = await migrationScheduleApi.triggerSync();
+      setSuccessMsg(res.message || 'Incremental migration triggered successfully in background.');
+      await loadData();
+      setTimeout(() => setSuccessMsg(''), 5000);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to trigger sync.');
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  const paginatedLogs = logs.slice((logPage - 1) * logPageSize, logPage * logPageSize);
+  const totalLogPages = Math.ceil(logs.length / logPageSize);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-24">
+        <Loader2 className="w-8 h-8 text-[var(--color-accent)] animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+        <div>
+          <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-indigo-600" />
+            Scheduled Data Migration Sync
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Configure automated incremental legacy database sync jobs and lookback windows.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleTriggerNow}
+            disabled={triggering || settings.lastStatus === 'RUNNING'}
+            className="px-4 py-2 text-xs font-bold rounded-xl bg-amber-50 text-amber-800 border border-amber-200/80 hover:bg-amber-100 transition-all flex items-center gap-2 shadow-2xs cursor-pointer disabled:opacity-50"
+          >
+            {triggering || settings.lastStatus === 'RUNNING' ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
+            ) : (
+              <Play className="w-3.5 h-3.5 text-amber-600" />
+            )}
+            Sync Now (Incremental)
+          </button>
+          <button
+            onClick={() => handleSave()}
+            disabled={saving}
+            className="btn-primary text-xs flex items-center gap-1.5 py-2 px-4 cursor-pointer"
+          >
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+            Save Settings
+          </button>
+        </div>
+      </div>
+
+      {successMsg && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-xl flex items-center gap-2 shadow-2xs">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{successMsg}</span>
+        </div>
+      )}
+
+      {errorMsg && (
+        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold rounded-xl flex items-center gap-2 shadow-2xs">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      {/* Live Status Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-slate-50 border border-slate-200/80 p-4 rounded-2xl flex items-center gap-3.5">
+          <div className={`p-3 rounded-xl ${settings.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
+            <Clock className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Scheduler State</p>
+            <p className="text-sm font-extrabold text-slate-800">{settings.enabled ? 'Enabled (Active)' : 'Disabled'}</p>
+          </div>
+        </div>
+
+        <div className="bg-slate-50 border border-slate-200/80 p-4 rounded-2xl flex items-center gap-3.5">
+          <div className={`p-3 rounded-xl ${settings.lastStatus === 'RUNNING' ? 'bg-amber-100 text-amber-700 animate-pulse' : settings.lastStatus === 'SUCCESS' ? 'bg-emerald-100 text-emerald-700' : settings.lastStatus === 'FAILED' ? 'bg-rose-100 text-rose-700' : 'bg-slate-200 text-slate-500'}`}>
+            <Database className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Last Status</p>
+            <p className="text-sm font-extrabold text-slate-800">{settings.lastStatus}</p>
+          </div>
+        </div>
+
+        <div className="bg-slate-50 border border-slate-200/80 p-4 rounded-2xl flex items-center gap-3.5">
+          <div className="p-3 rounded-xl bg-indigo-50 text-indigo-700">
+            <Calendar className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Last Run</p>
+            <p className="text-xs font-bold text-slate-800">
+              {settings.lastRunAt ? new Date(settings.lastRunAt).toLocaleString() : 'Never'}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-slate-50 border border-slate-200/80 p-4 rounded-2xl flex items-center gap-3.5">
+          <div className="p-3 rounded-xl bg-purple-50 text-purple-700">
+            <Clock className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Next Scheduled</p>
+            <p className="text-xs font-bold text-slate-800">
+              {settings.nextRunAt ? new Date(settings.nextRunAt).toLocaleString() : 'Disabled'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Settings Form */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-6 shadow-xs">
+        <h4 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center justify-between">
+          <span>Sync Schedule & Connection Configuration</span>
+          <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-100">SQL Server Direct Connection</span>
+        </h4>
+
+        {/* Master Toggle */}
+        <div className="flex items-center justify-between p-3.5 bg-slate-50/70 border border-slate-200/60 rounded-xl">
+          <div>
+            <p className="text-xs font-extrabold text-slate-800">Enable Automated Scheduled Sync</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">Automatically trigger background incremental data sync at specified intervals.</p>
+          </div>
+          <button
+            onClick={() => setSettings({ ...settings, enabled: !settings.enabled })}
+            className={`w-12 h-6 rounded-full transition-colors relative flex-shrink-0 cursor-pointer ${settings.enabled ? 'bg-indigo-600' : 'bg-slate-300'}`}
+          >
+            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${settings.enabled ? 'translate-x-6' : ''}`} />
+          </button>
+        </div>
+
+        {/* Legacy Database Connection Settings */}
+        <div className="space-y-4 pt-1">
+          <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+            <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block flex items-center gap-1.5">
+              <Database className="w-4 h-4 text-indigo-600" /> Primary Legacy SQL Server Connection Details
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Server IP / Host *</label>
+                <input
+                  type="text"
+                  className="input-field text-xs font-mono py-1.5"
+                  placeholder="e.g. 192.168.1.50 or Yogesh"
+                  value={settings.connection?.server || ''}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    connection: { ...settings.connection, server: e.target.value }
+                  })}
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Database Name *</label>
+                <input
+                  type="text"
+                  className="input-field text-xs font-mono py-1.5"
+                  placeholder="e.g. scratchgard"
+                  value={settings.connection?.database || ''}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    connection: { ...settings.connection, database: e.target.value }
+                  })}
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Database User ID *</label>
+                <input
+                  type="text"
+                  className="input-field text-xs font-mono py-1.5"
+                  placeholder="e.g. sa"
+                  value={settings.connection?.user || ''}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    connection: { ...settings.connection, user: e.target.value }
+                  })}
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Database Password *</label>
+                <input
+                  type="password"
+                  className="input-field text-xs font-mono py-1.5"
+                  placeholder="••••••••"
+                  value={settings.connection?.password || ''}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    connection: { ...settings.connection, password: e.target.value }
+                  })}
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Port</label>
+                <input
+                  type="number"
+                  className="input-field text-xs font-mono py-1.5"
+                  placeholder="1433"
+                  value={settings.connection?.port || 1433}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    connection: { ...settings.connection, port: Number(e.target.value) }
+                  })}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Separate Connection for Models & Designs */}
+          <div className="bg-purple-50/50 border border-purple-200/70 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-extrabold text-purple-900 flex items-center gap-1.5">
+                  <Database className="w-4 h-4 text-purple-600" /> Additional Connection: 3. Models & Designs Database
+                </p>
+                <p className="text-[11px] text-purple-700 mt-0.5">Enable if Models & Designs data resides in a separate dedicated legacy database instance.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSettings({ ...settings, useCustomDesignsConnection: !settings.useCustomDesignsConnection })}
+                className={`w-11 h-5.5 rounded-full transition-colors relative flex-shrink-0 cursor-pointer ${settings.useCustomDesignsConnection ? 'bg-purple-600' : 'bg-slate-300'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-4.5 h-4.5 bg-white rounded-full shadow-sm transition-transform ${settings.useCustomDesignsConnection ? 'translate-x-5.5' : ''}`} />
+              </button>
+            </div>
+
+            {settings.useCustomDesignsConnection && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 pt-2 border-t border-purple-200/50 animate-in fade-in">
+                <div>
+                  <label className="text-[11px] font-bold text-purple-800 uppercase tracking-wider block mb-1">Designs Server IP *</label>
+                  <input
+                    type="text"
+                    className="input-field text-xs font-mono py-1.5 bg-white border-purple-200"
+                    placeholder="e.g. 192.168.1.55"
+                    value={settings.designsConnection?.server || ''}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      designsConnection: { ...settings.designsConnection, server: e.target.value }
+                    })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-purple-800 uppercase tracking-wider block mb-1">Designs DB Name *</label>
+                  <input
+                    type="text"
+                    className="input-field text-xs font-mono py-1.5 bg-white border-purple-200"
+                    placeholder="e.g. scratchgard_designs"
+                    value={settings.designsConnection?.database || ''}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      designsConnection: { ...settings.designsConnection, database: e.target.value }
+                    })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-purple-800 uppercase tracking-wider block mb-1">Designs User ID *</label>
+                  <input
+                    type="text"
+                    className="input-field text-xs font-mono py-1.5 bg-white border-purple-200"
+                    placeholder="e.g. sa"
+                    value={settings.designsConnection?.user || ''}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      designsConnection: { ...settings.designsConnection, user: e.target.value }
+                    })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-purple-800 uppercase tracking-wider block mb-1">Designs Password *</label>
+                  <input
+                    type="password"
+                    className="input-field text-xs font-mono py-1.5 bg-white border-purple-200"
+                    placeholder="••••••••"
+                    value={settings.designsConnection?.password || ''}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      designsConnection: { ...settings.designsConnection, password: e.target.value }
+                    })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-purple-800 uppercase tracking-wider block mb-1">Port</label>
+                  <input
+                    type="number"
+                    className="input-field text-xs font-mono py-1.5 bg-white border-purple-200"
+                    placeholder="1433"
+                    value={settings.designsConnection?.port || 1433}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      designsConnection: { ...settings.designsConnection, port: Number(e.target.value) }
+                    })}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* Lookback Window Selection */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+              Lookback Window (Date Cutoff) *
+            </label>
+            <select
+              value={settings.lookbackDays}
+              onChange={(e) => setSettings({ ...settings, lookbackDays: Number(e.target.value) })}
+              className="input-field py-2 text-xs font-semibold"
+            >
+              <option value={1}>Last 24 Hours (1 Day)</option>
+              <option value={2}>Last 48 Hours (2 Days)</option>
+              <option value={3}>Last 72 Hours (3 Days) — Recommended</option>
+              <option value={7}>Last 1 Week (7 Days)</option>
+              <option value={14}>Last 2 Weeks (14 Days)</option>
+              <option value={30}>Last 1 Month (30 Days)</option>
+            </select>
+            <div className="p-2.5 bg-amber-50/70 border border-amber-200/60 rounded-xl text-[11px] text-amber-900 font-medium leading-relaxed">
+              ⚡ <strong>Incremental Sync:</strong> Only records created or updated within the last <strong>{settings.lookbackDays} day(s)</strong> will be fetched from legacy SQL Server, avoiding full re-processing.
+            </div>
+          </div>
+
+          {/* Frequency Selection */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+              Sync Frequency Schedule *
+            </label>
+            <select
+              value={settings.frequency}
+              onChange={(e) => setSettings({ ...settings, frequency: e.target.value })}
+              className="input-field py-2 text-xs font-semibold"
+            >
+              <option value="1h">Every 1 Hour</option>
+              <option value="3h">Every 3 Hours</option>
+              <option value="6h">Every 6 Hours</option>
+              <option value="12h">Every 12 Hours (Recommended)</option>
+              <option value="24h">Every 24 Hours (Daily)</option>
+            </select>
+            <p className="text-[11px] text-slate-500">
+              Interval between automated background sync triggers.
+            </p>
+          </div>
+        </div>
+
+        {/* Entity Selection (Categorized 14 Data Migration Tabs) */}
+        <div className="space-y-5 pt-2">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+              Select Data Migration Modules to Sync (14 Hub Tabs)
+            </label>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const allOn = { catalog: true, skins: true, designs: true, roles: true, users: true, licenses: true, mobileUsers: true, cutCredits: true, mobileAppCuts: true, dealerMasterQrs: true, plotterMasters: true, materials: true, stock: true, orders: true };
+                  setSettings({ ...settings, entities: allOn });
+                }}
+                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+              >
+                Select All
+              </button>
+              <span className="text-slate-300">|</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const allOff = { catalog: false, skins: false, designs: false, roles: false, users: false, licenses: false, mobileUsers: false, cutCredits: false, mobileAppCuts: false, dealerMasterQrs: false, plotterMasters: false, materials: false, stock: false, orders: false };
+                  setSettings({ ...settings, entities: allOff });
+                }}
+                className="text-[10px] font-bold text-slate-500 hover:text-slate-700 cursor-pointer"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+
+          {[
+            {
+              category: 'Models & Catalog Management',
+              items: [
+                { key: 'catalog', label: '1. Categories & Brands', desc: 'Setup organizational structure & catalogue.' },
+                { key: 'skins', label: '2. Cut Patterns', desc: 'Types of skins and cut settings.' },
+                { key: 'designs', label: '3. Models & Designs', desc: 'Models, 17k+ design cut files & images.' },
+                { key: 'materials', label: '12. Materials System', desc: 'ProductType, Material, Categories & config.' },
+              ]
+            },
+            {
+              category: 'System & Core',
+              items: [
+                { key: 'roles', label: '4. User Roles', desc: 'Legacy system roles & permissions.' },
+                { key: 'users', label: '5. Org & Users', desc: 'Legacy user credentials & org links.' },
+                { key: 'mobileUsers', label: '7. Mobile Users', desc: 'Registered mobile app users.' },
+                { key: 'plotterMasters', label: '11. Plotter Masters', desc: 'Plotter hardware specifications.' },
+              ]
+            },
+            {
+              category: 'Inventory & Operations',
+              items: [
+                { key: 'cutCredits', label: '8. Cut Credits', desc: 'Cut credit wallets & dealer balances.' },
+                { key: 'mobileAppCuts', label: '9. Mobile App Cuts', desc: 'Mobile app cut history to machine cut logs.' },
+                { key: 'dealerMasterQrs', label: '10. Dealer Master QRs', desc: 'Dealer bulk QR code master table.' },
+                { key: 'stock', label: '13. Stock & Dispatches', desc: 'Stock headers, QR codes, & dispatch orders.' },
+              ]
+            },
+            {
+              category: 'Transactions & Licensing',
+              items: [
+                { key: 'licenses', label: '6. Licenses', desc: 'Legacy licenses & dealer assignments.' },
+                { key: 'orders', label: '14. Order History', desc: 'Recharge packages & past payment txns.' },
+              ]
+            }
+          ].map(group => (
+            <div key={group.category} className="space-y-2">
+              <h5 className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                {group.category}
+              </h5>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {group.items.map(m => (
+                  <label
+                    key={m.key}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col gap-1 ${settings.entities?.[m.key] ? 'bg-indigo-50/50 border-indigo-200 ring-1 ring-indigo-500/20' : 'bg-slate-50 border-slate-200 text-slate-500'}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-xs text-slate-800">{m.label}</span>
+                      <input
+                        type="checkbox"
+                        checked={!!settings.entities?.[m.key]}
+                        onChange={(e) => setSettings({
+                          ...settings,
+                          entities: { ...settings.entities, [m.key]: e.target.checked }
+                        })}
+                        className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                    </div>
+                    <span className="text-[10px] text-slate-500 leading-tight">{m.desc}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Execution Logs Table */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <span>Recent Sync Execution Logs</span>
+            <span className="text-xs font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{logs.length} Runs Logged</span>
+          </h4>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={loadData}
+              className="px-3 py-1.5 text-xs font-bold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Refresh
+            </button>
+            {logs.length > 0 && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (window.confirm('Are you sure you want to clear all scheduled migration logs?')) {
+                    try {
+                      await migrationScheduleApi.clearLogs();
+                      setLogs([]);
+                    } catch (e) {
+                      console.error('Failed to clear logs', e);
+                    }
+                  }
+                }}
+                className="px-3 py-1.5 text-xs font-bold text-rose-600 border border-rose-200 rounded-xl hover:bg-rose-50 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Clear Logs
+              </button>
+            )}
+          </div>
+        </div>
+
+        <PaginationBar
+          meta={{ totalPages: totalLogPages, total: logs.length, page: logPage }}
+          page={logPage}
+          setPage={setLogPage}
+          pageSize={logPageSize}
+          setPageSize={setLogPageSize}
+        />
+
+        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+          {logs.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-xs italic font-medium">
+              No scheduled migration runs logged yet.
+            </div>
+          ) : (
+            <table className="w-full text-left text-sm border-collapse">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Timestamp</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Trigger Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Lookback Range</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Entities Synced</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Duration</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {paginatedLogs.map((log: any, idx: number) => (
+                  <tr key={log.id} className="group hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs whitespace-nowrap">
+                      {(logPage - 1) * logPageSize + idx + 1}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+                      {formatISTDateTime(log.timestamp)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${log.triggerType === 'MANUAL' ? 'bg-purple-50 text-purple-700 border border-purple-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
+                        {log.triggerType}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-xs text-slate-700">
+                      Last {log.lookbackDays} Day(s)
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-600 max-w-xs truncate" title={log.entitiesSynced?.join(', ')}>
+                      {log.entitiesSynced?.join(', ') || '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${log.status === 'SUCCESS' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'}`}>
+                        {log.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-500 whitespace-nowrap">
+                      {(log.durationMs / 1000).toFixed(1)}s
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLog(log)}
+                        className="px-2.5 py-1 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-100 cursor-pointer transition-colors"
+                      >
+                        View Details
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <PaginationBar
+          meta={{ totalPages: totalLogPages, total: logs.length, page: logPage }}
+          page={logPage}
+          setPage={setLogPage}
+          pageSize={logPageSize}
+          setPageSize={setLogPageSize}
+        />
+      </div>
+
+      {/* Log Details Modal */}
+      {selectedLog && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl ${selectedLog.status === 'SUCCESS' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800">
+                    Sync Execution Log Details ({selectedLog.id})
+                  </h3>
+                  <p className="text-xs text-slate-500 font-mono">
+                    {formatISTDateTime(selectedLog.timestamp)}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedLog(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-200/60 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4 overflow-y-auto text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Trigger</span>
+                  <span className="font-extrabold text-slate-800">{selectedLog.triggerType}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status</span>
+                  <span className={`font-extrabold ${selectedLog.status === 'SUCCESS' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {selectedLog.status}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Lookback</span>
+                  <span className="font-extrabold text-slate-800">Last {selectedLog.lookbackDays} Day(s)</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Duration</span>
+                  <span className="font-mono font-extrabold text-slate-800">{(selectedLog.durationMs / 1000).toFixed(1)}s</span>
+                </div>
+              </div>
+
+              {selectedLog.recordsSummary && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200/70 text-emerald-800 rounded-xl font-medium">
+                  {selectedLog.recordsSummary}
+                </div>
+              )}
+
+              {selectedLog.error && (
+                <div className="p-3 bg-rose-50 border border-rose-200/70 text-rose-800 rounded-xl font-medium font-mono text-[11px]">
+                  <strong>Error:</strong> {selectedLog.error}
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+                  Modules Synced ({selectedLog.entitiesSynced?.length || 0})
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedLog.entitiesSynced?.map((ent: string) => (
+                    <span key={ent} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 font-bold rounded-lg text-[11px] border border-indigo-100">
+                      {ent}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {selectedLog.details && (
+                <div className="space-y-1.5 pt-2">
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+                    Execution Result Breakdown
+                  </label>
+                  <pre className="p-3.5 bg-slate-900 text-slate-200 font-mono text-[11px] rounded-xl overflow-x-auto max-h-60">
+                    {JSON.stringify(selectedLog.details, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedLog(null)}
+                className="btn-secondary text-xs px-4 py-2 cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -3770,13 +4662,13 @@ const SettingsPage = () => {
   }
   if (user?.isSuperAdmin || hasPermission('settings:read')) {
     tabs.push(
-      { id: 'plotters', label: t('plottersDirectory'), icon: Cpu }
+      { id: 'plotters', label: t('plottersDirectory'), icon: Cpu },
+      { id: 'migrationSchedule', label: 'Migration Schedule', icon: Calendar }
     );
   }
   if (user?.isSuperAdmin) {
     tabs.push(
       { id: 'orgTypes', label: t('orgTypes'), icon: Building },
-      { id: 'materials', label: t('materialsSettings'), icon: ScrollText },
       { id: 'paymentGateway', label: 'Payment Gateway', icon: CreditCard }
     );
   }
@@ -3835,8 +4727,12 @@ const SettingsPage = () => {
               <PlottersTabSettings key={'plotters_' + refreshTrigger} />
             </HasPermission>
           )}
+          {activeTab === 'migrationSchedule' && (
+            <HasPermission permission="settings:read" fallback={<div className="p-12 text-center text-slate-500 font-medium">You don't have permission to view migration schedule settings.</div>}>
+              <MigrationScheduleTab key={'migSchedule_' + refreshTrigger} />
+            </HasPermission>
+          )}
           {activeTab === 'orgTypes' && <OrganizationTypesTab key={'orgTypes_' + refreshTrigger} />}
-          {activeTab === 'materials' && <MaterialsTab key={'materials_' + refreshTrigger} />}
           {activeTab === 'paymentGateway' && (
             <HasPermission permission="settings:read" fallback={<div className="p-12 text-center text-slate-500 font-medium">You don't have permission to view gateway settings.</div>}>
               <PaymentGatewayTab key={'paymentGateway_' + refreshTrigger} />

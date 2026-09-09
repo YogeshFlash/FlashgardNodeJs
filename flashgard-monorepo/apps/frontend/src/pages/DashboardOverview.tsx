@@ -6,21 +6,8 @@ import {
 import { dashboardApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
+import { formatISTDate, formatISTDateTime } from '../lib/dateUtils';
 
-const Badge = ({ children, variant = 'gray' }: any) => {
-  const styles: any = {
-    gray: 'bg-slate-100 text-slate-600 border-slate-200',
-    green: 'bg-emerald-50 text-emerald-600 border-emerald-100',
-    blue: 'bg-blue-50 text-blue-600 border-blue-100',
-    amber: 'bg-amber-50 text-amber-600 border-amber-100',
-    red: 'bg-red-50 text-red-600 border-red-100',
-  };
-  return (
-    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${styles[variant]}`}>
-      {children}
-    </span>
-  );
-};
 
 const getFriendlyActivityText = (action: string, entity: string, details?: any) => {
   const act = (action || '').toUpperCase();
@@ -29,6 +16,7 @@ const getFriendlyActivityText = (action: string, entity: string, details?: any) 
   const entityNames: Record<string, string> = {
     USER: 'user',
     ORGANIZATION: 'organization',
+    ORGANIZATIONS: 'organization',
     ORGANIZATIONTYPE: 'organization type',
     ROLE: 'role',
     PERMISSION: 'permission',
@@ -47,13 +35,18 @@ const getFriendlyActivityText = (action: string, entity: string, details?: any) 
     MATERIAL: 'material',
     FILMCATEGORY: 'film category',
     FILMTYPE: 'film type',
+    CONTACT: 'contact',
+    ADDRESS: 'address',
   };
 
-  const friendlyEntity = entityNames[ent] || entity.toLowerCase();
+  let friendlyEntity = entityNames[ent] || (entity || '').toLowerCase();
+  if (friendlyEntity === 'api') {
+    friendlyEntity = 'organization';
+  }
   
   let nameLabel = '';
   if (details && typeof details === 'object') {
-    nameLabel = details.name || details.email || details.title || details.label || '';
+    nameLabel = details.storeName || details.name || details.email || details.title || details.label || '';
     if (nameLabel) nameLabel = ` "${nameLabel}"`;
   }
 
@@ -158,7 +151,6 @@ const DashboardOverview = () => {
 
   return (
     <div className="space-y-6">
-      
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
@@ -216,37 +208,37 @@ const DashboardOverview = () => {
                   <p className="text-sm">No organizations connected yet.</p>
                 </div>
               ) : (
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase border-b border-slate-100">
-                      <th className="px-6 py-3">Organization Name</th>
-                      <th className="px-6 py-3">Type</th>
-                      <th className="px-6 py-3">Parent Organization</th>
-                      <th className="px-6 py-3">Status</th>
-                      <th className="px-6 py-3">Joined Date</th>
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Organization Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Parent Organization</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Joined Date</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {data.recentOrgs.map((org: any) => (
-                      <tr key={org.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 font-bold text-slate-900">{org.name}</td>
-                        <td className="px-6 py-4">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-600">
-                            {org.organizationType?.name}
+                    {data.recentOrgs.map((org: any, idx: number) => (
+                      <tr key={org.id} className="group hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">{idx + 1}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-800 text-xs">{org.name}</td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-50 text-slate-600 border border-slate-200">
+                            {org.organizationType?.name || '—'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-slate-600">
+                        <td className="px-4 py-3 text-xs text-slate-600 font-medium">
                           {org.parent?.name || <span className="text-slate-400 italic">—</span>}
                         </td>
-                        <td className="px-6 py-4">
-                          {org.isActive ? (
-                            <Badge variant="green">Active</Badge>
-                          ) : (
-                            <Badge variant="red">Inactive</Badge>
-                          )}
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${org.isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-50 text-slate-600 border border-slate-200'}`}>
+                            {org.isActive ? 'Active' : 'Inactive'}
+                          </span>
                         </td>
-                        <td className="px-6 py-4 text-slate-500">
-                          {new Date(org.createdAt).toLocaleDateString()}
+                        <td className="px-4 py-3 text-xs text-slate-500">
+                          {formatISTDate(org.createdAt)}
                         </td>
                       </tr>
                     ))}
@@ -281,7 +273,7 @@ const DashboardOverview = () => {
                         By {log.user ? `${log.user.firstName || ''} ${log.user.lastName || ''}`.trim() || log.user.email : 'System'}
                       </p>
                       <p className="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-wider">
-                        {new Date(log.createdAt).toLocaleString(undefined, {
+                        {formatISTDateTime(log.createdAt, {
                           month: 'short',
                           day: 'numeric',
                           hour: '2-digit',

@@ -19,8 +19,12 @@ class PlotterStatusAction extends StatelessWidget {
           alignment: Alignment.center,
           children: [
             Icon(
-              isConnected ? Icons.bluetooth_connected : Icons.bluetooth,
-              color: isConnected ? Colors.green : theme.colorScheme.onSurface.withOpacity(0.5),
+              isConnected
+                  ? (plotterService.isUsbPlotter ? Icons.usb_rounded : Icons.bluetooth_connected)
+                  : Icons.cable_rounded,
+              color: isConnected
+                  ? (plotterService.isUsbPlotter ? Colors.purple : Colors.green)
+                  : theme.colorScheme.onSurface.withOpacity(0.5),
               size: 24,
             ),
             if (isConnected)
@@ -30,8 +34,8 @@ class PlotterStatusAction extends StatelessWidget {
                 child: Container(
                   width: 8,
                   height: 8,
-                  decoration: const BoxDecoration(
-                    color: Colors.green,
+                  decoration: BoxDecoration(
+                    color: plotterService.isUsbPlotter ? Colors.purple : Colors.green,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -39,8 +43,8 @@ class PlotterStatusAction extends StatelessWidget {
           ],
         ),
         tooltip: isConnected
-            ? 'Plotter: ${plotterService.connectedName}'
-            : 'Plotter disconnected',
+            ? 'Plotter: ${plotterService.connectedName} (${plotterService.isUsbPlotter ? "USB OTG" : "Bluetooth"})'
+            : 'Plotter disconnected (Tap to connect USB / Bluetooth)',
         onPressed: () {
           showModalBottomSheet(
             context: context,

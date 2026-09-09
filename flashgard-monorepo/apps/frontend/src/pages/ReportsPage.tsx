@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BarChart3, TrendingUp, Key, Cpu, Layers, Loader2, Search, Calendar, ChevronLeft, ChevronRight, FileSpreadsheet, RotateCcw } from 'lucide-react';
 import { licensesApi } from '../lib/api';
+import { formatISTDateTime } from '../lib/dateUtils';
 
 const Card = ({ title, value, change, icon: Icon, colorClass, shadowClass }: any) => (
   <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[140px] overflow-hidden">
@@ -1081,65 +1082,69 @@ const ReportsPage = () => {
             )}
 
             <table className="w-full text-left border-collapse min-w-[1800px]">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-                  {visibleColumns.categoryName && <th className="px-6 py-4">Category Name</th>}
-                  {visibleColumns.brand && <th className="px-6 py-4">Brand</th>}
-                  {visibleColumns.model && <th className="px-6 py-4">Model</th>}
-                  {visibleColumns.dealer && <th className="px-6 py-4">Dealer / LFR</th>}
-                  {visibleColumns.licenseKey && <th className="px-6 py-4">License Key</th>}
-                  {visibleColumns.licenseRefName && <th className="px-6 py-4">License Ref Name</th>}
-                  {visibleColumns.filmCategory && <th className="px-6 py-4">Film Category</th>}
-                  {visibleColumns.productName && <th className="px-6 py-4">Product Name</th>}
-                  {visibleColumns.cutType && <th className="px-6 py-4">Cut Type</th>}
-                  {visibleColumns.plotter && <th className="px-6 py-4">Plotter</th>}
-                  {visibleColumns.updatedDate && <th className="px-6 py-4">Updated Date</th>}
-                  {visibleColumns.parentDealer && <th className="px-6 py-4">Parent Dealer</th>}
-                  {visibleColumns.promoterName && <th className="px-6 py-4">Promoter Name</th>}
-                  {visibleColumns.cutQRCode && <th className="px-6 py-4">Cut QRCode</th>}
-                  {visibleColumns.cutStatus && <th className="px-6 py-4">Cut Status</th>}
-                  {visibleColumns.cutReview && <th className="px-6 py-4">Cut Review</th>}
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  {visibleColumns.categoryName && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Category Name</th>}
+                  {visibleColumns.brand && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Brand</th>}
+                  {visibleColumns.model && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Model</th>}
+                  {visibleColumns.dealer && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Dealer / LFR</th>}
+                  {visibleColumns.licenseKey && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">License Key</th>}
+                  {visibleColumns.licenseRefName && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">License Ref Name</th>}
+                  {visibleColumns.filmCategory && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Film Category</th>}
+                  {visibleColumns.productName && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Product Name</th>}
+                  {visibleColumns.cutType && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Cut Type</th>}
+                  {visibleColumns.plotter && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Plotter</th>}
+                  {visibleColumns.updatedDate && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Updated Date</th>}
+                  {visibleColumns.parentDealer && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Parent Dealer</th>}
+                  {visibleColumns.promoterName && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Promoter Name</th>}
+                  {visibleColumns.cutQRCode && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Cut QRCode</th>}
+                  {visibleColumns.cutStatus && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Cut Status</th>}
+                  {visibleColumns.cutReview && <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Cut Review</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700 text-xs font-medium">
                 {reportItems.length > 0 ? (
                   reportItems.slice(skip, skip + take).map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                      {visibleColumns.categoryName && <td className="px-6 py-4">{item.categoryName}</td>}
-                      {visibleColumns.brand && <td className="px-6 py-4">{item.brand}</td>}
-                      {visibleColumns.model && <td className="px-6 py-4 font-bold text-slate-800">{item.model}</td>}
-                      {visibleColumns.dealer && <td className="px-6 py-4">{item.dealer}</td>}
+                    <tr key={item.id} className="group hover:bg-slate-50 transition-colors">
+                      {visibleColumns.categoryName && <td className="px-4 py-3 text-xs">{item.categoryName}</td>}
+                      {visibleColumns.brand && <td className="px-4 py-3 text-xs">{item.brand}</td>}
+                      {visibleColumns.model && <td className="px-4 py-3 text-xs font-bold text-slate-900">{item.model}</td>}
+                      {visibleColumns.dealer && <td className="px-4 py-3 text-xs">{item.dealer}</td>}
                       {visibleColumns.licenseKey && (
-                        <td className="px-6 py-4 font-mono text-[11px] bg-slate-50/50 px-2.5 rounded border border-slate-200/40 select-all max-w-[200px] truncate" title={item.licenseKey}>
-                          {item.licenseKey}
+                        <td className="px-4 py-3 text-xs">
+                          <span className="font-mono text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-md inline-block shadow-2xs select-all max-w-[200px] truncate" title={item.licenseKey}>
+                            {item.licenseKey}
+                          </span>
                         </td>
                       )}
-                      {visibleColumns.licenseRefName && <td className="px-6 py-4 text-slate-500">{item.licenseRefName}</td>}
-                      {visibleColumns.filmCategory && <td className="px-6 py-4 font-semibold text-slate-800">{item.filmCategory}</td>}
-                      {visibleColumns.productName && <td className="px-6 py-4">{item.productName}</td>}
-                      {visibleColumns.cutType && <td className="px-6 py-4 text-slate-500">{item.cutType}</td>}
-                      {visibleColumns.plotter && <td className="px-6 py-4 font-mono">{item.plotter}</td>}
-                      {visibleColumns.updatedDate && <td className="px-6 py-4 text-slate-400 whitespace-nowrap">{new Date(item.updatedDate).toLocaleString()}</td>}
-                      {visibleColumns.parentDealer && <td className="px-6 py-4 text-slate-500">{item.parentDealer}</td>}
-                      {visibleColumns.promoterName && <td className="px-6 py-4 text-slate-900">{item.promoterName}</td>}
+                      {visibleColumns.licenseRefName && <td className="px-4 py-3 text-xs text-slate-500">{item.licenseRefName}</td>}
+                      {visibleColumns.filmCategory && <td className="px-4 py-3 text-xs font-semibold text-slate-800">{item.filmCategory}</td>}
+                      {visibleColumns.productName && <td className="px-4 py-3 text-xs">{item.productName}</td>}
+                      {visibleColumns.cutType && <td className="px-4 py-3 text-xs text-slate-500">{item.cutType}</td>}
+                      {visibleColumns.plotter && <td className="px-4 py-3 text-xs font-mono">{item.plotter}</td>}
+                      {visibleColumns.updatedDate && <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{formatISTDateTime(item.updatedDate)}</td>}
+                      {visibleColumns.parentDealer && <td className="px-4 py-3 text-xs text-slate-500">{item.parentDealer}</td>}
+                      {visibleColumns.promoterName && <td className="px-4 py-3 text-xs text-slate-900">{item.promoterName}</td>}
                       {visibleColumns.cutQRCode && (
-                        <td className="px-6 py-4 font-mono select-all text-indigo-600 bg-indigo-50/30 px-2 py-0.5 rounded border border-indigo-100/40">
-                          {item.cutQRCode}
+                        <td className="px-4 py-3 text-xs">
+                          <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-md inline-block shadow-2xs select-all">
+                            {item.cutQRCode}
+                          </span>
                         </td>
                       )}
                       {visibleColumns.cutStatus && (
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${item.cutStatus === 'Success' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${item.cutStatus === 'Success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'}`}>
                             {item.cutStatus}
                           </span>
                         </td>
                       )}
-                      {visibleColumns.cutReview && <td className="px-6 py-4 text-slate-500 max-w-[250px] truncate" title={item.cutReview}>{item.cutReview}</td>}
+                      {visibleColumns.cutReview && <td className="px-4 py-3 text-xs text-slate-500 max-w-[250px] truncate" title={item.cutReview}>{item.cutReview}</td>}
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={Object.values(visibleColumns).filter(Boolean).length || 1} className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan={Object.values(visibleColumns).filter(Boolean).length || 1} className="px-4 py-12 text-center text-slate-400">
                       No records matched the filter criteria.
                     </td>
                   </tr>

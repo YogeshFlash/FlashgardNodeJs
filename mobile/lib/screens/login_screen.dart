@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:local_auth/local_auth.dart';
 import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
+import '../widgets/server_config_dialog.dart';
+import 'qr_scanner_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,21 +17,16 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final _phoneController = TextEditingController();
   final _otpController = TextEditingController();
-  final LocalAuthentication _localAuth = LocalAuthentication();
   
   int _loginMode = 0; // 0: Email, 1: Mobile OTP
   bool _isLoading = false;
   bool _otpSent = false;
 
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final auth = Provider.of<AuthProvider>(context, listen: false);
-      if (auth.isBiometricsEnabled) {
-        _handleBiometricLogin();
-      }
-    });
+    _loginMode = 0; // Default to Email login
   }
 
   @override
@@ -51,11 +48,11 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Biometric authentication failed or cancelled.')),
+          const SnackBar(content: Text('Device authentication failed or cancelled.')),
         );
       }
     } catch (e) {
-      print('Biometric Login UI Error: $e');
+      print('Device Login UI Error: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -66,8 +63,8 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleLogin() async {
     setState(() => _isLoading = true);
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    
     bool success = false;
+
     if (_loginMode == 1) {
       if (!_otpSent) {
         // Mock send OTP
@@ -106,11 +103,64 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 20),
+              // Server Environment Switcher Badge
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  InkWell(
+                    onTap: () async {
+                      final changed = await ServerConfigDialog.show(context);
+                      if (changed == true && mounted) setState(() {});
+                    },
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: ApiService.isLive
+                            ? Colors.green.withOpacity(0.12)
+                            : Colors.orange.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: ApiService.isLive
+                              ? Colors.green.withOpacity(0.4)
+                              : Colors.orange.withOpacity(0.4),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            ApiService.isLive ? Icons.cloud_done_rounded : Icons.wifi_rounded,
+                            size: 13,
+                            color: ApiService.isLive ? Colors.green[700] : Colors.orange[800],
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            ApiService.environmentLabel,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: ApiService.isLive ? Colors.green[800] : Colors.orange[900],
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.tune_rounded,
+                            size: 12,
+                            color: ApiService.isLive ? Colors.green[700] : Colors.orange[800],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
               Center(
                 child: Image.asset(
                   'assets/logo.png',
-                  height: 100,
+                  height: 80,
                 ),
               ),
               const SizedBox(height: 32),
@@ -126,48 +176,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 'Log in to manage your Flashgard account',
                 style: TextStyle(color: Colors.blueGrey[500]),
               ),
-              const SizedBox(height: 40),
-              
-              Consumer<AuthProvider>(
-                builder: (context, auth, _) {
-                  if (auth.isBiometricsEnabled) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: _isLoading ? null : _handleBiometricLogin,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0F172A),
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size(double.infinity, 56),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          icon: const Icon(Icons.fingerprint, size: 24),
-                          label: const Text(
-                            'Quick Login with Biometrics', 
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        Row(
-                          children: const [
-                            Expanded(child: Divider()),
-                            Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 16),
-                              child: Text('OR', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                            ),
-                            Expanded(child: Divider()),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                      ],
-                    );
-                  }
-                  return const SizedBox.shrink();
-                },
-              ),
+              const SizedBox(height: 32),
 
-              // Login Mode Toggle
+              // Login Mode Toggle (Email default)
               Container(
                 decoration: BoxDecoration(
                   color: Colors.blueGrey[100],
@@ -271,14 +282,61 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ],
               
-              const SizedBox(height: 40),
+              const SizedBox(height: 32),
               ElevatedButton(
                 onPressed: _isLoading ? null : _handleLogin,
                 child: _isLoading 
                   ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                   : Text(_loginMode == 1 && !_otpSent ? 'Send OTP' : 'Sign In'),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
+
+              // Device Security / PIN / Pattern / Biometric Login Option
+              Consumer<AuthProvider>(
+                builder: (context, auth, _) {
+                  if (auth.isBiometricsEnabled) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 14.0),
+                      child: OutlinedButton.icon(
+                        onPressed: _isLoading ? null : _handleBiometricLogin,
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 48),
+                          side: const BorderSide(color: Color(0xFF0F172A), width: 1.2),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.lock_person_rounded, color: Color(0xFF0F172A), size: 20),
+                        label: const Text(
+                          'Sign in with Device Lock (PIN / Pattern / Biometric)',
+                          style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 12.5),
+                        ),
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+              
+              // Quick Onboarding QR Login
+              OutlinedButton.icon(
+                onPressed: _isLoading
+                    ? null
+                    : () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+                        ),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 48),
+                  side: const BorderSide(color: Color(0xFF6366F1)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: const Icon(Icons.qr_code_scanner_rounded, color: Color(0xFF6366F1), size: 20),
+                label: const Text(
+                  'Scan Welcome QR / Quick Login',
+                  style: TextStyle(color: Color(0xFF6366F1), fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+              ),
+              const SizedBox(height: 20),
+
               Center(
                 child: TextButton(
                   onPressed: () {},

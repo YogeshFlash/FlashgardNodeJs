@@ -11,6 +11,8 @@ import '../providers/auth_provider.dart';
 import 'package:text_to_path_maker/text_to_path_maker.dart';
 import 'package:flutter/services.dart';
 import '../widgets/plotter_status_action.dart';
+import '../services/diy_draft_service.dart';
+import '../services/cut_transaction_service.dart';
 
 enum CutoutType {
   circle,
@@ -55,6 +57,33 @@ class CutoutShape {
       cornerRadius: cornerRadius ?? this.cornerRadius,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'type': type.name,
+      'x': x,
+      'y': y,
+      'width': width,
+      'height': height,
+      'cornerRadius': cornerRadius,
+    };
+  }
+
+  factory CutoutShape.fromJson(Map<String, dynamic> json) {
+    return CutoutShape(
+      id: json['id'] ?? '',
+      type: CutoutType.values.firstWhere(
+        (t) => t.name == json['type'],
+        orElse: () => CutoutType.rect,
+      ),
+      x: (json['x'] as num?)?.toDouble() ?? 0.0,
+      y: (json['y'] as num?)?.toDouble() ?? 0.0,
+      width: (json['width'] as num?)?.toDouble() ?? 10.0,
+      height: (json['height'] as num?)?.toDouble() ?? 10.0,
+      cornerRadius: (json['cornerRadius'] as num?)?.toDouble() ?? 2.0,
+    );
+  }
 }
 
 class DecalElement {
@@ -95,6 +124,32 @@ class DecalElement {
       height: height ?? this.height,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'imageUrl': imageUrl,
+      'name': name,
+      'modelId': modelId,
+      'x': x,
+      'y': y,
+      'width': width,
+      'height': height,
+    };
+  }
+
+  factory DecalElement.fromJson(Map<String, dynamic> json) {
+    return DecalElement(
+      id: json['id'] ?? '',
+      imageUrl: json['imageUrl'] ?? '',
+      name: json['name'] ?? '',
+      modelId: json['modelId'],
+      x: (json['x'] as num?)?.toDouble() ?? 0.0,
+      y: (json['y'] as num?)?.toDouble() ?? 0.0,
+      width: (json['width'] as num?)?.toDouble() ?? 30.0,
+      height: (json['height'] as num?)?.toDouble() ?? 30.0,
+    );
+  }
 }
 
 class TextElement {
@@ -128,6 +183,28 @@ class TextElement {
       y: y ?? this.y,
       width: width ?? this.width,
       height: height ?? this.height,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'text': text,
+      'x': x,
+      'y': y,
+      'width': width,
+      'height': height,
+    };
+  }
+
+  factory TextElement.fromJson(Map<String, dynamic> json) {
+    return TextElement(
+      id: json['id'] ?? '',
+      text: json['text'] ?? '',
+      x: (json['x'] as num?)?.toDouble() ?? 0.0,
+      y: (json['y'] as num?)?.toDouble() ?? 0.0,
+      width: (json['width'] as num?)?.toDouble() ?? 40.0,
+      height: (json['height'] as num?)?.toDouble() ?? 15.0,
     );
   }
 }
@@ -249,8 +326,9 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
   double _canvasTop = 0.0;
 
   // Plotter settings
-  int _selectedSpeed = 300;
-  int _selectedForce = 300;
+  int _selectedSpeed = 30;
+  int _selectedForce = 33;
+  final int _cutPasses = 1;
 
   // Undo / Redo Stacks
   final List<DesignerStateHistory> _undoStack = [];
@@ -323,7 +401,11 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         isBaseSelected: _isBaseSelected,
       ),
     );
+    if (_undoStack.length > 30) {
+      _undoStack.removeAt(0);
+    }
     _redoStack.clear();
+    if (mounted) setState(() {});
   }
 
   void _undo() {
@@ -456,6 +538,325 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     });
   }
 
+  Future<void> _showSaveDraftDialog() async {
+    final now = DateTime.now();
+    final defaultName = '${widget.title ?? "Custom Skin"} - ${now.day}/${now.month} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final controller = TextEditingController(text: defaultName);
+    bool isSaving = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !isSaving,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.bookmark_add_rounded, color: Color(0xFF4F46E5)),
+              SizedBox(width: 8),
+              Text('Save Design Draft', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Save your in-progress layout to My Designs so you can reload or cut it anytime.',
+                  style: TextStyle(fontSize: 13, color: Colors.black54),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  enabled: !isSaving,
+                  decoration: InputDecoration(
+                    labelText: 'Design Name',
+                    hintText: 'e.g. iPhone 15 Pro Matte Skin',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                  ),
+                  autofocus: true,
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.layers_outlined, size: 18, color: Colors.blue),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${_cutouts.length} cutouts • ${_decals.length} decals • ${_texts.length} texts',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4F46E5),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      final name = controller.text.trim();
+                      if (name.isEmpty) return;
+
+                      setDialogState(() => isSaving = true);
+
+                      final draft = DesignerDraft(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        name: name,
+                        dateModified: DateTime.now(),
+                        modelId: widget.modelId,
+                        cutFileId: widget.initialCutFileId,
+                        baseWidth: _baseWidth,
+                        baseHeight: _baseHeight,
+                        baseCornerRadius: _baseCornerRadius,
+                        customBaseOutline: _customBaseOutline,
+                        cutouts: _cutouts.map((c) => c.toJson()).toList(),
+                        decals: _decals.map((d) => d.toJson()).toList(),
+                        texts: _texts.map((t) => t.toJson()).toList(),
+                        isTilingEnabled: _isTilingEnabled,
+                        repeatRows: _repeatRows,
+                        repeatCols: _repeatCols,
+                        repeatSpacing: _repeatSpacing,
+                      );
+
+                      final success = await DiyDraftService.saveDraft(draft);
+
+                      if (ctx.mounted) {
+                        Navigator.pop(ctx);
+                      }
+
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(success ? 'Design saved to drafts!' : 'Failed to save draft.'),
+                            backgroundColor: success ? Colors.green : Colors.red,
+                          ),
+                        );
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Save Draft'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    controller.dispose();
+  }
+
+  Future<void> _showSavedDraftsSheet() async {
+    final drafts = await DiyDraftService.getDrafts();
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.75,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Saved Designs',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    '${drafts.length} saved',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (drafts.isEmpty)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.folder_open_rounded, size: 54, color: Colors.grey.shade400),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No saved drafts yet',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.grey.shade600),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Customize a skin and tap Save Draft in the top bar.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: drafts.length,
+                    itemBuilder: (ctx, index) {
+                      final draft = drafts[index];
+                      final dateStr = '${draft.dateModified.day}/${draft.dateModified.month}/${draft.dateModified.year} ${draft.dateModified.hour.toString().padLeft(2, '0')}:${draft.dateModified.minute.toString().padLeft(2, '0')}';
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF4F46E5).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.brush_rounded, color: Color(0xFF4F46E5)),
+                          ),
+                          title: Text(
+                            draft.name,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 4),
+                              Text(
+                                '${draft.baseWidth.round()}×${draft.baseHeight.round()} mm • ${draft.cutouts.length} cutouts • ${draft.decals.length} decals',
+                                style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                dateStr,
+                                style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                              ),
+                            ],
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                tooltip: 'Delete Draft',
+                                onPressed: () async {
+                                  await DiyDraftService.deleteDraft(draft.id);
+                                  setModalState(() {
+                                    drafts.removeAt(index);
+                                  });
+                                },
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF4F46E5),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                onPressed: () {
+                                  _loadFromDraft(draft);
+                                  Navigator.pop(ctx);
+                                },
+                                child: const Text('Load', style: TextStyle(fontSize: 12)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _loadFromDraft(DesignerDraft draft) {
+    _saveToHistory();
+    setState(() {
+      _baseWidth = draft.baseWidth;
+      _baseHeight = draft.baseHeight;
+      _baseCornerRadius = draft.baseCornerRadius;
+      if (draft.customBaseOutline.isNotEmpty) {
+        _customBaseOutline = List<Offset>.from(draft.customBaseOutline);
+      }
+      _cutouts.clear();
+      for (final c in draft.cutouts) {
+        _cutouts.add(CutoutShape.fromJson(c));
+      }
+      _decals.clear();
+      for (final d in draft.decals) {
+        _decals.add(DecalElement.fromJson(d));
+      }
+      _texts.clear();
+      for (final t in draft.texts) {
+        _texts.add(TextElement.fromJson(t));
+      }
+      _isTilingEnabled = draft.isTilingEnabled;
+      _repeatRows = draft.repeatRows;
+      _repeatCols = draft.repeatCols;
+      _repeatSpacing = draft.repeatSpacing;
+      _diyModeEnabled = true;
+      _selectedCutout = null;
+      _selectedDecal = null;
+      _selectedText = null;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Draft "${draft.name}" loaded!'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -479,8 +880,11 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
     final params = await _plotterService.getMachineParameters();
     if (params != null && mounted) {
       setState(() {
-        _selectedSpeed = (params['speed'] ?? 300).clamp(10, 1000);
-        _selectedForce = (params['pressure'] ?? 300).clamp(10, 1000);
+        int parsedSpeed = params['speed'] ?? 30;
+        if (parsedSpeed > 100) parsedSpeed = (parsedSpeed / 10).round().clamp(10, 100);
+        int parsedForce = (params['pressure'] ?? 33).clamp(1, 100);
+        _selectedSpeed = parsedSpeed.clamp(10, 100);
+        _selectedForce = parsedForce;
       });
     }
   }
@@ -1292,42 +1696,204 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Confirm Cut Output'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
             children: [
-              const Text('Send the final design vector lines to the plotter machine?'),
-              const SizedBox(height: 16),
-              const Text('Cutting Speed', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              Slider(
-                value: _selectedSpeed.toDouble().clamp(10.0, 1000.0),
-                min: 10,
-                max: 1000,
-                divisions: 99,
-                label: '$_selectedSpeed',
-                onChanged: (val) => setDialogState(() => _selectedSpeed = val.toInt()),
-              ),
-              const SizedBox(height: 8),
-              const Text('Cutting Force / Pressure', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              Slider(
-                value: _selectedForce.toDouble().clamp(10.0, 1000.0),
-                min: 10,
-                max: 1000,
-                divisions: 99,
-                label: '$_selectedForce',
-                onChanged: (val) => setDialogState(() => _selectedForce = val.toInt()),
-              ),
+              Icon(Icons.content_cut, color: Color(0xFFCE1D19), size: 22),
+              SizedBox(width: 10),
+              Text('Confirm Cut Output', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
             ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Send the final design vector lines to the plotter machine?', style: TextStyle(fontSize: 13)),
+                const SizedBox(height: 20),
+
+                // Cutting Speed Header & Selected Value
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Cutting Speed', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF4F46E5).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF4F46E5).withValues(alpha: 0.3)),
+                      ),
+                      child: Text(
+                        '$_selectedSpeed mm/s',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                          color: Color(0xFF4F46E5),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                // Speed Controls: [-] Slider [+]
+                Row(
+                  children: [
+                    InkWell(
+                      onTap: _selectedSpeed > 10
+                          ? () => setDialogState(() => _selectedSpeed = (_selectedSpeed - 10).clamp(10, 1000))
+                          : null,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: _selectedSpeed > 10
+                              ? const Color(0xFF4F46E5).withValues(alpha: 0.12)
+                              : Colors.grey.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.remove,
+                          size: 18,
+                          color: _selectedSpeed > 10 ? const Color(0xFF4F46E5) : Colors.grey,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Slider(
+                        value: _selectedSpeed.toDouble().clamp(10.0, 100.0),
+                        min: 10,
+                        max: 100,
+                        divisions: 9,
+                        label: '$_selectedSpeed mm/s',
+                        activeColor: const Color(0xFF4F46E5),
+                        onChanged: (val) => setDialogState(() => _selectedSpeed = val.toInt()),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: _selectedSpeed < 100
+                          ? () => setDialogState(() => _selectedSpeed = (_selectedSpeed + 10).clamp(10, 100))
+                          : null,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: _selectedSpeed < 100
+                              ? const Color(0xFF4F46E5).withValues(alpha: 0.12)
+                              : Colors.grey.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.add,
+                          size: 18,
+                          color: _selectedSpeed < 100 ? const Color(0xFF4F46E5) : Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // Cutting Force Header & Selected Value
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Cutting Force / Pressure', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCE1D19).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFCE1D19).withValues(alpha: 0.3)),
+                      ),
+                      child: Text(
+                        '$_selectedForce',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                          color: Color(0xFFCE1D19),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                // Force Controls: [-] Slider [+]
+                Row(
+                  children: [
+                    InkWell(
+                      onTap: _selectedForce > 1
+                          ? () => setDialogState(() => _selectedForce = (_selectedForce - 1).clamp(1, 100))
+                          : null,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: _selectedForce > 1
+                              ? const Color(0xFFCE1D19).withValues(alpha: 0.12)
+                              : Colors.grey.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.remove,
+                          size: 18,
+                          color: _selectedForce > 1 ? const Color(0xFFCE1D19) : Colors.grey,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Slider(
+                        value: _selectedForce.toDouble().clamp(1.0, 100.0),
+                        min: 1,
+                        max: 100,
+                        divisions: 99,
+                        label: '$_selectedForce',
+                        activeColor: const Color(0xFFCE1D19),
+                        onChanged: (val) => setDialogState(() => _selectedForce = val.toInt()),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: _selectedForce < 100
+                          ? () => setDialogState(() => _selectedForce = (_selectedForce + 1).clamp(1, 100))
+                          : null,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: _selectedForce < 100
+                              ? const Color(0xFFCE1D19).withValues(alpha: 0.12)
+                              : Colors.grey.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.add,
+                          size: 18,
+                          color: _selectedForce < 100 ? const Color(0xFFCE1D19) : Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFCE1D19),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
               onPressed: () {
                 Navigator.pop(context);
                 _handlePlotterCut();
               },
-              child: const Text('START CUT'),
+              child: const Text('START CUT', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -1342,20 +1908,23 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       _cutProgress = 0;
     });
 
+    String? currentCutToken;
+
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final validation = await ApiService.validateCut(
+      final validation = await CutTransactionService.initiateAndValidate(
         licenseKey: authProvider.licenseKey,
         organizationId: authProvider.organizationId,
         modelId: widget.modelId ?? '',
       );
 
-      if (validation == null || validation['valid'] != true || validation['cutToken'] == null) {
-        final reason = validation?['error'] ?? 'Insufficient credits or inactive license.';
+      if (validation['valid'] != true || validation['cutToken'] == null) {
+        final reason = validation['error'] ?? 'Insufficient credits or inactive license.';
         throw Exception('Cut validation failed: $reason');
       }
 
       final cutToken = validation['cutToken'] as String;
+      currentCutToken = cutToken;
 
       setState(() {
         _loadingMessage = 'Sending Vector to Plotter...';
@@ -1368,6 +1937,9 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
       if (contentToCut.isEmpty) {
         throw Exception('Invalid vector cut data.');
       }
+
+      // Mark cutting in transaction manager
+      await CutTransactionService.markCutting(cutToken, plotterId: _plotterService.connectedName);
 
       // Listen to progress
       final double estimatedSeconds = PlotterService.estimateCutDuration(
@@ -1393,38 +1965,50 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
         name: 'DecalSkin',
         speed: _selectedSpeed,
         force: _selectedForce,
+        passes: _cutPasses,
         width: _isTilingEnabled ? _filmWidth : _baseWidth,
         height: _isTilingEnabled ? _filmHeight : _baseHeight,
       );
 
       if (success) {
-        try {
-          await ApiService.logCut(
-            cutToken: cutToken,
-            plotterId: _plotterService.connectedName ?? 'Plotter',
-            isPositiveCut: true,
-          );
-        } catch (e) {
-          print('Error logging cut on server: $e');
-        }
+        await CutTransactionService.commitCut(
+          cutToken: cutToken,
+          plotterId: _plotterService.connectedName ?? 'Plotter',
+        );
+      } else {
+        await CutTransactionService.abortCut(
+          cutToken: cutToken,
+          reason: 'Hardware cut failed or was reset',
+          plotterId: _plotterService.connectedName ?? 'Plotter',
+        );
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(success ? 'Decal skin cut completed successfully!' : 'Plotter cut failed/cancelled.'),
-            backgroundColor: success ? Colors.green : Colors.red,
+            content: Text(success 
+                ? 'Decal skin cut completed successfully!' 
+                : 'Plotter cut stopped. Credits were preserved.'),
+            backgroundColor: success ? Colors.green : Colors.orange.shade800,
           ),
         );
       }
     } catch (e) {
       print('Cut failed: $e');
+      if (currentCutToken != null) {
+        await CutTransactionService.abortCut(
+          cutToken: currentCutToken,
+          reason: 'Exception: $e',
+          plotterId: _plotterService.connectedName ?? 'Plotter',
+        );
+      }
+
       if (mounted) {
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Error Cutting'),
-            content: Text(e.toString().replaceAll('Exception:', '')),
+            content: Text('${e.toString().replaceAll('Exception:', '')}\n\nCredits were preserved.'),
             actions: [
               TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
             ],
@@ -1460,14 +2044,24 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
           const PlotterStatusAction(),
           if (_diyModeEnabled) ...[
             IconButton(
-              icon: const Icon(Icons.undo),
+              icon: Icon(Icons.undo, color: _undoStack.isNotEmpty ? Colors.black87 : Colors.black26),
               onPressed: _undoStack.isNotEmpty ? _undo : null,
               tooltip: 'Undo',
             ),
             IconButton(
-              icon: const Icon(Icons.redo),
+              icon: Icon(Icons.redo, color: _redoStack.isNotEmpty ? Colors.black87 : Colors.black26),
               onPressed: _redoStack.isNotEmpty ? _redo : null,
               tooltip: 'Redo',
+            ),
+            IconButton(
+              icon: const Icon(Icons.bookmark_add_outlined),
+              tooltip: 'Save Draft',
+              onPressed: _showSaveDraftDialog,
+            ),
+            IconButton(
+              icon: const Icon(Icons.folder_open_outlined),
+              tooltip: 'My Designs',
+              onPressed: _showSavedDraftsSheet,
             ),
             IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.red),
@@ -1477,6 +2071,12 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
                       ? _deleteSelectedDecal
                       : (_selectedText != null ? _deleteSelectedText : null)),
               tooltip: 'Delete Selected',
+            ),
+          ] else ...[
+            IconButton(
+              icon: const Icon(Icons.folder_open_outlined),
+              tooltip: 'My Designs',
+              onPressed: _showSavedDraftsSheet,
             ),
           ],
         ],
@@ -3131,15 +3731,21 @@ class _DiyDesignerScreenState extends State<DiyDesignerScreen> {
 
   static const _s3CatalogBaseUrl = 'https://flash-buk-01.s3.ap-south-1.amazonaws.com/ScratchGardImages/Uploads/Owner/Catalog';
 
+  static String _buildS3Url(String path) {
+    final cleanPath = path.startsWith('/') ? path.substring(1) : path;
+    final encodedSegments = cleanPath.split('/').map((s) => Uri.encodeComponent(s)).join('/');
+    return '$_s3CatalogBaseUrl/$encodedSegments';
+  }
+
   String _getImageUrl(dynamic item) {
-    final path = item['imageUrl']?.toString() ?? '';
+    final path = item['imageUrl']?.toString().trim() ?? '';
     if (path.isNotEmpty) {
-      if (path.startsWith('http')) return path;
-      if (!path.contains('/')) {
-        return '$_s3CatalogBaseUrl/$path';
+      if (path.startsWith('http://') || path.startsWith('https://')) return Uri.encodeFull(path);
+      if (path.startsWith('/uploads/') || path.startsWith('uploads/')) {
+        final cleanPath = path.startsWith('/') ? path.substring(1) : path;
+        return Uri.encodeFull('${ApiService.baseUrl.replaceFirst('/api', '')}/$cleanPath');
       }
-      final cleanPath = path.startsWith('/') ? path.substring(1) : path;
-      return '${ApiService.baseUrl.replaceFirst('/api', '')}/$cleanPath';
+      return _buildS3Url(path);
     }
     return '';
   }

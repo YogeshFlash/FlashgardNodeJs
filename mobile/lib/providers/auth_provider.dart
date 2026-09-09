@@ -12,6 +12,7 @@ class AuthProvider with ChangeNotifier {
   String? _orgName;
   String? _licenseKey;
   String? _organizationId;
+  bool _isSuperAdmin = false;
 
   bool get isAuthenticated => _isAuthenticated;
   bool get isInitialized => _isInitialized;
@@ -21,6 +22,7 @@ class AuthProvider with ChangeNotifier {
   String? get orgName => _orgName;
   String? get licenseKey => _licenseKey;
   String? get organizationId => _organizationId;
+  bool get isSuperAdmin => _isSuperAdmin;
 
   AuthProvider() {
     _checkLoginStatus();
@@ -35,6 +37,7 @@ class AuthProvider with ChangeNotifier {
       _orgName = prefs.getString('org_name');
       _licenseKey = prefs.getString('saved_license_key');
       _organizationId = prefs.getString('organization_id');
+      _isSuperAdmin = prefs.getBool('is_super_admin') ?? false;
       final loginTimeStr = prefs.getString('login_time');
 
       if (_token != null && loginTimeStr != null) {
@@ -65,6 +68,7 @@ class AuthProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('token', data['access_token']);
       await prefs.setString('login_time', DateTime.now().toIso8601String());
+      await prefs.setString('auth_type', 'password');
       await prefs.setString('saved_email', email);
       await prefs.setString('saved_password', password);
 
@@ -77,11 +81,14 @@ class AuthProvider with ChangeNotifier {
         final orgName = user['organization']?['name'] ?? '';
         final licenseKey = user['licenseKey'] ?? '';
         final orgId = user['organizationId'] ?? '';
+        final isSuper = user['isSuperAdmin'] == true;
 
         await prefs.setString('user_name', nameToSave);
         await prefs.setString('org_name', orgName);
         await prefs.setString('organization_id', orgId);
+        await prefs.setBool('is_super_admin', isSuper);
         _organizationId = orgId;
+        _isSuperAdmin = isSuper;
 
         _licenseKey = licenseKey.isNotEmpty ? licenseKey : null;
         if (licenseKey.isNotEmpty) {
@@ -101,33 +108,49 @@ class AuthProvider with ChangeNotifier {
     return false;
   }
 
-  Future<bool> loginDevice(String licenseKey) async {
-    final data = await ApiService.loginDevice(licenseKey);
+  Future<bool> loginDevice({String? licenseKey, String? orgId, String? email}) async {
+    final data = await ApiService.loginDevice(licenseKey: licenseKey, orgId: orgId, email: email);
     if (data != null && data['access_token'] != null) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('token', data['access_token']);
       await prefs.setString('login_time', DateTime.now().toIso8601String());
-      await prefs.setString('saved_license_key', licenseKey);
+      await prefs.setString('auth_type', 'device');
+      
+      // Clear password auth fields so refreshProfile won't revert to old saved account
+      await prefs.remove('saved_password');
+      await prefs.remove('saved_email');
+
+      if (orgId != null && orgId.isNotEmpty) {
+        await prefs.setString('saved_org_id', orgId);
+      }
+      if (email != null && email.isNotEmpty) {
+        await prefs.setString('saved_device_email', email);
+      }
 
       final user = data['user'];
       if (user != null) {
         final firstName = user['firstName'] ?? '';
         final lastName = user['lastName'] ?? '';
         final fullName = '$firstName $lastName'.trim();
-        final nameToSave = fullName.isNotEmpty ? fullName : 'Device';
+        final nameToSave = fullName.isNotEmpty ? fullName : (user['organization']?['name'] ?? 'Organization Device');
         final orgName = user['organization']?['name'] ?? '';
-        final orgId = user['organizationId'] ?? '';
+        final orgIdVal = user['organizationId'] ?? orgId ?? '';
+        final licKey = user['licenseKey'] ?? licenseKey ?? '';
 
         await prefs.setString('user_name', nameToSave);
         await prefs.setString('org_name', orgName);
-        await prefs.setString('organization_id', orgId);
-        _organizationId = orgId;
+        await prefs.setString('organization_id', orgIdVal);
+        _organizationId = orgIdVal;
+
+        if (licKey.toString().isNotEmpty && licKey != 'PENDING') {
+          await prefs.setString('saved_license_key', licKey.toString());
+          _licenseKey = licKey.toString();
+        }
 
         _userName = nameToSave;
         _orgName = orgName;
       }
 
-      _licenseKey = licenseKey;
       _token = data['access_token'];
       _isAuthenticated = true;
       notifyListeners();
@@ -158,12 +181,15 @@ class AuthProvider with ChangeNotifier {
     await prefs.remove('user_name');
     await prefs.remove('org_name');
     await prefs.remove('organization_id');
+    await prefs.remove('auth_type');
     
     final biometricsEnabled = prefs.getBool('biometrics_enabled') ?? false;
     if (!biometricsEnabled) {
       await prefs.remove('saved_email');
       await prefs.remove('saved_password');
       await prefs.remove('saved_license_key');
+      await prefs.remove('saved_org_id');
+      await prefs.remove('saved_device_email');
     }
     
     _userName = null;
@@ -185,7 +211,7 @@ class AuthProvider with ChangeNotifier {
       if (!canAuthenticate) return false;
 
       final bool verified = await localAuth.authenticate(
-        localizedReason: 'Confirm biometrics to enable Biometric Login',
+        localizedReason: 'Confirm device lock (Biometric, PIN, or Pattern) to enable fast login',
       );
 
       if (verified && _token != null) {
@@ -202,6 +228,8 @@ class AuthProvider with ChangeNotifier {
       await prefs.remove('saved_email');
       await prefs.remove('saved_password');
       await prefs.remove('saved_license_key');
+      await prefs.remove('saved_org_id');
+      await prefs.remove('saved_device_email');
       _isBiometricsEnabled = false;
       notifyListeners();
       return true;
@@ -223,91 +251,42 @@ class AuthProvider with ChangeNotifier {
       if (!canAuthenticate) return false;
 
       final bool verified = await localAuth.authenticate(
-        localizedReason: 'Please authenticate to sign in',
+        localizedReason: 'Verify your fingerprint, face, PIN, or pattern to sign in',
       );
 
       if (verified) {
+        _token = storedToken;
+        // 1. Try to fetch profile with the stored token
+        final profileSuccess = await refreshProfile();
+        if (profileSuccess) {
+          _isAuthenticated = true;
+          notifyListeners();
+          return true;
+        }
+
+        // 2. Fallback: Re-authenticate with stored credentials based on auth_type
+        final authType = prefs.getString('auth_type');
         final email = prefs.getString('saved_email');
         final password = prefs.getString('saved_password');
         final licenseKey = prefs.getString('saved_license_key');
+        final orgId = prefs.getString('saved_org_id');
+        final deviceEmail = prefs.getString('saved_device_email');
 
-        if (email != null && password != null) {
-          try {
-            final data = await ApiService.login(email, password);
-            if (data != null && data['access_token'] != null) {
-              final newToken = data['access_token'];
-              await prefs.setString('token', newToken);
-              await prefs.setString('biometric_token', newToken);
-              await prefs.setString('login_time', DateTime.now().toIso8601String());
-
-              final user = data['user'];
-              if (user != null) {
-                final firstName = user['firstName'] ?? '';
-                final lastName = user['lastName'] ?? '';
-                final fullName = '$firstName $lastName'.trim();
-                final nameToSave = fullName.isNotEmpty ? fullName : email.split('@')[0];
-                final orgName = user['organization']?['name'] ?? '';
-                final licenseKey = user['licenseKey'] ?? '';
-                final orgId = user['organizationId'] ?? '';
-
-                await prefs.setString('user_name', nameToSave);
-                await prefs.setString('org_name', orgName);
-                await prefs.setString('organization_id', orgId);
-                _userName = nameToSave;
-                _orgName = orgName;
-                _organizationId = orgId;
-
-                _licenseKey = licenseKey.isNotEmpty ? licenseKey : null;
-                if (licenseKey.isNotEmpty) {
-                  await prefs.setString('saved_license_key', licenseKey);
-                } else {
-                  await prefs.remove('saved_license_key');
-                }
-              }
-
-              _token = newToken;
-              _isAuthenticated = true;
-              notifyListeners();
-              return true;
-            }
-          } catch (e) {
-            print('Biometric background refresh failed: $e');
+        if (authType == 'password' && email != null && password != null) {
+          final loggedIn = await login(email, password);
+          if (loggedIn && _token != null) {
+            await prefs.setString('biometric_token', _token!);
+            return true;
           }
-        } else if (licenseKey != null) {
-          try {
-            final data = await ApiService.loginDevice(licenseKey);
-            if (data != null && data['access_token'] != null) {
-              final newToken = data['access_token'];
-              await prefs.setString('token', newToken);
-              await prefs.setString('biometric_token', newToken);
-              await prefs.setString('login_time', DateTime.now().toIso8601String());
-
-              final user = data['user'];
-              if (user != null) {
-                final firstName = user['firstName'] ?? '';
-                final lastName = user['lastName'] ?? '';
-                final fullName = '$firstName $lastName'.trim();
-                final nameToSave = fullName.isNotEmpty ? fullName : 'Device';
-                final orgName = user['organization']?['name'] ?? '';
-
-                await prefs.setString('user_name', nameToSave);
-                await prefs.setString('org_name', orgName);
-                _userName = nameToSave;
-                _orgName = orgName;
-              }
-
-              _licenseKey = licenseKey;
-              _token = newToken;
-              _isAuthenticated = true;
-              notifyListeners();
-              return true;
-            }
-          } catch (e) {
-            print('Biometric background device refresh failed: $e');
+        } else if (licenseKey != null || orgId != null || deviceEmail != null) {
+          final loggedIn = await loginDevice(licenseKey: licenseKey, orgId: orgId, email: deviceEmail);
+          if (loggedIn && _token != null) {
+            await prefs.setString('biometric_token', _token!);
+            return true;
           }
         }
 
-        // Fallback to local stored token (offline mode or API failure)
+        // Offline fallback to stored token
         await prefs.setString('token', storedToken);
         await prefs.setString('login_time', DateTime.now().toIso8601String());
         _token = storedToken;
@@ -325,14 +304,56 @@ class AuthProvider with ChangeNotifier {
   Future<bool> refreshProfile() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      // 1. Try live API call to GET /auth/me with existing token
+      if (_token != null && _token!.isNotEmpty) {
+        final profile = await ApiService.getProfile();
+        if (profile != null) {
+          final firstName = profile['firstName'] ?? '';
+          final lastName = profile['lastName'] ?? '';
+          final fullName = '$firstName $lastName'.trim();
+          final orgName = profile['organization']?['name'] ?? '';
+          final licenseKey = profile['licenseKey'] ?? '';
+          final orgId = profile['organizationId'] ?? '';
+          final isSuper = profile['isSuperAdmin'] == true;
+          final nameToSave = fullName.isNotEmpty ? fullName : (orgName.isNotEmpty ? orgName : 'User');
+
+          _userName = nameToSave;
+          _orgName = orgName.isNotEmpty ? orgName : _orgName;
+          _organizationId = orgId.isNotEmpty ? orgId : _organizationId;
+          _isSuperAdmin = isSuper;
+          await prefs.setBool('is_super_admin', isSuper);
+          
+          if (licenseKey != null && licenseKey.toString().isNotEmpty && licenseKey != 'PENDING') {
+            _licenseKey = licenseKey.toString();
+            await prefs.setString('saved_license_key', _licenseKey!);
+          }
+          
+          if (_orgName != null && _orgName!.isNotEmpty) {
+            await prefs.setString('org_name', _orgName!);
+          }
+          if (_organizationId != null && _organizationId!.isNotEmpty) {
+            await prefs.setString('organization_id', _organizationId!);
+          }
+          await prefs.setString('user_name', nameToSave);
+
+          notifyListeners();
+          return true;
+        }
+      }
+
+      // 2. Fallback: Re-authenticate if token is expired
+      final authType = prefs.getString('auth_type');
       final email = prefs.getString('saved_email');
       final password = prefs.getString('saved_password');
       final licenseKey = prefs.getString('saved_license_key');
+      final orgId = prefs.getString('saved_org_id');
+      final deviceEmail = prefs.getString('saved_device_email');
 
-      if (email != null && password != null) {
+      if (authType == 'device' || (licenseKey != null && password == null)) {
+        return await loginDevice(licenseKey: licenseKey, orgId: orgId, email: deviceEmail);
+      } else if (email != null && password != null) {
         return await login(email, password);
-      } else if (licenseKey != null && licenseKey.isNotEmpty) {
-        return await loginDevice(licenseKey);
       }
     } catch (e) {
       print('Failed to refresh profile: $e');

@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  ShieldCheck, Plus, Send, X, AlertCircle, RotateCcw, Search, ChevronLeft, ChevronRight, Gift,
-  Ticket, List, History, CreditCard, Pencil, Trash2, ToggleLeft, ToggleRight, IndianRupee, BadgeCheck, Clock
+  ShieldCheck, Plus, Send, X, AlertCircle, RotateCcw, Search, Gift,
+  Ticket, List, History
 } from 'lucide-react';
-import { licensesApi, cutCreditsApi, orgsApi, modelCategoriesApi, rechargeApi } from '../lib/api';
+import { licensesApi, cutCreditsApi, orgsApi, modelCategoriesApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { formatISTDate, formatISTDateTime } from '../lib/dateUtils';
 
 const Badge = ({ children, variant = 'gray' }: any) => {
   const styles: any = {
@@ -732,115 +733,12 @@ const DispatchModal = ({ onClose, onSave, orgs, type, selectedIds, items }: any)
   );
 };
 
-const RechargePackageModal = ({ pkg, onClose, onSave }: { pkg?: any; onClose: () => void; onSave: () => void }) => {
-  const isEdit = !!pkg;
-  const [form, setForm] = useState({
-    name: pkg?.name || '',
-    description: pkg?.description || '',
-    planType: pkg?.planType || 'USAGE',
-    credits: pkg?.credits?.toString() || '',
-    validityDays: pkg?.validityDays?.toString() || '',
-    price: pkg ? Number(pkg.price).toString() : '',
-    currency: pkg?.currency || 'INR',
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    if (!form.name || !form.price) { setError('Name and Price are required.'); return; }
-    if (form.planType === 'USAGE' && !form.credits) { setError('Credits is required for USAGE plans.'); return; }
-    if (form.planType === 'UNLIMITED' && !form.validityDays) { setError('Validity Days is required for UNLIMITED plans.'); return; }
-
-    setLoading(true);
-    try {
-      const payload = {
-        name: form.name,
-        description: form.description,
-        planType: form.planType,
-        credits: form.planType === 'USAGE' ? Number(form.credits) || 0 : 0,
-        validityDays: form.planType === 'UNLIMITED' ? Number(form.validityDays) || 0 : 0,
-        price: Number(form.price),
-        currency: form.currency,
-      };
-
-      if (isEdit) {
-        await rechargeApi.updatePackage(pkg.id, payload);
-      } else {
-        await rechargeApi.createPackage(payload);
-      }
-      onSave();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save package');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between p-6 border-b border-slate-100">
-          <h2 className="text-lg font-bold text-slate-800">{isEdit ? 'Edit Package' : 'New Recharge Package'}</h2>
-          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"><X className="w-5 h-5" /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {error && <div className="flex gap-2 items-start p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600"><AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />{error}</div>}
-          <div>
-            <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Package Name *</label>
-            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Starter Pack" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Description</label>
-            <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional description" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Plan Type *</label>
-              <select value={form.planType} onChange={e => setForm(f => ({ ...f, planType: e.target.value }))} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white">
-                <option value="USAGE">Usage (Cuts)</option>
-                <option value="UNLIMITED">Unlimited Time</option>
-                <option value="LIFETIME">Lifetime Unlimited</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Price (₹) *</label>
-              <input type="number" min="1" step="0.01" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="499" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
-            </div>
-          </div>
-
-          {form.planType === 'USAGE' && (
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Credits (Cuts) *</label>
-              <input type="number" min="1" value={form.credits} onChange={e => setForm(f => ({ ...f, credits: e.target.value }))} placeholder="500" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
-            </div>
-          )}
-
-          {form.planType === 'UNLIMITED' && (
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Validity Days *</label>
-              <input type="number" min="1" value={form.validityDays} onChange={e => setForm(f => ({ ...f, validityDays: e.target.value }))} placeholder="30" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
-            </div>
-          )}
-
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">Cancel</button>
-            <button type="submit" disabled={loading} className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition-colors text-sm">
-              {loading ? 'Saving...' : isEdit ? 'Update Package' : 'Create Package'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
 
 const LicensesPage = () => {
   const { user } = useAuth();
-  const [tab, setTab] = useState<'licenses' | 'credits' | 'cut-logs' | 'master-qrs' | 'history' | 'recharge-packages'>('licenses');
-  const handleTabChange = (newTab: 'licenses' | 'credits' | 'cut-logs' | 'master-qrs' | 'history' | 'recharge-packages') => {
+  const [tab, setTab] = useState<'licenses' | 'credits' | 'cut-logs' | 'master-qrs' | 'history'>('licenses');
+  const handleTabChange = (newTab: 'licenses' | 'credits' | 'cut-logs' | 'master-qrs' | 'history') => {
     setTab(newTab);
     setPage(1);
     setSelectedIds([]);
@@ -857,16 +755,12 @@ const LicensesPage = () => {
     { id: 'cut-logs', label: 'Cut Logs', icon: List },
     { id: 'master-qrs', label: 'Master QRs', icon: Search },
     { id: 'history', label: 'History', icon: History },
-    ...(user?.isSuperAdmin ? [{ id: 'recharge-packages', label: 'Recharge', icon: CreditCard }] : []),
   ];
   const [orgLicenses, setOrgLicenses] = useState<any[]>([]);
   const [cutCredits, setCutCredits] = useState<any[]>([]);
   const [transfers, setTransfers] = useState<any[]>([]);
   const [cutLogs, setCutLogs] = useState<any[]>([]);
   const [masterQRs, setMasterQRs] = useState<any[]>([]);
-  const [rechargePackages, setRechargePackages] = useState<any[]>([]);
-  const [rechargeTransactions, setRechargeTransactions] = useState<any[]>([]);
-  const [rechargePackageModal, setRechargePackageModal] = useState<{ mode: 'create' | 'edit'; pkg?: any } | null>(null);
   const [orgs, setOrgs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<string | null>(null);
@@ -927,14 +821,6 @@ const LicensesPage = () => {
       } else if (tab === 'master-qrs') {
         const res: any = await (licensesApi as any).getMasterQRs(skip, ITEMS_PER_PAGE, searchQuery || undefined).catch(() => ({ items: [], total: 0 }));
         setMasterQRs(res.items || []); setTotalItems(res.total || 0);
-      } else if (tab === 'recharge-packages') {
-        const [pkgs, txns]: any = await Promise.all([
-          rechargeApi.getAllPackages().catch(() => []),
-          rechargeApi.getTransactions(0, 100).catch(() => ({ items: [], total: 0 })),
-        ]);
-        setRechargePackages(Array.isArray(pkgs) ? pkgs : []);
-        setRechargeTransactions((txns as any)?.items || []);
-        setTotalItems((txns as any)?.total || 0);
       } else if (tab === 'history') {
         const transferLicRes = await licensesApi.getTransfers().catch(() => []);
         const transferCredRes = await cutCreditsApi.getTransfers().catch(() => []);
@@ -980,8 +866,16 @@ const LicensesPage = () => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
-  const selectFullBatch = (items: any[], batchId: string) => {
-    const batchItems = items.filter(item => item.batchId === batchId && item.status === 'AVAILABLE' && (user?.isSuperAdmin || item.ownerId === user?.organizationId));
+  const canDispatchLicenses = useMemo(() => {
+    if (user?.isSuperAdmin) return true;
+    if (!user?.permissions || !Array.isArray(user.permissions)) return true;
+    const perms = user.permissions;
+    return perms.includes('licenses:write') || perms.includes('license:write') || perms.includes('licenses:dispatch') || perms.includes('license_dispatch:write');
+  }, [user]);
+
+  const selectFullBatch = (items: any[], _batchId: string) => {
+    if (!canDispatchLicenses) return;
+    const batchItems = items.filter(item => item.status === 'AVAILABLE' && (user?.isSuperAdmin || item.ownerId === user?.organizationId));
     const batchItemIds = batchItems.map(item => item.id);
     const allInBatchSelected = batchItemIds.every(id => selectedIds.includes(id));
 
@@ -1012,40 +906,47 @@ const LicensesPage = () => {
     return acc;
   }, {});
 
-
-
-
-
   const renderPagination = () => {
     if (totalPages <= 1) return null;
-    const pages = [];
-    let start = Math.max(1, page - 2);
-    let end = Math.min(totalPages, start + 4);
-    if (end - start < 4) start = Math.max(1, end - 4);
-    
-    for (let i = start; i <= end; i++) pages.push(i);
-
     return (
-      <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50">
-        <div className="text-sm text-slate-500 font-medium">
-          Showing {((page - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(page * ITEMS_PER_PAGE, totalItems)} of {totalItems} items
+      <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-2.5 bg-slate-50 border-t border-slate-200 text-xs gap-3 shadow-sm my-2">
+        <div className="flex items-center gap-2 text-slate-600 font-medium">
+          <span>Showing Page <strong className="text-slate-900 font-bold">{page}</strong> of <strong className="text-slate-900 font-bold">{totalPages}</strong></span>
+          <span className="text-slate-300">|</span>
+          <span className="text-slate-500 font-mono"><strong className="text-slate-800">{totalItems}</strong> total records</span>
         </div>
-        <div className="flex gap-1">
-          <button disabled={page === 1} onClick={() => setPage(page - 1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-100 disabled:opacity-50">
-            <ChevronLeft className="w-4 h-4" />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page <= 1}
+            className="px-3 py-1.5 font-semibold text-xs border border-slate-200 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition bg-white text-slate-700 shadow-sm flex items-center gap-1 cursor-pointer"
+          >
+            ← Previous
           </button>
-          {pages.map(p => (
-            <button key={p} onClick={() => setPage(p)} className={`w-8 h-8 rounded-lg text-sm font-bold ${page === p ? 'bg-[var(--color-accent)] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
-              {p}
-            </button>
-          ))}
-          <button disabled={page === totalPages} onClick={() => setPage(page + 1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-100 disabled:opacity-50">
-            <ChevronRight className="w-4 h-4" />
+          <div className="flex items-center gap-1 px-1">
+            <span className="text-slate-500">Page</span>
+            <select
+              value={page}
+              onChange={(e) => setPage(Number(e.target.value))}
+              className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-800 cursor-pointer shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(pNum => (
+                <option key={pNum} value={pNum}>Page {pNum}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages}
+            className="px-3 py-1.5 font-semibold text-xs border border-slate-200 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition bg-white text-slate-700 shadow-sm flex items-center gap-1 cursor-pointer"
+          >
+            Next →
           </button>
         </div>
       </div>
     );
   };
+
 
   return (
     <div className="space-y-6">
@@ -1157,29 +1058,34 @@ const LicensesPage = () => {
             </div>
           </div>
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            {renderPagination()}
             <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase border-b border-slate-100">
-                    <th className="px-6 py-4 w-10"></th>
-                    <th className="px-6 py-4">Serial / Key</th>
-                    <th className="px-6 py-4">Service Level</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4">Owner</th>
-                    <th className="px-6 py-4">Activated At</th>
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide w-10">#</th>
+                    <th className="px-3 py-3 text-center w-10"></th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Serial / Key</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Service Level</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Owner</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Activated At</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-sm">
+                <tbody className="divide-y divide-slate-100">
                   {orgLicenses.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic">
+                      <td colSpan={7} className="px-4 py-12 text-center text-slate-400 italic">
                         {orgLicenses.length === 0 ? 'No org licenses found.' : 'No licenses match your search.'}
                       </td>
                     </tr>
-                  ) : Object.entries(groupedLicenses).map(([batchId, group]: [string, any]) => (
+                  ) : Object.entries(groupedLicenses).map(([batchId, group]: [string, any], batchIdx: number) => (
                     <React.Fragment key={batchId}>
-                      <tr className="bg-slate-50/50 border-y border-slate-100">
-                        <td className="px-6 py-3 text-center">
+                      <tr className="bg-slate-50/80 border-y border-slate-200">
+                        <td className="px-4 py-2.5 text-center font-mono font-bold text-slate-400 text-xs">
+                          {batchIdx + 1}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
                           <input 
                             type="checkbox" 
                             checked={group.items.filter((i: any) => i.status === 'AVAILABLE' && (user?.isSuperAdmin || i.ownerId === user?.organizationId)).every((i: any) => selectedIds.includes(i.id)) && group.items.filter((i: any) => i.status === 'AVAILABLE' && (user?.isSuperAdmin || i.ownerId === user?.organizationId)).length > 0}
@@ -1187,38 +1093,45 @@ const LicensesPage = () => {
                             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
                           />
                         </td>
-                        <td colSpan={5} className="px-6 py-3">
-                          <div className="flex items-center gap-3">
-                            <span className="font-bold text-slate-700 text-xs uppercase tracking-wider">Batch: {group.info.batchCode}</span>
-                            <span className="text-slate-400 text-xs">•</span>
-                            <span className="text-slate-500 text-xs">{group.items.length} units</span>
-                            <span className="text-slate-400 text-xs">•</span>
-                            <span className="text-slate-500 text-xs">Issued {new Date(group.info.createdAt).toLocaleDateString()}</span>
+                        <td colSpan={5} className="px-4 py-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-md">
+                              Batch: {group.info.batchCode}
+                            </span>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-slate-600 text-xs font-semibold">{group.items.length} units</span>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-slate-500 text-xs">Issued {formatISTDate(group.info.createdAt)}</span>
                           </div>
                         </td>
                       </tr>
-                      {group.items.map((item: any) => (
-                        <tr key={item.id} className={`hover:bg-slate-50 transition-colors ${selectedIds.includes(item.id) ? 'bg-indigo-50/50' : ''}`}>
-                          <td className="px-6 py-4 text-center">
+                      {group.items.map((item: any, itemIdx: number) => (
+                        <tr key={item.id} className={`group hover:bg-slate-50 transition-colors ${selectedIds.includes(item.id) ? 'bg-indigo-50/50' : ''}`}>
+                          <td className="px-4 py-3 text-center font-mono font-bold text-slate-400 text-xs">
+                            {(page - 1) * ITEMS_PER_PAGE + itemIdx + 1}
+                          </td>
+                          <td className="px-3 py-3 text-center">
                             {item.status === 'AVAILABLE' && (user?.isSuperAdmin || item.ownerId === user?.organizationId) && (
                               <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelect(item.id)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer" />
                             )}
                           </td>
-                          <td className="px-6 py-4 font-mono font-bold text-slate-900">{item.key}</td>
-                          <td className="px-6 py-4"><span className="font-semibold text-slate-700">{item.batch.licenseType}</span></td>
-                          <td className="px-6 py-4">{getStatusBadge(item.status)}</td>
-                          <td className="px-6 py-4">
-                            <div className="flex flex-col items-start gap-1">
-                              <div className="flex flex-col">
-                                <span className="font-bold text-slate-900">{item.owner?.name}</span>
-                                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{item.owner?.organizationType?.name}</span>
-                              </div>
+                          <td className="px-4 py-3">
+                            <span className="font-mono text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-md inline-block shadow-2xs">
+                              {item.key}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3"><span className="font-semibold text-slate-700 text-xs">{item.batch.licenseType}</span></td>
+                          <td className="px-4 py-3">{getStatusBadge(item.status)}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-col items-start gap-0.5">
+                              <span className="font-bold text-slate-900 text-xs">{item.owner?.name}</span>
+                              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{item.owner?.organizationType?.name}</span>
                               {item.ownerId !== user?.organizationId && !user?.isSuperAdmin && (
-                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase tracking-wider">Distributed</span>
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase tracking-wider mt-0.5">Distributed</span>
                               )}
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-slate-500">{item.activatedAt ? new Date(item.activatedAt).toLocaleDateString() : '—'}</td>
+                          <td className="px-4 py-3 text-slate-500 text-xs">{item.activatedAt ? formatISTDate(item.activatedAt) : '—'}</td>
                         </tr>
                       ))}
                     </React.Fragment>
@@ -1288,57 +1201,84 @@ const LicensesPage = () => {
           )}
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase border-b border-slate-100">
-                  <th className="px-6 py-4">Plan Type</th>
-                  <th className="px-6 py-4">Organization</th>
-                  <th className="px-6 py-4">License</th>
-                  <th className="px-6 py-4">Date Assigned</th>
-                  <th className="px-6 py-4">Balance / Details</th>
+            {renderPagination()}
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Plan Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Organization</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">License</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Date Assigned</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Balance / Details</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-sm">
+              <tbody className="divide-y divide-slate-100">
                 {cutCredits.length === 0 ? (
-                  <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">No cut credits present.</td></tr>
-                ) : cutCredits.map((item: any) => (
-                  <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-slate-700">
-                      <div className="flex flex-col gap-1">
-                        <span>{item.planType}</span>
+                  <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-400 italic">No cut credits present.</td></tr>
+                ) : cutCredits.map((item: any, idx: number) => (
+                  <tr key={item.id} className="group hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">
+                      {(page - 1) * ITEMS_PER_PAGE + idx + 1}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-1 items-start">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                          item.planType === 'UNLIMITED' 
+                            ? 'bg-purple-50 text-purple-700 border-purple-200/60'
+                            : item.planType === 'LIFETIME'
+                            ? 'bg-amber-50 text-amber-700 border-amber-200/60'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200/60'
+                        }`}>
+                          {item.planType || 'USAGE'}
+                        </span>
                         {item.isOffer && (
-                          <div className="flex items-center gap-1 text-[10px] uppercase font-bold text-purple-600 bg-purple-50 border border-purple-100 w-fit px-1.5 py-0.5 rounded-md">
+                          <div className="flex items-center gap-1 text-[9px] uppercase font-bold text-purple-600 bg-purple-50 border border-purple-100 w-fit px-1.5 py-0.5 rounded-md">
                             <Gift className="w-3 h-3" /> Offer
                           </div>
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-3">
                        <div className="flex flex-col">
-                        <span className="font-bold text-slate-900">{item.owner?.name}</span>
+                        <span className="font-bold text-slate-900 text-xs">{item.owner?.name}</span>
                         <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{item.owner?.organizationType?.name}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-3">
                       {item.license ? (
-                        <div className="flex flex-col">
-                          <span className="font-mono font-bold text-slate-900">{item.license.key}</span>
+                        <div className="flex flex-col items-start gap-0.5">
+                          <span className="font-mono text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md inline-block shadow-2xs">
+                            {item.license.key}
+                          </span>
                           <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{item.license.batch?.licenseType}</span>
                         </div>
                       ) : (
                         <span className="text-slate-400 italic text-xs">Unlinked</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-slate-500">{new Date(item.createdAt).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 font-bold text-slate-900">
-                      {item.planType === 'USAGE' ? `${item.credits} Cuts` : item.planType === 'UNLIMITED' ? (
+                    <td className="px-4 py-3 text-slate-500 text-xs">{formatISTDate(item.createdAt)}</td>
+                    <td className="px-4 py-3">
+                      {item.planType === 'USAGE' ? (
+                        <span className="font-mono text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-md inline-block shadow-2xs">
+                          +{item.credits} Cuts
+                        </span>
+                      ) : item.planType === 'UNLIMITED' ? (
                         (() => {
                           const start = item.startDate ? new Date(item.startDate) : new Date(item.createdAt);
                           const end = item.endDate ? new Date(item.endDate) : (item.validityDays ? new Date(start.getTime() + item.validityDays * 24 * 60 * 60 * 1000) : null);
-                          return end ? `${start.toLocaleDateString()} - ${end.toLocaleDateString()}` : `${item.validityDays} Days`;
+                          return (
+                            <span className="font-mono text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200/80 px-2.5 py-1 rounded-md inline-block shadow-2xs">
+                              {end ? `${formatISTDate(start)} - ${formatISTDate(end)}` : `${item.validityDays} Days`}
+                            </span>
+                          );
                         })()
-                      ) : 'Lifetime'}
+                      ) : (
+                        <span className="font-mono text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200/80 px-2.5 py-1 rounded-md inline-block shadow-2xs">
+                          Lifetime
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1404,87 +1344,92 @@ const LicensesPage = () => {
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            {renderPagination()}
             <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase border-b border-slate-100">
-                    <th className="px-6 py-4">Category</th>
-                    <th className="px-6 py-4">Brand</th>
-                    <th className="px-6 py-4">Model</th>
-                    <th className="px-6 py-4">Pattern</th>
-                    <th className="px-6 py-4">Organization</th>
-                    <th className="px-6 py-4">Parent Org</th>
-                    <th className="px-6 py-4">License Key</th>
-                    <th className="px-6 py-4">User</th>
-                    <th className="px-6 py-4">Plotter ID</th>
-                    <th className="px-6 py-4">Date & Time</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4">Cut Review</th>
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Category</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Brand</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Model</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Pattern</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Organization</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Parent Org</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">License Key</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">User</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Plotter ID</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Date & Time</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Cut Review</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
                   {cutLogs.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="px-6 py-12 text-center text-slate-400 italic">
+                      <td colSpan={13} className="px-4 py-12 text-center text-slate-400 italic">
                         No cut logs found.
                       </td>
                     </tr>
                   ) : (
-                    cutLogs.map((item: any) => (
-                      <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4">
-                          <span className="text-slate-600">{(item.model?.category?.parent?.name && item.model?.category?.parent?.name !== 'Main Model') ? item.model?.category?.parent?.name : (item.model?.category?.name || <span className="text-slate-400 italic text-xs">N/A</span>)}</span>
+                    cutLogs.map((item: any, idx: number) => (
+                      <tr key={item.id} className="group hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">
+                          {(page - 1) * ITEMS_PER_PAGE + idx + 1}
                         </td>
-                        <td className="px-6 py-4 font-bold text-slate-900">
+                        <td className="px-4 py-3">
+                          <span className="text-slate-600 text-xs">{(item.model?.category?.parent?.name && item.model?.category?.parent?.name !== 'Main Model') ? item.model?.category?.parent?.name : (item.model?.category?.name || <span className="text-slate-400 italic text-xs">N/A</span>)}</span>
+                        </td>
+                        <td className="px-4 py-3 font-bold text-slate-900 text-xs">
                           {item.model?.brand?.name || item.brandName || <span className="text-slate-400 italic text-xs">N/A</span>}
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="font-semibold text-slate-700">{item.model?.name || item.modelName || 'Unknown'}</span>
+                        <td className="px-4 py-3">
+                          <span className="font-semibold text-slate-800 text-xs">{item.model?.name || item.modelName || 'Unknown'}</span>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="text-slate-600">{item.modelCutFile?.cutPattern?.name || item.patternName || <span className="text-slate-400 italic text-xs">N/A</span>}</span>
+                        <td className="px-4 py-3">
+                          <span className="text-slate-600 text-xs">{item.modelCutFile?.cutPattern?.name || item.patternName || <span className="text-slate-400 italic text-xs">N/A</span>}</span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3">
                           <div className="flex flex-col">
-                            <span className="font-bold text-slate-900">{item.organization?.name || 'Unknown'}</span>
+                            <span className="font-bold text-slate-900 text-xs">{item.organization?.name || 'Unknown'}</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-slate-600">
+                        <td className="px-4 py-3 text-slate-600 text-xs">
                           {item.organization?.parent?.name || <span className="text-slate-400 italic text-xs">N/A</span>}
                         </td>
-                        <td className="px-6 py-4 font-mono font-bold text-slate-700">
+                        <td className="px-4 py-3 font-mono font-bold text-slate-700 text-xs">
                           {item.license?.key || <span className="text-slate-400 italic text-xs">Unlinked</span>}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3">
                           {item.user ? (
                             <div className="flex flex-col">
-                              <span className="font-semibold text-slate-700">{item.user.email}</span>
+                              <span className="font-semibold text-slate-700 text-xs">{item.user.email}</span>
                               {(`${item.user.firstName || ''} ${item.user.lastName || ''}`.trim()) && (
                                 <span className="text-[10px] text-slate-400">{`${item.user.firstName || ''} ${item.user.lastName || ''}`.trim()}</span>
                               )}
                             </div>
                           ) : (
-                            <span className="text-slate-400 italic">Unknown</span>
+                            <span className="text-slate-400 italic text-xs">Unknown</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 font-mono font-bold text-slate-900">
+                        <td className="px-4 py-3 font-mono font-bold text-slate-900 text-xs">
                           {item.plotterId || <span className="text-slate-400 italic text-xs">N/A</span>}
                         </td>
-                        <td className="px-6 py-4 text-slate-500">
-                          {new Date(item.createdAt).toLocaleString()}
+                        <td className="px-4 py-3 text-slate-500 text-xs">
+                          {formatISTDateTime(item.createdAt)}
                         </td>
-                        <td className="px-6 py-4 font-bold">
+                        <td className="px-4 py-3 font-bold">
                           {item.isPositiveCut ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 uppercase tracking-wider">
                               Success
                             </span>
                           ) : (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-100">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-100 uppercase tracking-wider">
                               Failed
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-slate-600">
+                        <td className="px-4 py-3 text-slate-600 text-xs">
                           {item.reviews || <span className="text-slate-400 italic text-xs">—</span>}
                         </td>
                       </tr>
@@ -1521,64 +1466,71 @@ const LicensesPage = () => {
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            {renderPagination()}
             <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase border-b border-slate-100">
-                    <th className="px-6 py-4">Created Date</th>
-                    <th className="px-6 py-4">Master QR Code</th>
-                    <th className="px-6 py-4">Product Name</th>
-                    <th className="px-6 py-4">Force</th>
-                    <th className="px-6 py-4">Speed</th>
-                    <th className="px-6 py-4">Dealer / Org</th>
-                    <th className="px-6 py-4">Owner / Dist</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4">Creator</th>
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Created Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Master QR Code</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Product Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Force</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Speed</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Dealer / Org</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Owner / Dist</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Creator</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
                   {masterQRs.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-6 py-12 text-center text-slate-400 italic">
+                      <td colSpan={10} className="px-4 py-12 text-center text-slate-400 italic">
                         No Master QRs found.
                       </td>
                     </tr>
                   ) : (
-                    masterQRs.map((item: any) => (
-                      <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 text-slate-500">
-                          {new Date(item.createdAt).toLocaleDateString()}
+                    masterQRs.map((item: any, idx: number) => (
+                      <tr key={item.id} className="group hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">
+                          {(page - 1) * ITEMS_PER_PAGE + idx + 1}
                         </td>
-                        <td className="px-6 py-4 font-mono font-bold text-slate-900">
-                          {item.masterQRCode}
+                        <td className="px-4 py-3 text-slate-500 text-xs">
+                          {formatISTDate(item.createdAt)}
                         </td>
-                        <td className="px-6 py-4 font-semibold text-slate-700">
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-xs font-bold text-slate-800 bg-indigo-50/80 border border-indigo-200/80 px-2 py-0.5 rounded-md inline-block">
+                            {item.masterQRCode}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-slate-800 text-xs">
                           {item.masterProduct}
                         </td>
-                        <td className="px-6 py-4 text-slate-600">
+                        <td className="px-4 py-3 text-slate-600 text-xs">
                           {item.force}
                         </td>
-                        <td className="px-6 py-4 text-slate-600">
+                        <td className="px-4 py-3 text-slate-600 text-xs">
                           {item.speed}
                         </td>
-                        <td className="px-6 py-4 text-slate-600">
-                          {item.dealer?.name || <span className="text-slate-400 italic">N/A</span>}
+                        <td className="px-4 py-3 text-slate-600 text-xs">
+                          {item.dealer?.name || <span className="text-slate-400 italic text-xs">N/A</span>}
                         </td>
-                        <td className="px-6 py-4 text-slate-600">
-                          {item.owner?.name || <span className="text-slate-400 italic">N/A</span>}
+                        <td className="px-4 py-3 text-slate-600 text-xs">
+                          {item.owner?.name || <span className="text-slate-400 italic text-xs">N/A</span>}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3">
                           {item.isActive ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 uppercase tracking-wider">
                               Active
                             </span>
                           ) : (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-700 border border-slate-100">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-50 text-slate-700 border border-slate-100 uppercase tracking-wider">
                               Inactive
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-slate-600">
+                        <td className="px-4 py-3 text-slate-600 text-xs">
                           {item.creator ? `${item.creator.firstName || ''} ${item.creator.lastName || ''}`.trim() || item.creator.email : 'System'}
                         </td>
                       </tr>
@@ -1590,199 +1542,36 @@ const LicensesPage = () => {
             {renderPagination()}
           </div>
         </div>
-      ) : tab === 'recharge-packages' ? (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Package Management */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-slate-800">Recharge Packages</h2>
-              <p className="text-sm text-slate-500 mt-0.5">Manage UPI recharge packages visible to retailers in the mobile app.</p>
-            </div>
-            <button
-              onClick={() => setRechargePackageModal({ mode: 'create' })}
-              className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-md transition-all text-sm"
-            >
-              <Plus className="w-4 h-4" /> New Package
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {rechargePackages.length === 0 ? (
-              <div className="col-span-4 text-center py-16 text-slate-400 italic">No recharge packages found. Create one above.</div>
-            ) : rechargePackages.map((pkg: any) => (
-              <div key={pkg.id} className={`relative bg-white rounded-2xl border-2 shadow-sm p-5 flex flex-col gap-3 transition-all ${pkg.isActive ? 'border-indigo-200' : 'border-slate-200 opacity-60'}`}>
-                {!pkg.isActive && (
-                  <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold uppercase">Inactive</span>
-                )}
-                {pkg.isActive && (
-                  <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase border border-emerald-100">Active</span>
-                )}
-                <div className="flex items-center gap-2">
-                  <div className="p-2.5 bg-indigo-50 rounded-xl">
-                    <CreditCard className="w-5 h-5 text-indigo-600" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-slate-800 text-sm leading-tight">{pkg.name}</p>
-                    <p className="text-xs text-slate-400">{pkg.description || 'No description'}</p>
-                  </div>
-                </div>
-                <div className="flex items-end justify-between mt-1">
-                  <div>
-                    {pkg.planType === 'UNLIMITED' ? (
-                      <>
-                        <p className="text-2xl font-black text-indigo-700">{pkg.validityDays || 0}</p>
-                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Days</p>
-                      </>
-                    ) : pkg.planType === 'LIFETIME' ? (
-                      <>
-                        <p className="text-xl font-black text-indigo-700">Lifetime</p>
-                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Plan</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-3xl font-black text-indigo-700">{pkg.credits}</p>
-                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Cuts</p>
-                      </>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xl font-black text-slate-800 flex items-center gap-0.5">
-                      <IndianRupee className="w-4 h-4" />{Number(pkg.price).toLocaleString('en-IN')}
-                    </p>
-                    <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider">{pkg.planType || 'USAGE'}</p>
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-1">
-                  <button
-                    onClick={() => setRechargePackageModal({ mode: 'edit', pkg })}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-                  >
-                    <Pencil className="w-3.5 h-3.5" /> Edit
-                  </button>
-                  <button
-                    onClick={async () => {
-                      await rechargeApi.updatePackage(pkg.id, { isActive: !pkg.isActive });
-                      fetchData();
-                    }}
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${pkg.isActive ? 'text-amber-600 bg-amber-50 hover:bg-amber-100' : 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'}`}
-                  >
-                    {pkg.isActive ? <ToggleLeft className="w-3.5 h-3.5" /> : <ToggleRight className="w-3.5 h-3.5" />}
-                    {pkg.isActive ? 'Disable' : 'Enable'}
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (confirm(`Delete package "${pkg.name}"?`)) {
-                        await rechargeApi.deletePackage(pkg.id);
-                        fetchData();
-                      }
-                    }}
-                    className="p-1.5 text-red-400 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
-                    title="Delete"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Payment Transactions */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-slate-800">Payment Transactions</h2>
-              <span className="text-xs text-slate-400 font-medium">Last 100 transactions</span>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase border-b border-slate-100">
-                      <th className="px-5 py-3">Organization</th>
-                      <th className="px-5 py-3">User</th>
-                      <th className="px-5 py-3">Package</th>
-                      <th className="px-5 py-3">Amount</th>
-                      <th className="px-5 py-3">Razorpay Order ID</th>
-                      <th className="px-5 py-3">Payment ID</th>
-                      <th className="px-5 py-3">Status</th>
-                      <th className="px-5 py-3">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-sm">
-                    {rechargeTransactions.length === 0 ? (
-                      <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-400 italic">No payment transactions yet.</td></tr>
-                    ) : rechargeTransactions.map((txn: any) => (
-                      <tr key={txn.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-5 py-3 font-semibold text-slate-800">{txn.organization?.name || '—'}</td>
-                        <td className="px-5 py-3 text-slate-600">
-                          {txn.user ? `${txn.user.firstName || ''} ${txn.user.lastName || ''}`.trim() || txn.user.email : '—'}
-                        </td>
-                        <td className="px-5 py-3">
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-slate-700">{txn.package?.name || '—'}</span>
-                            <span className="text-xs text-indigo-600 font-bold">{txn.package?.credits} cuts</span>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 font-bold text-slate-800">
-                          <span className="flex items-center gap-0.5"><IndianRupee className="w-3.5 h-3.5" />{Number(txn.amount).toLocaleString('en-IN')}</span>
-                        </td>
-                        <td className="px-5 py-3 font-mono text-xs text-slate-600">{txn.razorpayOrderId}</td>
-                        <td className="px-5 py-3 font-mono text-xs text-slate-600">{txn.razorpayPaymentId || <span className="text-slate-300">—</span>}</td>
-                        <td className="px-5 py-3">
-                          {txn.status === 'SUCCESS' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-100">
-                              <BadgeCheck className="w-3 h-3" /> Success
-                            </span>
-                          ) : txn.status === 'PENDING' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-bold border border-amber-100">
-                              <Clock className="w-3 h-3" /> Pending
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-xs font-bold border border-red-100">Failed</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3 text-slate-500 whitespace-nowrap">{new Date(txn.createdAt).toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          {/* Package Create/Edit Modal */}
-          {rechargePackageModal && (
-            <RechargePackageModal
-              pkg={rechargePackageModal.pkg}
-              onClose={() => setRechargePackageModal(null)}
-              onSave={() => { setRechargePackageModal(null); fetchData(); }}
-            />
-          )}
-        </div>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          {renderPagination()}
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase border-b border-slate-100">
-                  <th className="px-6 py-4">Item Type</th>
-                  <th className="px-6 py-4">Key / Serial</th>
-                  <th className="px-6 py-4">From</th>
-                  <th className="px-6 py-4">To</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Transferred At</th>
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Item Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Key / Serial</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">From</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">To</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Transferred At</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-sm">
+              <tbody className="divide-y divide-slate-100">
                 {transfers.length === 0 ? (
-                  <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic">No transfer history found.</td></tr>
-                ) : transfers.map(t => (
-                  <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${t.itemType === 'License' ? 'bg-indigo-50 text-indigo-600' : 'bg-amber-50 text-amber-600'}`}>
+                  <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-400 italic">No transfer history found.</td></tr>
+                ) : transfers.map((t, idx) => (
+                  <tr key={t.id} className="group hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">
+                      {(page - 1) * ITEMS_PER_PAGE + idx + 1}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${t.itemType === 'License' ? 'bg-indigo-50 text-indigo-600' : 'bg-amber-50 text-amber-600'}`}>
                         {t.itemType}
                       </span>
                     </td>
-                    <td className="px-6 py-4 font-mono font-bold text-slate-900">
+                    <td className="px-4 py-3 font-mono text-xs font-bold text-slate-800">
                       {t.itemType === 'Credit' 
                         ? (
                           <div className="flex flex-col">
@@ -1797,10 +1586,10 @@ const LicensesPage = () => {
                         : (t.items?.length === 1 ? (t.items[0].license?.key || t.items[0].credit?.key) : `${t.items?.length || 0} Multiple Items`)
                       }
                     </td>
-                    <td className="px-6 py-4 text-slate-600">{t.fromOrg?.name}</td>
-                    <td className="px-6 py-4 text-slate-900 font-semibold">{t.toOrg?.name}</td>
-                    <td className="px-6 py-4 font-bold">{t.status}</td>
-                    <td className="px-6 py-4 text-slate-500">{new Date(t.createdAt).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-slate-600 text-xs">{t.fromOrg?.name}</td>
+                    <td className="px-4 py-3 text-slate-900 font-semibold text-xs">{t.toOrg?.name}</td>
+                    <td className="px-4 py-3 font-bold text-xs">{t.status}</td>
+                    <td className="px-4 py-3 text-slate-500 text-xs">{formatISTDateTime(t.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>

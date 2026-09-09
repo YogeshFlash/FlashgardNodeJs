@@ -1,15 +1,16 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import XLSX from 'xlsx-js-style';
 import {
   Package, Plus, Search, Loader2, RefreshCw,
-  Layers, ClipboardList, Truck, QrCode, X, AlertCircle, ChevronDown,
-  CheckCircle2, ArrowRight, Zap, RotateCcw,
-  Send, Edit2, Trash2, FileText, Package2, PlusCircle, Tag, Download, Save
+  Layers, ClipboardList, Truck, QrCode, X, AlertCircle, ChevronDown, ChevronRight, ChevronsUpDown,
+  CheckCircle2, ArrowRight, Zap, RotateCcw, Check,
+  Send, Edit2, Trash2, FileText, Package2, PlusCircle, Tag, Download, Save, FolderTree, PackageCheck, Copy, ExternalLink, Building2, Database
 } from 'lucide-react';
 import { inventoryApi, orgsApi, filmTypesApi, productTypesApi, materialCategoriesApi, filmCategoriesApi, materialsApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { formatISTDate } from '../lib/dateUtils';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 const BATCH_STATUS_CONFIG: Record<string, { color: string; label: string }> = {
@@ -56,6 +57,47 @@ const TabBar = ({ tabs, active, onChange }: any) => (
     </div>
   </div>
 );
+
+const PaginationBar = ({ meta, page, setPage }: { meta: any; page: number; setPage: (fn: any) => void }) => {
+  if (!meta || !meta.totalPages || meta.totalPages <= 1) return null;
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs gap-3 shadow-sm my-2">
+      <div className="flex items-center gap-2 text-slate-600 font-medium">
+        <span>Showing Page <strong className="text-slate-900 font-bold">{meta.page || page}</strong> of <strong className="text-slate-900 font-bold">{meta.totalPages}</strong></span>
+        <span className="text-slate-300">|</span>
+        <span className="text-slate-500 font-mono"><strong className="text-slate-800">{meta.total}</strong> total records</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+          disabled={page <= 1}
+          className="px-3 py-1.5 font-semibold text-xs border border-slate-200 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition bg-white text-slate-700 shadow-sm flex items-center gap-1 cursor-pointer"
+        >
+          ← Previous
+        </button>
+        <div className="flex items-center gap-1 px-1">
+          <span className="text-slate-500">Page</span>
+          <select
+            value={page}
+            onChange={(e) => setPage(Number(e.target.value))}
+            className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-800 cursor-pointer shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            {Array.from({ length: meta.totalPages }, (_, i) => i + 1).map(pNum => (
+              <option key={pNum} value={pNum}>Page {pNum}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={() => setPage((p: number) => Math.min(meta.totalPages, p + 1))}
+          disabled={page >= meta.totalPages}
+          className="px-3 py-1.5 font-semibold text-xs border border-slate-200 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition bg-white text-slate-700 shadow-sm flex items-center gap-1 cursor-pointer"
+        >
+          Next →
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const StatusBadge = ({ status, config }: { status: string; config: Record<string, { color: string; label: string }> }) => {
   const cfg = config[status] || { color: 'bg-slate-100 text-slate-600 border-slate-200', label: status };
@@ -104,7 +146,6 @@ const FormField = ({ label, required, children, error }: any) => (
 );
 
 const inputCls = "w-full px-3.5 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent transition";
-const selectCls = `${inputCls} appearance-none`;
 
 const flattenOrgsHierarchy = (orgs: any[] = []) => {
   const byParent = new Map<string, any[]>();
@@ -206,80 +247,130 @@ const PredictiveReceiptSelect = ({ receipts, value, onChange, placeholder = "Fil
   );
 };
 
-const PredictiveBatchSelect = ({ onChange, placeholder = "Select Batch…" }: { onChange: (batch: any) => void, placeholder?: string }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const MultiPredictiveBatchSelect = ({ selectedBatches, onChange, statusFilter }: { 
+  selectedBatches: any[];
+  onChange: (batches: any[]) => void;
+  statusFilter?: string;
+}) => {
   const [search, setSearch] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedBatch, setSelectedBatch] = useState<any>(null);
+
+  const fetchBatches = useCallback(async (querySearch: string) => {
+    setLoading(true);
+    try {
+      let res = await inventoryApi.getBatches({ 
+        search: querySearch || undefined, 
+        status: statusFilter || 'PACKAGED,QR_APPLIED,IN_TRANSIT,AT_DISTRIBUTOR,AT_RETAILER,BULK_RECEIVED',
+        limit: 100 
+      });
+      let items = res?.items || (Array.isArray(res) ? res : []);
+      if (items.length === 0 && !querySearch) {
+        res = await inventoryApi.getBatches({ limit: 100 });
+        items = res?.items || (Array.isArray(res) ? res : []);
+      }
+      setResults(items);
+    } catch { 
+      setResults([]); 
+    } finally { 
+      setLoading(false); 
+    }
+  }, [statusFilter]);
 
   useEffect(() => {
-    if (!search && !isOpen) return;
-    const t = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const res = await inventoryApi.getBatches({ search, limit: 10 });
-        setResults(res.items || []);
-      } catch { setResults([]); }
-      finally { setLoading(false); }
-    }, 300);
+    const t = setTimeout(() => fetchBatches(search), 200);
     return () => clearTimeout(t);
-  }, [search, isOpen]);
+  }, [search, fetchBatches]);
+
+  const toggleBatch = (b: any) => {
+    const exists = selectedBatches.some((item: any) => item.id === b.id);
+    if (exists) {
+      onChange(selectedBatches.filter((item: any) => item.id !== b.id));
+    } else {
+      onChange([...selectedBatches, b]);
+    }
+  };
+
+  const removeBatch = (batchId: string) => {
+    onChange(selectedBatches.filter((b: any) => b.id !== batchId));
+  };
 
   return (
-    <div className="relative">
-      <div className="relative group text-left">
-        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 group-focus-within:text-[var(--color-accent)] transition-colors" />
+    <div className="space-y-2 text-left">
+      <div className="relative group">
+        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3 group-focus-within:text-[var(--color-accent)] transition-colors" />
         <input
           className={`${inputCls} pl-9 pr-10`}
-          placeholder={placeholder}
-          value={isOpen ? search : (selectedBatch?.batchCode || '')}
-          onFocus={() => { setIsOpen(true); setSearch(''); }}
-          onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+          placeholder="Search packaged stock by code or film type..."
+          value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />}
+        {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400 absolute right-3 top-3" />}
       </div>
 
-      {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-2 py-2 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 duration-200 text-left">
-          {results.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-slate-400 italic text-center">
-              {loading ? 'Searching...' : 'No batches found'}
-            </div>
-          ) : (
-            results.map(b => (
-              <div
-                key={b.id}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setSelectedBatch(b);
-                  onChange(b);
-                  setIsOpen(false);
-                  setSearch('');
-                }}
-                className="px-4 py-2.5 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0 transition-colors"
+      {/* Selected Batch Tags */}
+      {selectedBatches.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 py-1">
+          {selectedBatches.map((b: any) => (
+            <span 
+              key={b.id} 
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-sm"
+            >
+              <span className="font-mono">{b.batchCode}</span>
+              <button 
+                type="button"
+                onClick={() => removeBatch(b.id)} 
+                className="p-0.5 hover:bg-indigo-200/60 rounded transition-colors text-indigo-500 hover:text-indigo-800 cursor-pointer"
               >
-                <div className="flex justify-between items-start mb-1">
-                  <span className="font-mono text-sm font-bold text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded italic">
-                    {b.batchCode}
-                  </span>
-                  <StatusBadge status={b.status} config={BATCH_STATUS_CONFIG} />
-                </div>
-                <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
-                  <Package className="w-3 h-3" />
-                  <span className="text-slate-900 font-bold">{b.quantity} {b.batchType === 'RAW_MATERIAL' ? 'm' : 'units'}</span>
-                  <span className="opacity-40">•</span>
-                  <span className="text-indigo-600 truncate">{b.organization?.name}</span>
-                </div>
-              </div>
-            ))
-          )}
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
         </div>
       )}
+
+      {/* Always-visible scrollable batch checklist */}
+      <div className="border border-slate-200 bg-white rounded-xl max-h-48 overflow-y-auto divide-y divide-slate-100 shadow-inner custom-scrollbar">
+        {loading && results.length === 0 ? (
+          <div className="flex items-center justify-center py-6 text-slate-400 text-xs gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading packaged stock...
+          </div>
+        ) : results.length === 0 ? (
+          <div className="py-6 text-center text-xs text-slate-400 italic">
+            No packaged stock batches found
+          </div>
+        ) : (
+          results.map((b: any) => {
+            const isSelected = selectedBatches.some((item: any) => item.id === b.id);
+            return (
+              <div
+                key={b.id}
+                onClick={() => toggleBatch(b)}
+                className={`px-3.5 py-2.5 cursor-pointer flex items-center justify-between transition-colors hover:bg-slate-50 ${isSelected ? 'bg-indigo-50/60' : ''}`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300 bg-white'}`}>
+                    {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                  </div>
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-slate-800">{b.batchCode}</span>
+                      <span className="text-[10px] text-slate-500 font-medium px-1.5 py-0.5 bg-slate-100 rounded">
+                        {b.filmType?.name || 'Standard'}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-400">Qty: {b.quantity} • Status: {b.status}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 };
+
 
 const PredictiveOrgSelect = ({
   hierarchicalOrgs,
@@ -361,6 +452,145 @@ const PredictiveOrgSelect = ({
 };
 
 
+// ─── Searchable Hierarchical Flash Film Selector ──────────────────────────
+const FlashProductSelector = ({ value, onChange, filmCategories = [] }: { value: string; onChange: (id: string) => void; materials?: any[]; filmCategories: any[]; materialCategories?: any[] }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  // Find selected film_category
+  const selectedItem = useMemo(() => {
+    if (!value) return null;
+    const fc = filmCategories.find((f: any) => f.id === value);
+    if (fc) return fc;
+    return { id: value, name: value };
+  }, [value, filmCategories]);
+
+  // Build tree strictly from film_categories hierarchy (parentId -> id)
+  const treeData = useMemo(() => {
+    const getFilmCategoryNode = (fc: any): any => {
+      const subFcNodes = (filmCategories || [])
+        .filter((c: any) => c.parentId === fc.id)
+        .map(getFilmCategoryNode);
+
+      return {
+        id: fc.id,
+        name: fc.name,
+        children: subFcNodes
+      };
+    };
+
+    // Root film categories (where parentId is null/falsy)
+    const rootFilmCategories = (filmCategories || []).filter((fc: any) => !fc.parentId);
+    return rootFilmCategories.map(getFilmCategoryNode);
+  }, [filmCategories]);
+
+  const filteredTree = useMemo(() => {
+    if (!search.trim()) return treeData;
+    const q = search.toLowerCase().trim();
+
+    const filterNodes = (nodes: any[]): any[] => {
+      return nodes.map(node => {
+        const nameMatch = node.name.toLowerCase().includes(q);
+        const filteredChildren = node.children ? filterNodes(node.children).filter(Boolean) : [];
+        if (nameMatch || filteredChildren.length > 0) {
+          return {
+            ...node,
+            children: nameMatch ? node.children : filteredChildren
+          };
+        }
+        return null;
+      }).filter(Boolean);
+    };
+
+    return filterNodes(treeData);
+  }, [treeData, search]);
+
+  const renderTreeNodes = (nodes: any[], level = 0) => {
+    return nodes.map((node: any) => {
+      const isSelected = value === node.id;
+      const hasChildren = node.children && node.children.length > 0;
+
+      return (
+        <div key={node.id} className="py-0.5">
+          <div
+            onClick={() => {
+              onChange(node.id);
+              setIsOpen(false);
+              setSearch('');
+            }}
+            style={{ paddingLeft: `${Math.max(level * 12, 6)}px` }}
+            className={`flex items-center justify-between p-1.5 rounded-lg cursor-pointer text-xs transition ${
+              isSelected
+                ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-200 shadow-2xs'
+                : 'hover:bg-slate-100 text-slate-700 font-medium'
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <FolderTree className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span>{node.name}</span>
+            </div>
+            {isSelected && <Check className="w-4 h-4 text-indigo-600 shrink-0" />}
+          </div>
+          {hasChildren && (
+            <div className="mt-0.5 space-y-0.5 border-l border-slate-200 ml-2.5 pl-1">
+              {renderTreeNodes(node.children, level + 1)}
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
+
+  return (
+    <div className="relative">
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg flex items-center justify-between cursor-pointer text-xs hover:border-slate-300 focus:ring-2 focus:ring-indigo-500/20 shadow-2xs"
+      >
+        <span className="truncate font-medium text-slate-800">
+          {selectedItem ? (
+            <span>{selectedItem.name}</span>
+          ) : (
+            <span className="text-slate-400">Select Flash Film…</span>
+          )}
+        </span>
+        <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1" />
+      </div>
+
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setIsOpen(false)} />
+          <div className="absolute z-30 w-full min-w-[280px] left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden">
+            <div className="p-2 border-b border-slate-100 bg-slate-50 relative flex items-center">
+              <Search className="w-3.5 h-3.5 absolute left-4 text-slate-400" />
+              <input
+                autoFocus
+                type="text"
+                placeholder="Search Flash Film..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full pl-8 pr-7 py-1 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              />
+              {search && (
+                <button type="button" onClick={() => setSearch('')} className="absolute right-4 text-slate-400 hover:text-slate-600">
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+            <div className="overflow-y-auto p-1.5 max-h-64 custom-scrollbar text-xs">
+              {filteredTree.length === 0 ? (
+                <div className="p-4 text-center text-slate-400 italic text-xs">No Flash Films found</div>
+              ) : (
+                renderTreeNodes(filteredTree)
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 // ─── Inward Modal ─────────────────────────────────────────────────────────────
 const InwardProcurementModal = ({ onClose, onSave, initialInwardReceiptId }: { onClose: () => void; onSave: () => void; initialInwardReceiptId?: string | null }) => {
   const [inwardReceiptId, setInwardReceiptId] = useState(initialInwardReceiptId || '');
@@ -373,7 +603,9 @@ const InwardProcurementModal = ({ onClose, onSave, initialInwardReceiptId }: { o
   const [searchReceipt, setSearchReceipt] = useState('');
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
 
-  const [filmTypes, setFilmTypes] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [filmCategories, setFilmCategories] = useState<any[]>([]);
+  const [materialCategories, setMaterialCategories] = useState<any[]>([]);
   const [receipts, setReceipts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -397,7 +629,21 @@ const InwardProcurementModal = ({ onClose, onSave, initialInwardReceiptId }: { o
   }, []);
 
   useEffect(() => {
-    filmTypesApi.getAll().then(d => setFilmTypes(Array.isArray(d) ? d : [])).catch(() => setFilmTypes([]));
+    Promise.all([
+      materialsApi.getAll(undefined, undefined, false),
+      filmCategoriesApi.getAll(undefined, undefined, false),
+      materialCategoriesApi.getAll(undefined, undefined, false)
+    ]).then(([mRes, fcRes, mcRes]) => {
+      const mList = Array.isArray(mRes) ? mRes : ((mRes as any)?.items || []);
+      const fcList = Array.isArray(fcRes) ? fcRes : ((fcRes as any)?.items || []);
+      const mcList = Array.isArray(mcRes) ? mcRes : ((mcRes as any)?.items || []);
+      setMaterials(mList);
+      setFilmCategories(fcList);
+      setMaterialCategories(mcList);
+    }).catch(() => {
+      setMaterials([]);
+      setFilmCategories([]);
+    });
     loadReceipts();
   }, [loadReceipts]);
 
@@ -600,11 +846,14 @@ const InwardProcurementModal = ({ onClose, onSave, initialInwardReceiptId }: { o
 
                 <div className="grid grid-cols-12 gap-3">
                   <div className="col-span-12 sm:col-span-4">
-                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-tight mb-1">Film Type</label>
-                    <select className={`${selectCls} !py-1.5 !text-xs`} value={item.filmTypeId} onChange={e => updateItem(item.id, 'filmTypeId', e.target.value)}>
-                      <option value="">Select type…</option>
-                      {filmTypes.map((f: any) => <option key={f.id} value={f.id}>{f.name}</option>)}
-                    </select>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-tight mb-1">Flash Film *</label>
+                    <FlashProductSelector
+                      value={item.filmTypeId}
+                      onChange={v => updateItem(item.id, 'filmTypeId', v)}
+                      materials={materials}
+                      filmCategories={filmCategories}
+                      materialCategories={materialCategories}
+                    />
                   </div>
                   <div className="col-span-6 sm:col-span-2">
                     <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-tight mb-1">{item.type === 'RAW_MATERIAL' ? 'Rolls' : 'Packs'}</label>
@@ -722,13 +971,41 @@ const QRGenerateModal = ({ batch, onClose, onSave }: any) => {
     setFetchingQrs(true);
     try {
       const data = await inventoryApi.getBatchQRCodes(batch.id);
-      setQrs(data || []);
+      const items = data || [];
+      setQrs(items);
+      const allIds = new Set<string>();
+      items.forEach((item: any) => {
+        allIds.add(item.id);
+        if (item.children) {
+          item.children.forEach((c: any) => allIds.add(c.id));
+        }
+      });
+      setSelectedQrs(allIds);
     } catch (e: any) {
       console.error('Failed to load QRs:', e);
     } finally {
       setFetchingQrs(false);
     }
   }, [batch.id]);
+
+  const totalAllItems = useMemo(() => {
+    return qrs.reduce((acc, q) => acc + 1 + (q.children?.length || 0), 0);
+  }, [qrs]);
+
+  const handleSelectAll = () => {
+    const next = new Set<string>();
+    qrs.forEach((item: any) => {
+      next.add(item.id);
+      if (item.children) {
+        item.children.forEach((c: any) => next.add(c.id));
+      }
+    });
+    setSelectedQrs(next);
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedQrs(new Set());
+  };
 
   useEffect(() => { loadQrs(); }, [loadQrs]);
 
@@ -770,86 +1047,114 @@ const QRGenerateModal = ({ batch, onClose, onSave }: any) => {
         {/* Info Header */}
         <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
           <div className="space-y-1">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Batch Context</p>
-            <div className="flex items-center gap-4">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Batch Details</p>
+            <div className="flex flex-wrap items-center gap-4">
               <div className="flex flex-col">
-                <span className="text-xs text-slate-500">Code</span>
+                <span className="text-xs text-slate-500 font-medium">Batch Code</span>
                 <span className="font-mono text-sm font-bold text-slate-800">{batch.batchCode}</span>
               </div>
+              {batch.legacyId && (
+                <>
+                  <div className="w-px h-8 bg-slate-200" />
+                  <div className="flex flex-col">
+                    <span className="text-xs text-slate-500 font-medium">Legacy ID</span>
+                    <span className="font-mono text-sm font-bold text-amber-700">#{batch.legacyId}</span>
+                  </div>
+                </>
+              )}
               <div className="w-px h-8 bg-slate-200" />
               <div className="flex flex-col">
-                <span className="text-xs text-slate-500">Film Type</span>
-                <span className="text-sm font-bold text-slate-800">{batch.filmType?.name}</span>
+                <span className="text-xs text-slate-500 font-medium">Film Type</span>
+                <span className="text-sm font-bold text-slate-800">{batch.filmType?.name || '—'}</span>
               </div>
               <div className="w-px h-8 bg-slate-200" />
               <div className="flex flex-col">
-                <span className="text-xs text-slate-500">Boxes</span>
-                <span className="text-sm font-bold text-slate-800">{batch.quantity}</span>
+                <span className="text-xs text-slate-500 font-medium">Total Stock</span>
+                <span className="text-sm font-bold text-slate-800">{batch.quantity} units</span>
               </div>
               <div className="w-px h-8 bg-slate-200" />
               <div className="flex flex-col">
-                <span className="text-xs text-slate-500">Box Count</span>
-                <span className="text-sm font-bold text-slate-800">{batch.packSize || '—'}</span>
+                <span className="text-xs text-slate-500 font-medium">Allocated QRs</span>
+                <span className="text-sm font-bold text-indigo-600">{qrs.length} codes</span>
               </div>
             </div>
           </div>
           <StatusBadge status={batch.status} config={BATCH_STATUS_CONFIG} />
         </div>
 
-        {/* Generator Section */}
-        <div className="p-5 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
-          <h3 className="text-sm font-bold text-indigo-900 mb-4 flex items-center gap-2">
-            <PlusCircle className="w-4 h-4" /> Generate New QR Codes
-          </h3>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <FormField label="Individuals Per Box">
-              <div className="relative">
-                <input 
-                  type="number" 
-                  className={`${inputCls} focus:ring-indigo-500 pr-10`} 
-                  min="0" 
-                  value={form.individualCount} 
-                  onChange={e => setForm(f => ({ ...f, individualCount: e.target.value }))} 
-                  placeholder="0" 
-                />
-                <Edit2 className="w-3.5 h-3.5 text-slate-300 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+        {/* Generator Section / Legacy Info Banner */}
+        {batch.legacyId ? (
+          <div className="p-4 bg-amber-50/80 border border-amber-200/80 rounded-2xl flex items-center justify-between gap-4 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 shrink-0 border border-amber-200">
+                <Database className="w-5 h-5" />
               </div>
-            </FormField>
-            <FormField label="Number of Master Boxes">
-              <div className="relative">
-                <input 
-                  type="number" 
-                  className={`${inputCls} focus:ring-indigo-500 pr-10`} 
-                  min="0" 
-                  value={form.masterBoxCount} 
-                  onChange={e => setForm(f => ({ ...f, masterBoxCount: e.target.value }))} 
-                  placeholder="0" 
-                />
-                <Edit2 className="w-3.5 h-3.5 text-slate-300 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div>
+                <p className="text-xs font-bold text-amber-900">Legacy Migrated Batch (SQL Server ID #{batch.legacyId})</p>
+                <p className="text-[11px] text-amber-800 mt-0.5 font-medium">
+                  Total batch stock size: <strong>{batch.quantity} units</strong> · Allocated QR codes in legacy database: <strong>{qrs.length} codes</strong>. QR generation is disabled for migrated legacy records.
+                </p>
               </div>
-            </FormField>
+            </div>
+            <span className="px-3 py-1 bg-amber-200/70 text-amber-900 text-xs font-bold rounded-lg border border-amber-300/60 shrink-0">
+              Legacy Record
+            </span>
           </div>
-          <div className="flex items-center justify-between gap-4">
-             <div className="flex flex-col">
-               <p className="text-[10px] text-indigo-400 font-medium">Individuals will be evenly distributed across generated Master Boxes.</p>
+        ) : (
+          <div className="p-5 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
+            <h3 className="text-sm font-bold text-indigo-900 mb-4 flex items-center gap-2">
+              <PlusCircle className="w-4 h-4" /> Generate New QR Codes
+            </h3>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <FormField label="Individuals Per Box">
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    className={`${inputCls} focus:ring-indigo-500 pr-10`} 
+                    min="0" 
+                    value={form.individualCount} 
+                    onChange={e => setForm(f => ({ ...f, individualCount: e.target.value }))} 
+                    placeholder="0" 
+                  />
+                  <Edit2 className="w-3.5 h-3.5 text-slate-300 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </FormField>
+              <FormField label="Number of Master Boxes">
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    className={`${inputCls} focus:ring-indigo-500 pr-10`} 
+                    min="0" 
+                    value={form.masterBoxCount} 
+                    onChange={e => setForm(f => ({ ...f, masterBoxCount: e.target.value }))} 
+                    placeholder="0" 
+                  />
+                  <Edit2 className="w-3.5 h-3.5 text-slate-300 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </FormField>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+               <div className="flex flex-col">
+                 <p className="text-[10px] text-indigo-400 font-medium">Individuals will be evenly distributed across generated Master Boxes.</p>
+                 <button 
+                   onClick={() => setForm(getInitialCounts())}
+                   className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold mt-1 flex items-center gap-1 w-fit"
+                 >
+                   <RotateCcw className="w-3 h-3" /> Reset to batch defaults
+                 </button>
+               </div>
                <button 
-                 onClick={() => setForm(getInitialCounts())}
-                 className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold mt-1 flex items-center gap-1 w-fit"
+                 onClick={handleGenerate} 
+                 disabled={loading} 
+                 className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition active:scale-[0.98] disabled:opacity-50 shadow-md shadow-indigo-200"
                >
-                 <RotateCcw className="w-3 h-3" /> Reset to batch defaults
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <QrCode className="w-4 h-4" />}
+                  Generate
                </button>
-             </div>
-             <button 
-               onClick={handleGenerate} 
-               disabled={loading} 
-               className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition active:scale-[0.98] disabled:opacity-50 shadow-md shadow-indigo-200"
-             >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <QrCode className="w-4 h-4" />}
-                Generate
-             </button>
+            </div>
+            {error && <p className="mt-3 text-xs text-red-600 font-medium flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5" /> {error}</p>}
           </div>
-          {error && <p className="mt-3 text-xs text-red-600 font-medium flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5" /> {error}</p>}
-        </div>
+        )}
 
         {/* Hierarchy List Section */}
         <div>
@@ -857,10 +1162,29 @@ const QRGenerateModal = ({ batch, onClose, onSave }: any) => {
             <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
               <Layers className="w-4 h-4 text-slate-400" /> Allocated QR Codes 
               <span className="ml-1 text-[10px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full uppercase tracking-tighter">
-                {qrs.reduce((acc, q) => acc + 1 + (q.children?.length || 0), 0)} Total
+                {totalAllItems} Total
               </span>
             </h3>
-            {fetchingQrs && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
+            <div className="flex items-center gap-3">
+              {qrs.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSelectAll}
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2 py-1 rounded transition cursor-pointer"
+                  >
+                    Select All ({totalAllItems})
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    onClick={handleDeselectAll}
+                    className="text-[11px] font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 px-2 py-1 rounded transition cursor-pointer"
+                  >
+                    Clear Selection
+                  </button>
+                </div>
+              )}
+              {fetchingQrs && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />}
+            </div>
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden min-h-[200px] max-h-[400px] overflow-y-auto custom-scrollbar">
@@ -893,9 +1217,10 @@ const QRGenerateModal = ({ batch, onClose, onSave }: any) => {
                           <button 
                             disabled={!hasChildren}
                             onClick={() => toggleBox(qr.id)}
-                            className={`p-1 rounded hover:bg-slate-200 transition ${!hasChildren ? 'opacity-0 cursor-default' : 'text-slate-400'}`}
+                            className={`p-1 rounded hover:bg-slate-200 transition ${!hasChildren ? 'opacity-0 cursor-default' : 'text-slate-500'}`}
+                            title={isExpanded ? 'Collapse box contents' : 'Expand box contents'}
                           >
-                            {isExpanded ? <RotateCcw className="w-3.5 h-3.5 rotate-90" /> : <Send className="w-3.5 h-3.5" />}
+                            {isExpanded ? <ChevronDown className="w-4 h-4 text-indigo-600" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
                           </button>
                         ) : (
                           <div className="w-6" /> // spacer for standalone individuals
@@ -999,56 +1324,73 @@ const QRGenerateModal = ({ batch, onClose, onSave }: any) => {
 // ─── Printable QR Page ──────────────────────────────────────────────────────
 const PrintableQRPage = ({ items, selectedIds, batchCode }: { items: any[], selectedIds: Set<string>, batchCode: string }) => {
   // Map and calculate sequence tags for all items in the batch
-  const allSelected: any[] = [];
+  const allSelected: any[] = useMemo(() => {
+    const list: any[] = [];
+    items.forEach((item) => {
+      const seq = item.sequenceNumber || item.sequence_number || 'N/A';
+      if (selectedIds.has(item.id)) {
+        list.push({ ...item, displayTag: `${item.qrType === 'MASTER_BOX' ? 'B-' : 'I-'}${batchCode} #${seq}` });
+      }
 
-  items.forEach((item) => {
-    const seq = item.sequenceNumber || item.sequence_number || 'N/A';
-    if (selectedIds.has(item.id)) {
-      allSelected.push({ ...item, displayTag: `${item.qrType === 'MASTER_BOX' ? 'B-' : 'I-'}${batchCode} #${seq}` });
-    }
-
-    if (item.children) {
-      item.children.forEach((child: any) => {
-        const cSeq = child.sequenceNumber || child.sequence_number || 'N/A';
-        if (selectedIds.has(child.id)) {
-          allSelected.push({ ...child, displayTag: `I-${batchCode} #${cSeq}` });
-        }
-      });
-    }
-  });
+      if (item.children) {
+        item.children.forEach((child: any) => {
+          const cSeq = child.sequenceNumber || child.sequence_number || 'N/A';
+          if (selectedIds.has(child.id)) {
+            list.push({ ...child, displayTag: `I-${batchCode} #${cSeq}` });
+          }
+        });
+      }
+    });
+    return list;
+  }, [items, selectedIds, batchCode]);
 
   if (allSelected.length === 0) return null;
 
-  return (
-    <div className="hidden print:block print:fixed print:inset-0 print:bg-white print:z-[9999]">
+  return createPortal(
+    <div id="printable-qr-section" className="hidden print:block">
       <style>{`
         @media print {
           @page { 
             size: 35mm 35mm; 
             margin: 0; 
           }
-          body * { visibility: hidden; }
-          .print-container, .print-container * { visibility: visible; }
-          .print-container { 
-            position: absolute; 
-            left: 0; 
-            top: 0; 
-            width: 100%; 
-            display: flex; 
-            flex-direction: column;
+          body > *:not(#printable-qr-section) { 
+            display: none !important; 
+          }
+          #printable-qr-section { 
+            display: block !important; 
+            position: absolute !important; 
+            left: 0 !important; 
+            top: 0 !important; 
+            width: 35mm !important; 
+            height: auto !important;
+            z-index: 999999 !important; 
+            background: white !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          .print-container {
+            display: block !important;
+            width: 35mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
           .sticker-item {
-            height: 35mm;
-            width: 35mm;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 1mm;
-            border: 1px dashed #eee;
-            page-break-after: always;
-            box-sizing: border-box;
-            overflow: hidden;
+            height: 35mm !important;
+            width: 35mm !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 1.5mm !important;
+            border: 1px dashed #e2e8f0 !important;
+            break-after: page !important;
+            page-break-after: always !important;
+            page-break-inside: avoid !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+            position: relative !important;
+            background: white !important;
           }
         }
       `}</style>
@@ -1071,7 +1413,8 @@ const PrintableQRPage = ({ items, selectedIds, batchCode }: { items: any[], sele
           </div>
         ))}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
@@ -1246,14 +1589,16 @@ const RecordOutputModal = ({ wo, onClose, onSave }: any) => {
               <table className="w-full text-sm text-left">
                 <thead className="bg-slate-50 text-slate-500 font-medium">
                   <tr>
+                    <th className="px-4 py-2">#</th>
                     <th className="px-4 py-2">Batch Code</th>
                     <th className="px-4 py-2">Quantity</th>
                     <th className="px-4 py-2">Dimensions/Pack</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {wo.outputs.map((out: any) => (
+                  {wo.outputs.map((out: any, idx: number) => (
                     <tr key={out.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-2 font-bold text-slate-400 text-xs">{idx + 1}</td>
                       <td className="px-4 py-2 font-mono text-xs">{out.outputBatch?.batchCode}</td>
                       <td className="px-4 py-2 font-semibold text-slate-700">
                         {out.quantity} {isSlitting ? 'boxes' : 'units'}
@@ -1333,30 +1678,67 @@ const FinalizeWOModal = ({ wo, onClose, onSave }: any) => {
 
 // ─── Dispatch Modal ──────────────────────────────────────────────────────────
 const DispatchModal = ({ onClose, onSave }: any) => {
+  const { user } = useAuth();
+  const [fromOrgId, setFromOrgId] = useState(user?.organizationId || '');
   const [toOrgId, setToOrgId] = useState('');
-  const [selectedBatch, setSelectedBatch] = useState<any>(null);
+  const [selectedBatches, setSelectedBatches] = useState<any[]>([]);
   const [qrs, setQrs] = useState<any[]>([]);
   const [qrLoading, setQrLoading] = useState(false);
   const [selectedQrIds, setSelectedQrIds] = useState<Set<string>>(new Set());
+  const [expandedBoxes, setExpandedBoxes] = useState<Set<string>>(new Set());
   const [orgs, setOrgs] = useState<any[]>([]);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => { orgsApi.getAll().then(setOrgs).catch(() => { }); }, []);
+  useEffect(() => { 
+    orgsApi.getAll().then((res: any[]) => {
+      setOrgs(res || []);
+      if (!fromOrgId && res?.length > 0) {
+        const hq = res.find((o: any) => !o.parentId || o.organizationType?.name === 'parent' || o.organizationType?.name === 'internal') || res[0];
+        if (hq) setFromOrgId(hq.id);
+      }
+    }).catch(() => { }); 
+  }, []);
 
-  const handleBatchSelect = async (batch: any) => {
-    setSelectedBatch(batch);
+  const handleBatchesChange = async (batches: any[]) => {
+    setSelectedBatches(batches);
+    if (batches.length === 0) {
+      setQrs([]);
+      setSelectedQrIds(new Set());
+      return;
+    }
+
     setQrLoading(true);
-    setSelectedQrIds(new Set());
     try {
-      const res = await inventoryApi.getBatchQRCodes(batch.id);
-      setQrs(res || []);
+      const allResults = await Promise.all(
+        batches.map(b => 
+          inventoryApi.getBatchQRCodes(b.id).then(res => (res || []).map((q: any) => ({ ...q, batchCode: b.batchCode })))
+        )
+      );
+      const combined = allResults.flat();
+      setQrs(combined);
+      
+      // Auto-select QRs for newly selected batches
+      const nextSelected = new Set<string>(selectedQrIds);
+      combined.forEach((q: any) => {
+        nextSelected.add(q.id);
+        if (q.children) q.children.forEach((c: any) => nextSelected.add(c.id));
+      });
+      setSelectedQrIds(nextSelected);
     } catch {
       setQrs([]);
     } finally {
       setQrLoading(false);
     }
+  };
+
+  const toggleBoxExpand = (qrId: string) => {
+    setExpandedBoxes(prev => {
+      const next = new Set(prev);
+      if (next.has(qrId)) next.delete(qrId); else next.add(qrId);
+      return next;
+    });
   };
 
   const toggleQr = (qrId: string, isMaster: boolean, children?: any[]) => {
@@ -1378,14 +1760,19 @@ const DispatchModal = ({ onClose, onSave }: any) => {
   const handleDispatch = async () => {
     setError('');
     if (!toOrgId) { setError('Please select a destination organization.'); return; }
-    if (selectedQrIds.size === 0) { setError('Please select at least one item to dispatch.'); return; }
+    if (selectedBatches.length === 0) { setError('Please select at least one batch to dispatch.'); return; }
     
     setLoading(true);
     try {
       await inventoryApi.createDispatch({ 
+        fromOrgId: fromOrgId || undefined,
         toOrgId, 
         notes, 
-        qrIds: Array.from(selectedQrIds) 
+        qrIds: selectedQrIds.size > 0 ? Array.from(selectedQrIds) : undefined,
+        items: selectedBatches.map((b: any) => ({
+          batchId: b.id,
+          quantity: b.quantity || 1,
+        }))
       });
       onSave();
     } catch (e: any) {
@@ -1396,6 +1783,8 @@ const DispatchModal = ({ onClose, onSave }: any) => {
   };
 
   const hierarchicalOrgs = flattenOrgsHierarchy(orgs || []);
+  const canSubmitDispatch = !loading && !!toOrgId && selectedBatches.length > 0;
+  const displayDispatchCount = selectedQrIds.size > 0 ? selectedQrIds.size : selectedBatches.reduce((acc, b) => acc + (b.quantity || 1), 0);
 
   return (
     <Modal title="Create Dispatch Order" onClose={onClose} size="lg">
@@ -1407,7 +1796,16 @@ const DispatchModal = ({ onClose, onSave }: any) => {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <FormField label="Dispatch To" required>
+          <FormField label="Dispatch From (Origin)" required>
+            <PredictiveOrgSelect
+              hierarchicalOrgs={hierarchicalOrgs}
+              value={fromOrgId}
+              onChange={setFromOrgId}
+              placeholder="Search or select origin..."
+            />
+          </FormField>
+
+          <FormField label="Dispatch To (Destination)" required>
             <PredictiveOrgSelect
               hierarchicalOrgs={hierarchicalOrgs}
               value={toOrgId}
@@ -1415,21 +1813,21 @@ const DispatchModal = ({ onClose, onSave }: any) => {
               placeholder="Search or select destination…"
             />
           </FormField>
-
-          <FormField label="Select Batch to Dispatch" required>
-            <PredictiveBatchSelect onChange={handleBatchSelect} />
-          </FormField>
         </div>
 
-        {selectedBatch && (
+        <FormField label="Select Batches to Dispatch" required>
+          <MultiPredictiveBatchSelect selectedBatches={selectedBatches} onChange={handleBatchesChange} />
+        </FormField>
+
+        {selectedBatches.length > 0 && (
           <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
                 <QrCode className="w-4 h-4 text-indigo-500" /> 
-                Inventory in {selectedBatch.batchCode}
+                Inventory across {selectedBatches.length} Batch{selectedBatches.length !== 1 ? 'es' : ''}
               </h3>
-              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                {selectedQrIds.size} Selected
+              <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                {selectedBatches.length} Batch{selectedBatches.length !== 1 ? 'es' : ''} ({selectedBatches.reduce((acc, b) => acc + (b.quantity || 1), 0)} Units{selectedQrIds.size > 0 ? ` • ${selectedQrIds.size} QRs` : ''})
               </span>
             </div>
 
@@ -1440,62 +1838,96 @@ const DispatchModal = ({ onClose, onSave }: any) => {
                   <p className="text-xs text-slate-400 font-medium italic">Scanning batch contents...</p>
                 </div>
               ) : qrs.length === 0 ? (
-                <div className="py-12 text-center">
-                  <p className="text-sm text-slate-400 italic">No available QR codes found in this batch</p>
+                <div className="py-6 px-4 text-center space-y-2">
+                  <div className="inline-flex items-center justify-center p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
+                    <Package className="w-5 h-5" />
+                  </div>
+                  <p className="text-xs font-bold text-slate-700">Direct Batch Dispatch (Packaged Stock)</p>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    The selected batch(es) contain packaged stock without individual QR codes. The batch quantity ({selectedBatches.reduce((acc, b) => acc + (b.quantity || 1), 0)} units) will be dispatched directly upon confirmation.
+                  </p>
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {qrs.map((qr) => (
-                    <div key={qr.id}>
-                      {/* Master or Standalone */}
-                      <div 
-                        onClick={() => toggleQr(qr.id, qr.qrType === 'MASTER_BOX', qr.children)}
-                        className={`group px-4 py-3 flex items-center gap-3 cursor-pointer transition-colors ${selectedQrIds.has(qr.id) ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}
-                      >
-                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${selectedQrIds.has(qr.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300 group-hover:border-slate-400'}`}>
-                          {selectedQrIds.has(qr.id) && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className={`text-xs font-bold font-mono ${selectedQrIds.has(qr.id) ? 'text-indigo-700' : 'text-slate-700'}`}>
-                              #{qr.sequenceNumber || qr.sequence_number || 'N/A'}
-                            </span>
-                            {qr.qrType === 'MASTER_BOX' && (
-                              <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded uppercase tracking-tighter shadow-sm border border-indigo-200">BOX</span>
-                            )}
+                  {qrs.map((qr) => {
+                    const isMaster = qr.qrType === 'MASTER_BOX';
+                    const hasChildren = qr.children?.length > 0;
+                    const isExpanded = expandedBoxes.has(qr.id);
+
+                    return (
+                      <div key={qr.id}>
+                        {/* Master or Standalone */}
+                        <div 
+                          className={`group px-4 py-3 flex items-center gap-3 transition-colors ${selectedQrIds.has(qr.id) ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}
+                        >
+                          <div 
+                            onClick={() => toggleQr(qr.id, isMaster, qr.children)}
+                            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all cursor-pointer ${selectedQrIds.has(qr.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300 group-hover:border-slate-400'}`}
+                          >
+                            {selectedQrIds.has(qr.id) && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
                           </div>
-                          <p className="text-[10px] text-slate-400 truncate mt-0.5">{qr.qrCode}</p>
+
+                          {isMaster && (
+                            <button
+                              type="button"
+                              disabled={!hasChildren}
+                              onClick={() => toggleBoxExpand(qr.id)}
+                              className={`p-1 rounded hover:bg-slate-200 transition ${!hasChildren ? 'opacity-0 cursor-default' : 'text-slate-500'}`}
+                              title={isExpanded ? 'Collapse box' : 'Expand box'}
+                            >
+                              {isExpanded ? <ChevronDown className="w-4 h-4 text-indigo-600" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                            </button>
+                          )}
+
+                          <div 
+                            onClick={() => toggleQr(qr.id, isMaster, qr.children)}
+                            className="flex-1 min-w-0 cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-bold font-mono ${selectedQrIds.has(qr.id) ? 'text-indigo-700' : 'text-slate-700'}`}>
+                                #{qr.sequenceNumber || qr.sequence_number || 'N/A'}
+                              </span>
+                              {isMaster && (
+                                <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded uppercase tracking-tighter shadow-sm border border-indigo-200">BOX</span>
+                              )}
+                              <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-1 rounded">
+                                {qr.batchCode}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 truncate mt-0.5">{qr.qrCode}</p>
+                          </div>
+                          {hasChildren && (
+                            <span className="text-[10px] text-slate-400 font-bold bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-sm">
+                              {qr.children.length} Units
+                            </span>
+                          )}
                         </div>
-                        {qr.children?.length > 0 && (
-                          <span className="text-[10px] text-slate-400 font-bold bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-sm">
-                            {qr.children.length} Units
-                          </span>
+
+                        {/* Children (if master & expanded) */}
+                        {isMaster && hasChildren && isExpanded && (
+                          <div className="bg-slate-50/70 divide-y divide-slate-100 border-t border-slate-100 animate-in slide-in-from-top-1 duration-150">
+                            {qr.children.map((child: any) => (
+                              <div 
+                                key={child.id}
+                                onClick={() => toggleQr(child.id, false)}
+                                className={`pl-14 pr-4 py-2 flex items-center gap-3 cursor-pointer transition-colors ${selectedQrIds.has(child.id) ? 'bg-indigo-50/40' : 'hover:bg-white'}`}
+                              >
+                                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${selectedQrIds.has(child.id) ? (selectedQrIds.has(qr.id) ? 'bg-indigo-400 border-indigo-400' : 'bg-indigo-600 border-indigo-600') : 'bg-white border-slate-200'}`}>
+                                  {selectedQrIds.has(child.id) && <CheckCircle2 className="w-3 h-3 text-white" />}
+                                </div>
+                                <div className="flex-1">
+                                  <span className={`text-[11px] font-mono leading-none ${selectedQrIds.has(child.id) ? 'text-indigo-600 font-bold' : 'text-slate-500'}`}>
+                                    #{child.sequenceNumber || child.sequence_number || 'N/A'}
+                                  </span>
+                                  <span className="ml-2 font-mono text-[10px] text-slate-400 truncate">{child.qrCode}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
-
-                      {/* Children (if master) */}
-                      {qr.children?.length > 0 && (
-                        <div className="bg-slate-50/50 divide-y divide-slate-50">
-                          {qr.children.map((child: any) => (
-                            <div 
-                              key={child.id}
-                              onClick={() => toggleQr(child.id, false)}
-                              className={`pl-12 pr-4 py-2 flex items-center gap-3 cursor-pointer transition-colors ${selectedQrIds.has(child.id) ? 'bg-indigo-50/30' : 'hover:bg-slate-50'}`}
-                            >
-                              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${selectedQrIds.has(child.id) ? (selectedQrIds.has(qr.id) ? 'bg-indigo-400 border-indigo-400' : 'bg-indigo-600 border-indigo-600') : 'bg-white border-slate-200'}`}>
-                                {selectedQrIds.has(child.id) && <CheckCircle2 className="w-3 h-3 text-white" />}
-                              </div>
-                              <div className="flex-1">
-                                <span className={`text-[11px] font-mono leading-none ${selectedQrIds.has(child.id) ? 'text-indigo-600 font-bold' : 'text-slate-500'}`}>
-                                  #{child.sequenceNumber || child.sequence_number || 'N/A'}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1510,27 +1942,318 @@ const DispatchModal = ({ onClose, onSave }: any) => {
             placeholder="Add any tracking numbers, vehicle details or special instructions…" 
           />
         </FormField>
-      </div>
 
-      <div className="flex items-center justify-between mt-8 pt-5 border-t border-slate-100">
-        <p className="text-xs text-slate-500 italic">
-          Total items selected for dispatch: <span className="font-bold text-slate-900 not-italic">{selectedQrIds.size}</span>
-        </p>
-        <div className="flex gap-3">
-          <button onClick={onClose} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition">Cancel</button>
+        <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+          <button onClick={onClose} className="px-6 py-2 text-slate-600 hover:bg-slate-100 font-bold rounded-xl transition">Cancel</button>
           <button 
             onClick={handleDispatch} 
-            disabled={loading || selectedQrIds.size === 0} 
-            className="flex items-center gap-2 px-8 py-2.5 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition disabled:opacity-50 disabled:grayscale shadow-lg shadow-slate-200"
+            disabled={!canSubmitDispatch} 
+            className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition disabled:opacity-50 shadow-md shadow-indigo-100 cursor-pointer disabled:cursor-not-allowed"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            Confirm Dispatch
+            Confirm Dispatch ({displayDispatchCount} {displayDispatchCount === 1 ? 'Unit' : 'Units'})
           </button>
         </div>
       </div>
     </Modal>
   );
 };
+
+
+// ─── Return Stock Modal ──────────────────────────────────────────────────────
+const ReturnStockModal = ({ onClose, onSave }: { onClose: () => void; onSave: () => void }) => {
+  const [orgs, setOrgs] = useState<any[]>([]);
+  const [fromOrgId, setFromOrgId] = useState('');
+  const [toOrgId, setToOrgId] = useState('');
+  const [selectedBatches, setSelectedBatches] = useState<any[]>([]);
+  const [selectedQrIds, setSelectedQrIds] = useState<Set<string>>(new Set());
+  const [qrs, setQrs] = useState<any[]>([]);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [expandedBoxes, setExpandedBoxes] = useState<Set<string>>(new Set());
+  const [notes, setNotes] = useState('[STOCK RETURN] Returned stock to HQ for inventory reconciliation.');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const { user } = useAuth();
+
+  useEffect(() => { 
+    orgsApi.getAll().then((res: any[]) => {
+      setOrgs(res || []);
+      // Auto-preselect HQ as destination
+      const hq = res?.find((o: any) => !o.parentId || o.organizationType?.name === 'parent' || o.organizationType?.name === 'internal' || o.organizationType?.name === 'HQ') || res?.[0];
+      if (hq) setToOrgId(hq.id);
+
+      // Auto-preselect current user's org as origin
+      if (user?.organizationId) {
+        setFromOrgId(user.organizationId);
+      } else if (res?.length > 0) {
+        const myOrg = res.find((o: any) => o.id === user?.organizationId) || res.find((o: any) => o.id !== hq?.id) || res[0];
+        setFromOrgId(myOrg.id);
+      }
+    }).catch(() => { }); 
+  }, [user]);
+
+  const handleBatchesChange = async (batches: any[]) => {
+    setSelectedBatches(batches);
+    if (batches.length === 0) {
+      setQrs([]);
+      setSelectedQrIds(new Set());
+      return;
+    }
+
+    setQrLoading(true);
+    try {
+      const allResults = await Promise.all(
+        batches.map(b => 
+          inventoryApi.getBatchQRCodes(b.id).then(res => (res || []).map((q: any) => ({ ...q, batchCode: b.batchCode })))
+        )
+      );
+      const combined = allResults.flat();
+      setQrs(combined);
+      
+      const nextSelected = new Set<string>(selectedQrIds);
+      combined.forEach((q: any) => {
+        nextSelected.add(q.id);
+        if (q.children) q.children.forEach((c: any) => nextSelected.add(c.id));
+      });
+      setSelectedQrIds(nextSelected);
+    } catch {
+      setQrs([]);
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  const toggleBoxExpand = (qrId: string) => {
+    setExpandedBoxes(prev => {
+      const next = new Set(prev);
+      if (next.has(qrId)) next.delete(qrId); else next.add(qrId);
+      return next;
+    });
+  };
+
+  const toggleQr = (qrId: string, isMaster: boolean, children?: any[]) => {
+    const next = new Set(selectedQrIds);
+    if (next.has(qrId)) {
+      next.delete(qrId);
+      if (isMaster && children) children.forEach(c => next.delete(c.id));
+    } else {
+      next.add(qrId);
+      if (isMaster && children) children.forEach(c => next.add(c.id));
+    }
+    setSelectedQrIds(next);
+  };
+
+  const handleReturn = async () => {
+    setError('');
+    if (!toOrgId) { setError('Please select HQ / destination organization.'); return; }
+    if (selectedBatches.length === 0) { setError('Please select at least one batch to return.'); return; }
+    
+    setLoading(true);
+    try {
+      await inventoryApi.createDispatch({ 
+        fromOrgId: fromOrgId || undefined,
+        toOrgId, 
+        notes: notes.includes('[STOCK RETURN]') ? notes : `[STOCK RETURN] ${notes}`, 
+        qrIds: selectedQrIds.size > 0 ? Array.from(selectedQrIds) : undefined,
+        items: selectedBatches.map((b: any) => ({
+          batchId: b.id,
+          quantity: b.quantity || 1,
+        }))
+      });
+      onSave();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const hierarchicalOrgs = flattenOrgsHierarchy(orgs || []);
+  const canSubmitReturn = !loading && !!toOrgId && selectedBatches.length > 0;
+  const displayReturnCount = selectedQrIds.size > 0 ? selectedQrIds.size : selectedBatches.reduce((acc, b) => acc + (b.quantity || 1), 0);
+
+  return (
+    <Modal title="Return Stock to HQ / Parent" onClose={onClose} size="lg">
+      <div className="space-y-6">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+          <RotateCcw className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-900 leading-relaxed">
+            <p className="font-bold">Stock Return / Recall Mode</p>
+            <p className="mt-0.5 text-amber-800">
+              Returning selected stock back to HQ. Once confirmed, returned items will enter transit status until HQ receives and restores them into parent stock.
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 animate-in fade-in slide-in-from-top-1">
+            <AlertCircle className="w-4 h-4 shrink-0" /> {error}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <FormField label="Return From (Origin Store / Branch)" required>
+            <PredictiveOrgSelect
+              hierarchicalOrgs={hierarchicalOrgs}
+              value={fromOrgId}
+              onChange={setFromOrgId}
+              placeholder="Search or select origin branch..."
+            />
+          </FormField>
+
+          <FormField label="Return To (HQ / Parent Destination)" required>
+            <PredictiveOrgSelect
+              hierarchicalOrgs={hierarchicalOrgs}
+              value={toOrgId}
+              onChange={setToOrgId}
+              placeholder="Preselected HQ destination..."
+            />
+          </FormField>
+        </div>
+
+        <FormField label="Select Dispatched Stock Batches to Return" required>
+          <MultiPredictiveBatchSelect 
+            selectedBatches={selectedBatches} 
+            onChange={handleBatchesChange} 
+            statusFilter="AT_DISTRIBUTOR,AT_RETAILER,IN_TRANSIT" 
+          />
+        </FormField>
+
+        {selectedBatches.length > 0 && (
+          <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                <QrCode className="w-4 h-4 text-amber-600" /> 
+                Selected {selectedBatches.length} Batch{selectedBatches.length !== 1 ? 'es' : ''} for Return
+              </h3>
+              <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                {selectedBatches.length} Batch{selectedBatches.length !== 1 ? 'es' : ''} ({selectedBatches.reduce((acc, b) => acc + (b.quantity || 1), 0)} Units{selectedQrIds.size > 0 ? ` • ${selectedQrIds.size} QRs` : ''})
+              </span>
+            </div>
+
+            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-amber-50/20 max-h-[280px] overflow-y-auto custom-scrollbar">
+              {qrLoading ? (
+                <div className="flex flex-col items-center justify-center py-10 gap-3">
+                  <Loader2 className="w-6 h-6 animate-spin text-amber-600" />
+                  <p className="text-xs text-slate-400 font-medium italic">Scanning return batch contents...</p>
+                </div>
+              ) : qrs.length === 0 ? (
+                <div className="py-6 px-4 text-center space-y-2">
+                  <div className="inline-flex items-center justify-center p-2.5 bg-amber-100 text-amber-700 rounded-xl">
+                    <Package className="w-5 h-5" />
+                  </div>
+                  <p className="text-xs font-bold text-slate-700">Direct Stock Return (Packaged Stock)</p>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    The selected batch(es) contain packaged stock without individual QR codes. The batch quantity ({selectedBatches.reduce((acc, b) => acc + (b.quantity || 1), 0)} units) will be returned directly upon confirmation.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {qrs.map((qr) => {
+                    const isMaster = qr.qrType === 'MASTER_BOX';
+                    const hasChildren = qr.children?.length > 0;
+                    const isExpanded = expandedBoxes.has(qr.id);
+
+                    return (
+                      <div key={qr.id}>
+                        <div className={`group px-4 py-3 flex items-center gap-3 transition-colors ${selectedQrIds.has(qr.id) ? 'bg-amber-50/60' : 'hover:bg-slate-50'}`}>
+                          <div 
+                            onClick={() => toggleQr(qr.id, isMaster, qr.children)}
+                            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all cursor-pointer ${selectedQrIds.has(qr.id) ? 'bg-amber-600 border-amber-600' : 'bg-white border-slate-300 group-hover:border-slate-400'}`}
+                          >
+                            {selectedQrIds.has(qr.id) && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                          </div>
+
+                          {isMaster && (
+                            <button
+                              type="button"
+                              disabled={!hasChildren}
+                              onClick={() => toggleBoxExpand(qr.id)}
+                              className={`p-1 rounded hover:bg-slate-200 transition ${!hasChildren ? 'opacity-0 cursor-default' : 'text-slate-500'}`}
+                            >
+                              {isExpanded ? <ChevronDown className="w-4 h-4 text-amber-600" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                            </button>
+                          )}
+
+                          <div 
+                            onClick={() => toggleQr(qr.id, isMaster, qr.children)}
+                            className="flex-1 min-w-0 cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-bold font-mono ${selectedQrIds.has(qr.id) ? 'text-amber-800' : 'text-slate-700'}`}>
+                                #{qr.sequenceNumber || qr.sequence_number || 'N/A'}
+                              </span>
+                              {isMaster && (
+                                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-black rounded uppercase tracking-tighter border border-amber-200">BOX</span>
+                              )}
+                              <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-1 rounded">
+                                {qr.batchCode}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 truncate mt-0.5">{qr.qrCode}</p>
+                          </div>
+                          {hasChildren && (
+                            <span className="text-[10px] text-slate-400 font-bold bg-white border border-slate-200 px-1.5 py-0.5 rounded">
+                              {qr.children.length} Units
+                            </span>
+                          )}
+                        </div>
+
+                        {isMaster && hasChildren && isExpanded && (
+                          <div className="bg-slate-50/70 divide-y divide-slate-100 border-t border-slate-100">
+                            {qr.children.map((child: any) => (
+                              <div 
+                                key={child.id}
+                                onClick={() => toggleQr(child.id, false)}
+                                className={`pl-14 pr-4 py-2 flex items-center gap-3 cursor-pointer transition-colors ${selectedQrIds.has(child.id) ? 'bg-amber-50/30' : 'hover:bg-white'}`}
+                              >
+                                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${selectedQrIds.has(child.id) ? 'bg-amber-600 border-amber-600' : 'bg-white border-slate-200'}`}>
+                                  {selectedQrIds.has(child.id) && <CheckCircle2 className="w-3 h-3 text-white" />}
+                                </div>
+                                <div className="flex-1">
+                                  <span className={`text-[11px] font-mono leading-none ${selectedQrIds.has(child.id) ? 'text-amber-700 font-bold' : 'text-slate-500'}`}>
+                                    #{child.sequenceNumber || child.sequence_number || 'N/A'}
+                                  </span>
+                                  <span className="ml-2 font-mono text-[10px] text-slate-400 truncate">{child.qrCode}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <FormField label="Return Reason / Remarks">
+          <textarea 
+            className={`${inputCls} min-h-[80px]`} 
+            value={notes} 
+            onChange={e => setNotes(e.target.value)} 
+            placeholder="Add reason for return, defect details, or inventory reconciliation notes…" 
+          />
+        </FormField>
+
+        <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+          <button onClick={onClose} className="px-6 py-2 text-slate-600 hover:bg-slate-100 font-bold rounded-xl transition cursor-pointer">Cancel</button>
+          <button 
+            onClick={handleReturn} 
+            disabled={!canSubmitReturn} 
+            className="flex items-center gap-2 px-6 py-2 bg-amber-600 text-white text-sm font-bold rounded-xl hover:bg-amber-700 transition disabled:opacity-50 shadow-md shadow-amber-100 cursor-pointer disabled:cursor-not-allowed"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+            Confirm Stock Return ({displayReturnCount} {displayReturnCount === 1 ? 'Unit' : 'Units'})
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
 
 // ─── Receive Dispatch Modal ──────────────────────────────────────────────────
 const ReceiveDispatchModal = ({ dispatch, onClose, onSave }: any) => {
@@ -1772,10 +2495,10 @@ const AddReceiptModal = ({ onClose, onSave }: any) => {
   );
 };
 
-const InwardReceiptsTab = ({ onReceiptClick, onAddStock }: { onReceiptClick?: (id: string) => void, onAddStock?: (id: string) => void }) => {
+const InwardReceiptsTab = ({ onReceiptClick, onAddStock, refreshKey }: { onReceiptClick?: (id: string) => void, onAddStock?: (id: string) => void, refreshKey?: number }) => {
   const [data, setData] = useState<any>({ items: [], meta: {} });
   const [loading, setLoading] = useState(true);
-  const [page] = useState(1);
+  const [page, setPage] = useState(1);
   const [receiptCode, setReceiptCode] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [showAdd, setShowAdd] = useState(false);
@@ -1796,7 +2519,7 @@ const InwardReceiptsTab = ({ onReceiptClick, onAddStock }: { onReceiptClick?: (i
     finally { setLoading(false); }
   }, [page, receiptCode, invoiceNumber]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshKey]);
 
   return (
     <div className="p-6 space-y-4">
@@ -1827,6 +2550,9 @@ const InwardReceiptsTab = ({ onReceiptClick, onAddStock }: { onReceiptClick?: (i
         </button>
       </div>
 
+      {/* Top Pagination Bar */}
+      <PaginationBar meta={data.meta} page={page} setPage={setPage} />
+
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
         {loading ? (
           <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
@@ -1836,14 +2562,15 @@ const InwardReceiptsTab = ({ onReceiptClick, onAddStock }: { onReceiptClick?: (i
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                {['Receipt Code', 'Vendor', 'Invoice No', 'Received Date', 'Linked Batches', 'Actions'].map(h => (
+                {['#', 'Receipt Code', 'Vendor', 'Invoice No', 'Received Date', 'Linked Batches', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {data.items?.map((r: any) => (
+              {data.items?.map((r: any, idx: number) => (
                 <tr key={r.id} className={`hover:bg-slate-50 transition-colors ${r.isDeleted ? 'bg-red-50/50 opacity-75' : ''}`}>
+                  <td className="px-4 py-3.5 font-bold text-slate-400 text-xs font-mono">{((page || 1) - 1) * (data.meta?.limit || 20) + idx + 1}</td>
                   <td className="px-4 py-3.5"><span className="font-mono text-xs px-2 py-1 bg-slate-100 text-slate-700 rounded">{r.receiptCode}</span></td>
                   <td className="px-4 py-3.5 font-medium text-slate-700">{r.vendor?.name}</td>
                   <td className="px-4 py-3.5 text-slate-500">{r.invoiceNumber || '—'}</td>
@@ -1893,13 +2620,16 @@ const InwardReceiptsTab = ({ onReceiptClick, onAddStock }: { onReceiptClick?: (i
         )}
       </div>
 
+      {/* Bottom Pagination Bar */}
+      <PaginationBar meta={data.meta} page={page} setPage={setPage} />
+
       {showAdd && <AddReceiptModal onClose={() => setShowAdd(false)} onSave={() => { setShowAdd(false); load(); }} />}
       <ConfirmDialog {...confirm} onClose={closeConfirm} />
     </div>
   );
 };
 
-const BatchesTab = ({ initialReceiptId, onShowInward, onGoToWorkOrder }: { initialReceiptId?: string | null, onShowInward?: () => void, onGoToWorkOrder?: (code: string) => void }) => {
+const BatchesTab = ({ initialReceiptId, onShowInward, onGoToWorkOrder, refreshKey }: { initialReceiptId?: string | null, onShowInward?: () => void, onGoToWorkOrder?: (code: string) => void, refreshKey?: number }) => {
   const { user } = useAuth();
   const [data, setData] = useState<any>({ items: [], meta: {} });
   const [loading, setLoading] = useState(true);
@@ -1922,7 +2652,7 @@ const BatchesTab = ({ initialReceiptId, onShowInward, onGoToWorkOrder }: { initi
 
   useEffect(() => {
     inventoryApi.getInwardReceipts({ limit: 100 }).then(d => setReceipts(d.items || [])).catch(() => setReceipts([]));
-  }, []);
+  }, [refreshKey]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1930,7 +2660,7 @@ const BatchesTab = ({ initialReceiptId, onShowInward, onGoToWorkOrder }: { initi
       const res = await inventoryApi.getBatches({
         page, limit: 20,
         search: search || undefined,
-        status: statusFilter || undefined,
+        status: statusFilter || 'BULK_RECEIVED,RAW_MATERIAL',
         inwardReceiptId: receiptFilterId || undefined
       });
       setData(res);
@@ -1938,7 +2668,7 @@ const BatchesTab = ({ initialReceiptId, onShowInward, onGoToWorkOrder }: { initi
     finally { setLoading(false); }
   }, [page, search, statusFilter, receiptFilterId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshKey]);
 
   return (
     <div className="p-6 space-y-4">
@@ -1956,8 +2686,9 @@ const BatchesTab = ({ initialReceiptId, onShowInward, onGoToWorkOrder }: { initi
           </div>
           <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
             className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
-            <option value="">All Statuses</option>
-            {Object.entries(BATCH_STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            <option value="">All Stock Batches (Bulk & Raw)</option>
+            <option value="BULK_RECEIVED">Bulk Received</option>
+            <option value="RAW_MATERIAL">Raw Material</option>
           </select>
 
           <PredictiveReceiptSelect
@@ -1978,6 +2709,9 @@ const BatchesTab = ({ initialReceiptId, onShowInward, onGoToWorkOrder }: { initi
         </div>
       </div>
 
+      {/* Top Pagination Bar */}
+      <PaginationBar meta={data.meta} page={page} setPage={setPage} />
+
       {/* Table */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
         {loading ? (
@@ -1989,17 +2723,29 @@ const BatchesTab = ({ initialReceiptId, onShowInward, onGoToWorkOrder }: { initi
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  {['Batch Code', 'Film Type', 'Inward Receipt', 'Qty', 'Dimensions', 'Status', 'Actions'].map(h => (
+                  {['#', 'Batch Code', 'Film Type', 'Inward Receipt', 'Qty', 'Dimensions', 'Status', 'Actions'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {data.items?.map((b: any) => (
+                {data.items?.map((b: any, idx: number) => (
                   <tr key={b.id} className={`group hover:bg-slate-50 transition-colors ${b.isDeleted ? 'bg-red-50/50 opacity-75 grayscale-[0.5]' : ''}`}>
+                    <td className="px-4 py-3.5 font-bold text-slate-400 text-xs font-mono">{((page || 1) - 1) * (data.meta?.limit || 20) + idx + 1}</td>
                     <td className="px-4 py-3.5">
-                      <span className={`font-mono text-xs px-2 py-1 rounded ${b.isDeleted ? 'bg-red-100 text-red-700 line-through' : 'bg-slate-100 text-slate-700'}`}>{b.batchCode}</span>
-                      {b.isDeleted && <span className="ml-2 text-[10px] font-bold text-red-500 uppercase">Deleted</span>}
+                      <button
+                        onClick={() => setQrBatch(b)}
+                        title="Click to view complete batch details & QR hierarchy"
+                        className="flex flex-col gap-0.5 text-left group/batch cursor-pointer"
+                      >
+                        <span className={`font-mono text-xs px-2 py-1 rounded transition flex items-center gap-1.5 w-fit ${b.isDeleted ? 'bg-red-100 text-red-700 line-through' : 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-200/80 group-hover/batch:bg-indigo-600 group-hover/batch:text-white shadow-sm'}`}>
+                          <Package className="w-3.5 h-3.5" />
+                          {b.batchCode}
+                          <ExternalLink className="w-3 h-3 opacity-60 group-hover/batch:opacity-100" />
+                        </span>
+                        {b.isDeleted && <span className="text-[10px] font-bold text-red-500 uppercase">Deleted</span>}
+                        {b.legacyId && <span className="text-[10px] text-slate-400 font-mono">Legacy ID: {b.legacyId}</span>}
+                      </button>
                     </td>
                     <td className={`px-4 py-3.5 font-medium ${b.isDeleted ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{b.filmType?.name}</td>
                     <td className={`px-4 py-3.5 ${b.isDeleted ? 'text-slate-400 line-through' : 'text-slate-600'}`}>
@@ -2108,22 +2854,12 @@ const BatchesTab = ({ initialReceiptId, onShowInward, onGoToWorkOrder }: { initi
                 ))}
               </tbody>
             </table>
-
-            {/* Pagination */}
-            {data.meta?.totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50">
-                <p className="text-xs text-slate-500">
-                  Page {data.meta.page} of {data.meta.totalPages} · {data.meta.total} total
-                </p>
-                <div className="flex gap-2">
-                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg disabled:opacity-50">Previous</button>
-                  <button onClick={() => setPage(p => Math.min(data.meta.totalPages, p + 1))} disabled={page === data.meta.totalPages} className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg disabled:opacity-50">Next</button>
-                </div>
-              </div>
-            )}
           </>
         )}
       </div>
+
+      {/* Bottom Pagination Bar */}
+      <PaginationBar meta={data.meta} page={page} setPage={setPage} />
 
       {/* Modals */}
       {qrBatch && <QRGenerateModal batch={qrBatch} onClose={() => setQrBatch(null)} onSave={() => { setQrBatch(null); load(); }} />}
@@ -2205,6 +2941,9 @@ const WorkOrdersTab = ({ initialBatchSearch, onClearSearch }: { initialBatchSear
         <button onClick={load} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"><RefreshCw className="w-4 h-4" /></button>
       </div>
 
+      {/* Top Pagination Bar */}
+      <PaginationBar meta={data.meta} page={page} setPage={setPage} />
+
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
         {loading ? (
           <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
@@ -2214,13 +2953,13 @@ const WorkOrdersTab = ({ initialBatchSearch, onClearSearch }: { initialBatchSear
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                {['Work Order', 'Source (Raw)', 'Input Qty', 'Produced Qty', 'Wastage', 'Status', 'Actions'].map(h => (
+                {['#', 'Work Order', 'Source (Raw)', 'Input Qty', 'Produced Qty', 'Wastage', 'Status', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {data.items?.map((wo: any) => {
+              {data.items?.map((wo: any, idx: number) => {
                 const src = wo.sourceFilmBatch;
                 // Dimensions display logic for Input (Source)
                 const inputDetails = src?.rollLength && src?.rollWidth
@@ -2235,6 +2974,7 @@ const WorkOrdersTab = ({ initialBatchSearch, onClearSearch }: { initialBatchSear
 
                 return (
                   <tr key={wo.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3.5 font-bold text-slate-400 text-xs font-mono">{((page || 1) - 1) * (data.meta?.limit || 20) + idx + 1}</td>
                     <td className="px-4 py-3.5">
                       <div className="flex flex-col">
                         <span className="font-bold text-slate-800 text-xs">{wo.workOrderType}</span>
@@ -2322,13 +3062,508 @@ const WorkOrdersTab = ({ initialBatchSearch, onClearSearch }: { initialBatchSear
   );
 };
 
+// ─── Packaged Tab ─────────────────────────────────────────────────────────────
+const PackagedTab = ({ refreshKey, onGoToWorkOrder: _onGoToWorkOrder }: { refreshKey?: number; onGoToWorkOrder?: (code: string) => void }) => {
+  const [data, setData] = useState<any>({ items: [], meta: {} });
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [qrBatch, setQrBatch] = useState<any>(null);
+  const [editBatch, setEditBatch] = useState<any>(null);
+  const [page, setPage] = useState(1);
+  const [confirm, setConfirm] = useState<any>({ isOpen: false, title: '', message: '', onConfirm: async () => { }, isLoading: false });
+  const closeConfirm = () => setConfirm((prev: any) => ({ ...prev, isOpen: false }));
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await inventoryApi.getBatches({
+        page,
+        limit: 20,
+        search: search || undefined,
+        status: statusFilter || undefined,
+      });
+      setData(res);
+    } catch { setData({ items: [], meta: {} }); }
+    finally { setLoading(false); }
+  }, [page, search, statusFilter]);
+
+  useEffect(() => { load(); }, [load, refreshKey]);
+
+  return (
+    <div className="p-6 space-y-4">
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
+        <div className="flex items-center gap-3 flex-1">
+          <div className="relative flex-1 max-w-xs">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              placeholder="Search packaged batch code…"
+              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] bg-white"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
+            className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+          >
+            <option value="">All Packaged Statuses</option>
+            <option value="PACKAGED">Packaged</option>
+            <option value="QR_APPLIED">QR Applied</option>
+            <option value="IN_TRANSIT">In Transit</option>
+            <option value="AT_DISTRIBUTOR">At Distributor</option>
+            <option value="AT_RETAILER">At Retailer</option>
+          </select>
+          <button onClick={load} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg" title="Refresh">
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Top Pagination Bar */}
+      <PaginationBar meta={data.meta} page={page} setPage={setPage} />
+
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        {loading ? (
+          <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
+        ) : data.items?.length === 0 ? (
+          <EmptyState icon={PackageCheck} message="No packaged stock found" sub="Packaged stock created from work orders or inward entries will appear here" />
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                {['#', 'Batch Code', 'Flash Film / Product', 'Packaged Date', 'Owner / Branch', 'Quantity', 'Status', 'Actions'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.items?.map((b: any, idx: number) => (
+                <tr key={b.id} className="group hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3.5 font-bold text-slate-400 text-xs font-mono">{((page || 1) - 1) * (data.meta?.limit || 20) + idx + 1}</td>
+                  <td className="px-4 py-3.5">
+                    <button
+                      onClick={() => setQrBatch(b)}
+                      title="Click to view complete batch details & QR hierarchy"
+                      className="flex flex-col gap-0.5 text-left group/batch cursor-pointer"
+                    >
+                      <span className="font-mono text-xs px-2 py-1 rounded bg-amber-50 text-amber-800 font-bold border border-amber-200/80 group-hover/batch:bg-amber-600 group-hover/batch:text-white transition flex items-center gap-1.5 w-fit shadow-sm">
+                        <Package className="w-3.5 h-3.5" />
+                        {b.batchCode}
+                        <ExternalLink className="w-3 h-3 opacity-60 group-hover/batch:opacity-100" />
+                      </span>
+                      {b.legacyId && (
+                        <span className="text-[10px] text-slate-400 font-mono pl-1">Legacy ID: {b.legacyId}</span>
+                      )}
+                    </button>
+                  </td>
+                  <td className="px-4 py-3.5 font-medium text-slate-800">{b.filmType?.name || '—'}</td>
+                  <td className="px-4 py-3.5 text-xs text-slate-600 font-medium">
+                    {b.createdAt 
+                      ? new Date(b.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) 
+                      : (b.arrivalDate ? new Date(b.arrivalDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—')}
+                  </td>
+                  <td className="px-4 py-3.5 text-xs font-semibold text-slate-700">
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
+                      {b.organization?.name || 'HQ / Parent'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3.5 font-semibold text-slate-800">{b.quantity} units</td>
+                  <td className="px-4 py-3.5">
+                    <StatusBadge status={b.status} config={BATCH_STATUS_CONFIG} />
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setQrBatch(b)} title="Generate / View QR Codes" className="p-1.5 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition flex items-center gap-1 text-xs font-semibold cursor-pointer">
+                        <QrCode className="w-4 h-4" /> QR
+                      </button>
+                      <button onClick={() => setEditBatch(b)} title="Edit batch" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer">
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Bottom Pagination Bar */}
+      <PaginationBar meta={data.meta} page={page} setPage={setPage} />
+
+      {qrBatch && <QRGenerateModal batch={qrBatch} onClose={() => setQrBatch(null)} onSave={() => { setQrBatch(null); load(); }} />}
+      {editBatch && <EditBatchModal batch={editBatch} onClose={() => setEditBatch(null)} onSave={() => { setEditBatch(null); load(); }} />}
+      <ConfirmDialog {...confirm} onClose={closeConfirm} />
+    </div>
+  );
+};
+
+const ViewDispatchModal = ({ dispatch: initialDispatch, onClose, onReceive }: { dispatch: any; onClose: () => void; onReceive?: (d: any) => void }) => {
+  const [dispatch, setDispatch] = useState<any>(initialDispatch);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [viewTab, setViewTab] = useState<'items' | 'qrs'>('items');
+  const [qrSearch, setQrSearch] = useState('');
+  const [expandedBoxes, setExpandedBoxes] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (initialDispatch?.id) {
+      setLoading(true);
+      inventoryApi.getDispatch(initialDispatch.id)
+        .then(d => { if (d) setDispatch(d); })
+        .catch(() => setDispatch(initialDispatch))
+        .finally(() => setLoading(false));
+    }
+  }, [initialDispatch?.id]);
+
+  const handleCopyId = () => {
+    navigator.clipboard.writeText(dispatch.id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Collect top-level QR codes (Master Boxes or Standalone Individuals) from all items in this dispatch
+  const { rootQrs } = useMemo(() => {
+    if (!dispatch.items) return { rootQrs: [], totalQrsCount: 0 };
+
+    const seenQrIds = new Set<string>();
+    const roots: any[] = [];
+
+    const totalQuantityDispatched = dispatch.items.reduce(
+      (acc: number, it: any) => acc + (it.quantityDispatched || it.quantity || 0), 0
+    );
+
+    dispatch.items.forEach((it: any) => {
+      let qrs = it.filmBatch?.qrCodes || [];
+
+      // If QRs have assignedOrgId matching dispatch toOrgId, prioritize them
+      if (dispatch.toOrgId) {
+        const assignedQrs = qrs.filter((q: any) => q.assignedOrgId === dispatch.toOrgId);
+        if (assignedQrs.length > 0) {
+          qrs = assignedQrs;
+        }
+      }
+
+      qrs.forEach((q: any) => {
+        if (!seenQrIds.has(q.id)) {
+          seenQrIds.add(q.id);
+          if (!q.parentId) {
+            roots.push({
+              ...q,
+              batchCode: it.filmBatch?.batchCode,
+              filmTypeName: it.filmBatch?.filmType?.name,
+            });
+          }
+        }
+      });
+    });
+
+    const finalRoots = totalQuantityDispatched > 0 && roots.length > totalQuantityDispatched
+      ? roots.slice(0, totalQuantityDispatched)
+      : roots;
+
+    return { rootQrs: finalRoots, totalQrsCount: finalRoots.length };
+  }, [dispatch]);
+
+  const filteredQrs = useMemo(() => {
+    if (!qrSearch.trim()) return rootQrs;
+    const term = qrSearch.toLowerCase();
+    return rootQrs.filter((q: any) => {
+      const selfMatch = 
+        q.qrCode?.toLowerCase().includes(term) ||
+        q.batchCode?.toLowerCase().includes(term) ||
+        q.filmTypeName?.toLowerCase().includes(term) ||
+        String(q.sequenceNumber).includes(term);
+      
+      const childMatch = q.children?.some((c: any) => 
+        c.qrCode?.toLowerCase().includes(term) ||
+        String(c.sequenceNumber).includes(term)
+      );
+
+      return selfMatch || childMatch;
+    });
+  }, [rootQrs, qrSearch]);
+
+  const toggleBox = (qrId: string) => {
+    setExpandedBoxes(prev => {
+      const next = new Set(prev);
+      if (next.has(qrId)) next.delete(qrId); else next.add(qrId);
+      return next;
+    });
+  };
+
+  const totalDispatched = dispatch.items?.reduce((acc: number, it: any) => acc + (it.quantityDispatched || it.quantity || 0), 0) || 0;
+  const totalReceived = dispatch.items?.reduce((acc: number, it: any) => acc + (it.quantityReceived || 0), 0) || 0;
+
+  return (
+    <Modal isOpen={true} onClose={onClose} title="Dispatch Order Details" size="lg">
+      <div className="space-y-5 text-left">
+        {/* Header Info Banner */}
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Dispatch ID</span>
+              <button 
+                onClick={handleCopyId}
+                className="inline-flex items-center gap-1 font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 hover:bg-indigo-100 transition cursor-pointer"
+                title="Click to copy full ID"
+              >
+                #{dispatch.id?.slice(0, 12)}…
+                {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-indigo-400" />}
+              </button>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Dispatched on {dispatch.dispatchDate ? new Date(dispatch.dispatchDate).toLocaleString() : 'N/A'}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <StatusBadge status={dispatch.status} config={DISPATCH_STATUS_CONFIG} />
+          </div>
+        </div>
+
+        {/* Transfer Route Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="border border-slate-200 rounded-xl p-3.5 bg-white shadow-sm">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+              <Building2 className="w-3.5 h-3.5 text-slate-400" /> Origin / Source
+            </div>
+            <p className="text-sm font-bold text-slate-800">{dispatch.fromOrganization?.name || 'Main Warehouse'}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{dispatch.fromOrganization?.organizationType?.name || 'HQ / Supplier'}</p>
+          </div>
+
+          <div className="border border-slate-200 rounded-xl p-3.5 bg-white shadow-sm">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+              <Truck className="w-3.5 h-3.5 text-indigo-500" /> Destination
+            </div>
+            <p className="text-sm font-bold text-indigo-900">{dispatch.toOrganization?.name || 'Target Store'}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{dispatch.toOrganization?.organizationType?.name || 'Distributor / Retailer'}</p>
+          </div>
+        </div>
+
+        {/* View Mode Navigation Tabs */}
+        <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setViewTab('items')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                viewTab === 'items' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              <Package className="w-3.5 h-3.5" /> Dispatched Items ({dispatch.items?.length || 0})
+            </button>
+            <button
+              onClick={() => setViewTab('qrs')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                viewTab === 'qrs' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              <QrCode className="w-3.5 h-3.5" /> QR Codes ({rootQrs.length})
+            </button>
+          </div>
+
+          {viewTab === 'qrs' && (
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search QRs, batches..."
+                value={qrSearch}
+                onChange={e => setQrSearch(e.target.value)}
+                className="pl-8 pr-3 py-1 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-indigo-500 w-44"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* TAB 1: Items Summary Table */}
+        {viewTab === 'items' && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+                Batch Summary Breakdown
+              </h4>
+              <span className="text-xs text-slate-500 font-medium">
+                Total Units: <strong className="text-slate-800">{totalDispatched}</strong>
+                {dispatch.status === 'RECEIVED' && <span className="text-emerald-600 font-semibold ml-1.5">(Received: {totalReceived})</span>}
+              </span>
+            </div>
+
+            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-3.5 py-2.5 font-semibold text-slate-500">#</th>
+                    <th className="px-3.5 py-2.5 font-semibold text-slate-500">Batch Code</th>
+                    <th className="px-3.5 py-2.5 font-semibold text-slate-500">Flash Product</th>
+                    <th className="px-3.5 py-2.5 font-semibold text-slate-500 text-right">Qty Dispatched</th>
+                    {dispatch.status === 'RECEIVED' && <th className="px-3.5 py-2.5 font-semibold text-slate-500 text-right">Qty Received</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {dispatch.items?.length > 0 ? (
+                    dispatch.items.map((it: any, idx: number) => (
+                      <tr key={it.id || idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-3.5 py-2.5 font-bold text-slate-400 text-xs">{idx + 1}</td>
+                        <td className="px-3.5 py-2.5">
+                          <span className="font-mono text-xs font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            {it.filmBatch?.batchCode || 'N/A'}
+                          </span>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-slate-700 font-medium">
+                          {it.filmBatch?.filmType?.name || 'Standard Film'}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right font-bold text-slate-900">
+                          {it.quantityDispatched || it.quantity || 0} units
+                        </td>
+                        {dispatch.status === 'RECEIVED' && (
+                          <td className="px-3.5 py-2.5 text-right font-bold text-emerald-700">
+                            {it.quantityReceived || 0} units
+                          </td>
+                        )}
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="py-6 text-center text-slate-400 italic">No batch items attached to this dispatch order.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: QR Codes List View */}
+        {viewTab === 'qrs' && (
+          <div className="space-y-3">
+            <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50 max-h-[320px] overflow-y-auto custom-scrollbar">
+              {loading ? (
+                <div className="py-12 flex justify-center text-slate-400"><Loader2 className="w-5 h-5 animate-spin text-indigo-500" /></div>
+              ) : filteredQrs.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 italic text-xs">
+                  {rootQrs.length === 0 ? 'No QR codes registered for this dispatch order.' : 'No QR codes match your search query.'}
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 bg-white">
+                  {filteredQrs.map((qr: any) => {
+                    const isMaster = qr.qrType === 'MASTER_BOX';
+                    const isExpanded = expandedBoxes.has(qr.id);
+                    const hasChildren = qr.children?.length > 0;
+
+                    return (
+                      <div key={qr.id} className="p-3 hover:bg-slate-50 transition-colors text-xs">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            {isMaster && hasChildren && (
+                              <button onClick={() => toggleBox(qr.id)} className="p-0.5 hover:bg-slate-200 rounded text-slate-500">
+                                {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                              </button>
+                            )}
+                            <QrCode className={`w-4 h-4 shrink-0 ${isMaster ? 'text-indigo-600' : 'text-slate-400'}`} />
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                  {qr.qrCode}
+                                </span>
+                                {qr.sequenceNumber && (
+                                  <span className="text-[10px] font-mono text-slate-400 font-semibold">
+                                    #{String(qr.sequenceNumber).padStart(4, '0')}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Batch: <strong className="text-slate-700">{qr.batchCode}</strong> • {qr.filmTypeName}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              isMaster ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'
+                            }`}>
+                              {qr.qrType || 'INDIVIDUAL'}
+                            </span>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 uppercase">
+                              {qr.status}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Master Box Children */}
+                        {isMaster && isExpanded && hasChildren && (
+                          <div className="mt-2.5 ml-6 border-l-2 border-indigo-100 pl-3 space-y-1.5">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Contains {qr.children.length} Inner Units:</p>
+                            {qr.children.map((child: any) => (
+                              <div key={child.id} className="flex items-center justify-between bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                <div className="flex items-center gap-2">
+                                  <QrCode className="w-3.5 h-3.5 text-slate-400" />
+                                  <span className="font-mono text-xs font-semibold text-slate-700">{child.qrCode}</span>
+                                  {child.sequenceNumber && (
+                                    <span className="text-[10px] font-mono text-slate-400">#{String(child.sequenceNumber).padStart(4, '0')}</span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] font-medium text-slate-500 uppercase">{child.status}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Notes & Tracking Information */}
+        {dispatch.notes && (
+          <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-3.5">
+            <h4 className="text-xs font-bold text-amber-900 flex items-center gap-1.5 mb-1">
+              <FileText className="w-3.5 h-3.5 text-amber-600" /> Dispatch Notes & Tracking Info
+            </h4>
+            <p className="text-xs text-amber-900 whitespace-pre-wrap leading-relaxed">{dispatch.notes}</p>
+          </div>
+        )}
+
+        {/* Footer Actions */}
+        <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+          <button 
+            type="button" 
+            onClick={onClose}
+            className="px-5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+          >
+            Close
+          </button>
+
+          {onReceive && (
+            <button
+              type="button"
+              onClick={() => { onClose(); onReceive(dispatch); }}
+              className="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition shadow-md shadow-emerald-100 cursor-pointer"
+            >
+              <CheckCircle2 className="w-4 h-4" /> Receive This Dispatch
+            </button>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
 // ─── Dispatch Tab ─────────────────────────────────────────────────────────────
 const DispatchTab = () => {
   const [data, setData] = useState<any>({ items: [], meta: {} });
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [showReturn, setShowReturn] = useState(false);
   const [receiveDispatch, setReceiveDispatch] = useState<any>(null);
+  const [viewDispatch, setViewDispatch] = useState<any>(null);
   const [page, setPage] = useState(1);
   const { user } = useAuth();
 
@@ -2357,10 +3592,18 @@ const DispatchTab = () => {
           </select>
           <button onClick={load} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"><RefreshCw className="w-4 h-4" /></button>
         </div>
-        <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 px-4 py-2 bg-[var(--color-accent)] text-white text-sm font-medium rounded-lg hover:opacity-90">
-          <Send className="w-4 h-4" /> Create Dispatch
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 px-4 py-2 bg-[var(--color-accent)] text-white text-sm font-medium rounded-lg hover:opacity-90 cursor-pointer">
+            <Send className="w-4 h-4" /> Create Dispatch
+          </button>
+          <button onClick={() => setShowReturn(true)} className="flex items-center gap-2 px-3.5 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition cursor-pointer shadow-sm">
+            <RotateCcw className="w-4 h-4" /> Return Stock
+          </button>
+        </div>
       </div>
+
+      {/* Top Pagination Bar */}
+      <PaginationBar meta={data.meta} page={page} setPage={setPage} />
 
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
         {loading ? (
@@ -2371,16 +3614,31 @@ const DispatchTab = () => {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                {['Dispatch ID', 'From', 'To', 'Batches', 'Date', 'Status', 'Actions'].map(h => (
+                {['#', 'Dispatch ID', 'From', 'To', 'Date', 'Status', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {data.items?.map((d: any) => (
+              {data.items?.map((d: any, idx: number) => (
                 <tr key={d.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3.5 font-bold text-slate-400 text-xs font-mono">{((page || 1) - 1) * (data.meta?.limit || 20) + idx + 1}</td>
                   <td className="px-4 py-3.5">
-                    <span className="font-mono text-xs text-slate-500">#{d.id?.slice(0, 8)}…</span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setViewDispatch(d)}
+                        className="font-mono text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline inline-flex items-center gap-1 transition cursor-pointer"
+                        title="Click to view full dispatch details"
+                      >
+                        #{d.id?.slice(0, 8)}…
+                        <ExternalLink className="w-3 h-3 text-indigo-400" />
+                      </button>
+                      {d.notes?.includes('[STOCK RETURN]') && (
+                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-bold rounded uppercase tracking-tighter border border-amber-200 shadow-sm">
+                          Return
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3.5 font-medium text-slate-700">{d.fromOrganization?.name}</td>
                   <td className="px-4 py-3.5 font-medium text-slate-700">
@@ -2388,21 +3646,8 @@ const DispatchTab = () => {
                       <ArrowRight className="w-3.5 h-3.5 text-slate-400" />{d.toOrganization?.name}
                     </span>
                   </td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex flex-wrap gap-1">
-                      {d.items?.length > 0 ? (
-                        d.items.map((item: any, idx: number) => (
-                          <span key={idx} className="font-mono text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200" title={item.filmBatch?.batchCode}>
-                            {item.filmBatch?.batchCode || 'Unknown'}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-slate-400 italic text-xs">No batches</span>
-                      )}
-                    </div>
-                  </td>
                   <td className="px-4 py-3.5 text-slate-500 text-xs">
-                    {d.dispatchDate ? new Date(d.dispatchDate).toLocaleDateString() : '—'}
+                    {d.dispatchDate ? formatISTDate(d.dispatchDate) : '—'}
                   </td>
                   <td className="px-4 py-3.5">
                     <StatusBadge status={d.status} config={DISPATCH_STATUS_CONFIG} />
@@ -2411,7 +3656,7 @@ const DispatchTab = () => {
                     {canReceive(d) && (
                       <button
                         onClick={() => setReceiveDispatch(d)}
-                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition"
+                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition cursor-pointer"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" /> Receive
                       </button>
@@ -2424,14 +3669,25 @@ const DispatchTab = () => {
         )}
       </div>
 
+      {/* Bottom Pagination Bar */}
+      <PaginationBar meta={data.meta} page={page} setPage={setPage} />
+
       {showCreate && <DispatchModal onClose={() => setShowCreate(false)} onSave={() => { setShowCreate(false); load(); }} />}
+      {showReturn && <ReturnStockModal onClose={() => setShowReturn(false)} onSave={() => { setShowReturn(false); load(); }} />}
       {receiveDispatch && <ReceiveDispatchModal dispatch={receiveDispatch} onClose={() => setReceiveDispatch(null)} onSave={() => { setReceiveDispatch(null); load(); }} />}
+      {viewDispatch && (
+        <ViewDispatchModal 
+          dispatch={viewDispatch} 
+          onClose={() => setViewDispatch(null)} 
+          onReceive={canReceive(viewDispatch) ? (d) => setReceiveDispatch(d) : undefined} 
+        />
+      )}
     </div>
   );
 };
 
 // ─── Film Types & Materials Tab ────────────────────────────────────────────────
-const FilmTypeModal = ({ item, filmTypes, onClose, onSave }: { item?: any; filmTypes: any[]; onClose: () => void; onSave: () => void }) => {
+export const FilmTypeModal = ({ item, filmTypes, onClose, onSave }: { item?: any; filmTypes: any[]; onClose: () => void; onSave: () => void }) => {
   const [name, setName] = useState(item?.name || '');
   const [description, setDescription] = useState(item?.description || '');
   const [parentId, setParentId] = useState(item?.parentId || '');
@@ -2605,37 +3861,66 @@ const ProductTypeModal = ({ item, onClose, onSave }: { item?: any; onClose: () =
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    setName(item?.name || '');
+    setSlug(item?.slug || '');
+    setIsActive(item?.isActive !== false);
+    setError('');
+  }, [item]);
+
+  const handleNameChange = (val: string) => {
+    setName(val);
+    if (!item?.id) {
+      setSlug(val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return setError('Name is required');
     setLoading(true);
     try {
+      const generatedSlug = (slug || name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
       const payload = {
         name: name.trim(),
-        slug: slug.trim() || name.trim().toLowerCase().replace(/\s+/g, '-'),
+        slug: generatedSlug || 'material-category',
         isActive
       };
       if (item?.id) await productTypesApi.update(item.id, payload);
       else await productTypesApi.create(payload);
       onSave();
     } catch (e: any) {
-      setError(e.message || 'Failed to save Product Type');
+      console.error(e);
+      setError(e.message || 'Failed to save Top Material Category');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Modal title={item ? 'Edit Product Type' : 'New Product Type'} onClose={onClose}>
+    <Modal title={item?.id ? 'Edit Top Material Category' : 'New Top Material Category'} onClose={onClose}>
       <form onSubmit={handleSave} className="space-y-4 py-2">
         {error && <div className="p-3 bg-red-50 text-red-600 text-xs rounded border border-red-100">{error}</div>}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">Product Type Name *</label>
-          <input type="text" required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Screen Protector, Canvas" className="w-full px-3 py-2 text-xs border rounded-lg" />
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Category Name *</label>
+          <input
+            type="text"
+            required
+            value={name}
+            onChange={e => handleNameChange(e.target.value)}
+            placeholder="e.g. Canvas, Screen Guard"
+            className="w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+          />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">Slug (URL key)</label>
-          <input type="text" value={slug} onChange={e => setSlug(e.target.value)} placeholder="e.g. screen-protector" className="w-full px-3 py-2 text-xs border rounded-lg" />
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Slug / Identifier</label>
+          <input
+            type="text"
+            value={slug}
+            onChange={e => setSlug(e.target.value)}
+            placeholder="e.g. canvas"
+            className="w-full px-3 py-2 text-xs border rounded-lg font-mono bg-slate-50"
+          />
         </div>
         <div className="flex items-center gap-2">
           <input type="checkbox" id="ptActive" checked={isActive} onChange={e => setIsActive(e.target.checked)} className="rounded" />
@@ -2652,22 +3937,38 @@ const ProductTypeModal = ({ item, onClose, onSave }: { item?: any; onClose: () =
   );
 };
 
-const MaterialCategoryModal = ({ item, productTypes, onClose, onSave }: { item?: any; productTypes: any[]; onClose: () => void; onSave: () => void }) => {
+const MaterialCategoryModal = ({ item, productTypes: _productTypes, materialCategories = [], onClose, onSave }: { item?: any; productTypes: any[]; materialCategories?: any[]; onClose: () => void; onSave: () => void }) => {
   const [name, setName] = useState(item?.name || '');
   const [productTypeId, setProductTypeId] = useState(item?.productTypeId || '');
   const [description, setDescription] = useState(item?.description || '');
   const [isActive, setIsActive] = useState(item?.isActive !== false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [treeSearch, setTreeSearch] = useState('');
+
+  useEffect(() => {
+    setName(item?.name || '');
+    setProductTypeId(item?.productTypeId || '');
+    setDescription(item?.description || '');
+    setIsActive(item?.isActive !== false);
+  }, [item]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !productTypeId) return setError('Name and Product Type are required');
+    if (!name.trim()) return setError('Name is required');
     setLoading(true);
     try {
-      const payload = { name: name.trim(), productTypeId, description: description.trim() || undefined, isActive };
-      if (item?.id) await materialCategoriesApi.update(item.id, payload);
-      else await materialCategoriesApi.create(payload);
+      const payload = { 
+        name: name.trim(), 
+        parentId: productTypeId || undefined, 
+        description: description.trim() || undefined, 
+        isActive 
+      };
+      if (item?.id) {
+        await materialCategoriesApi.update(item.id, payload);
+      } else {
+        await materialCategoriesApi.create(payload);
+      }
       onSave();
     } catch (e: any) {
       setError(e.message || 'Failed to save Material Category');
@@ -2676,8 +3977,47 @@ const MaterialCategoryModal = ({ item, productTypes, onClose, onSave }: { item?:
     }
   };
 
+  const selectedCategoryNode = materialCategories.find((p: any) => p.id === productTypeId);
+
+  const renderTreeNodes = (nodes: any[], level = 0) => {
+    return nodes.map((node: any) => {
+      if (item?.id && node.id === item.id) return null; // prevent self-parenting
+      const childMcs = materialCategories.filter((mc: any) => mc.parentId === node.id);
+      const isSelected = productTypeId === node.id;
+
+      return (
+        <div key={node.id} className="pt-1 first:pt-0">
+          <div
+            onClick={() => setProductTypeId(node.id)}
+            style={{ paddingLeft: `${Math.max(level * 16, 6)}px` }}
+            className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition ${isSelected ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-200' : 'hover:bg-slate-100 text-slate-800'}`}
+          >
+            {level === 0 ? <Package2 className="w-4 h-4 text-indigo-600 shrink-0" /> : <Layers className="w-3.5 h-3.5 text-purple-600 shrink-0" />}
+            <span className="flex-1 text-xs font-semibold">{node.name}</span>
+            {isSelected && <Check className="w-4 h-4 text-indigo-600 shrink-0" />}
+          </div>
+
+          {childMcs.length > 0 && (
+            <div className="border-l border-slate-200 mt-1 space-y-1 ml-3">
+              {renderTreeNodes(childMcs, level + 1)}
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
+
+  const topLevelCategories = materialCategories.filter((m: any) => !m.parentId);
+  const filteredCategories = topLevelCategories.filter((cat: any) => {
+    const query = treeSearch.toLowerCase().trim();
+    if (!query) return true;
+    if (cat.name?.toLowerCase().includes(query)) return true;
+    const childMcs = materialCategories.filter((mc: any) => mc.parentId === cat.id);
+    return childMcs.some((mc: any) => mc.name?.toLowerCase().includes(query));
+  });
+
   return (
-    <Modal title={item ? 'Edit Material Category' : 'New Material Category'} onClose={onClose}>
+    <Modal title={item?.id ? 'Edit Material Category' : 'New Material Category'} onClose={onClose}>
       <form onSubmit={handleSave} className="space-y-4 py-2">
         {error && <div className="p-3 bg-red-50 text-red-600 text-xs rounded border border-red-100">{error}</div>}
         <div>
@@ -2685,11 +4025,48 @@ const MaterialCategoryModal = ({ item, productTypes, onClose, onSave }: { item?:
           <input type="text" required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Mobile Screen Protector" className="w-full px-3 py-2 text-xs border rounded-lg" />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">Parent Product Type *</label>
-          <select required value={productTypeId} onChange={e => setProductTypeId(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg bg-white">
-            <option value="">Select Product Type...</option>
-            {productTypes.map((pt: any) => <option key={pt.id} value={pt.id}>{pt.name}</option>)}
-          </select>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Parent Category (Optional for Top-Level)</label>
+          <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+            <div className="p-2 bg-slate-50 border-b border-slate-200 relative flex items-center justify-between gap-2">
+              <div className="relative flex-1">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search parent categories…"
+                  value={treeSearch}
+                  onChange={e => setTreeSearch(e.target.value)}
+                  className="w-full pl-8 pr-7 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+                {treeSearch && (
+                  <button type="button" onClick={() => setTreeSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+              {productTypeId && (
+                <button
+                  type="button"
+                  onClick={() => setProductTypeId('')}
+                  className="px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-rose-600 border border-slate-200 bg-white rounded-md shrink-0 cursor-pointer"
+                >
+                  Clear (Make Top-Level)
+                </button>
+              )}
+            </div>
+
+            <div className="max-h-48 overflow-y-auto p-2 space-y-1 divide-y divide-slate-100 text-xs">
+              {filteredCategories.length === 0 ? (
+                <div className="p-3 text-center text-slate-400 italic">No parent categories found</div>
+              ) : (
+                renderTreeNodes(filteredCategories)
+              )}
+            </div>
+
+            <div className="p-2 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-600 flex items-center justify-between">
+              <span>Selected Parent:</span>
+              <span className="font-bold text-indigo-600">{selectedCategoryNode?.name || 'None (Top-Level Category)'}</span>
+            </div>
+          </div>
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1">Description</label>
@@ -2710,43 +4087,126 @@ const MaterialCategoryModal = ({ item, productTypes, onClose, onSave }: { item?:
   );
 };
 
-const FilmCategoryModal = ({ item, materialCategories, onClose, onSave }: { item?: any; materialCategories: any[]; onClose: () => void; onSave: () => void }) => {
+const FilmCategoryModal = ({ item, filmCategories = [], onClose, onSave }: { item?: any; filmCategories: any[]; onClose: () => void; onSave: () => void }) => {
   const [name, setName] = useState(item?.name || '');
-  const [materialCategoryId, setMaterialCategoryId] = useState(item?.materialCategoryId || '');
+  const [parentId, setParentId] = useState(item?.parentId || '');
   const [isActive, setIsActive] = useState(item?.isActive !== false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [treeSearch, setTreeSearch] = useState('');
+
+  useEffect(() => {
+    setName(item?.name || '');
+    setParentId(item?.parentId || '');
+    setIsActive(item?.isActive !== false);
+  }, [item]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !materialCategoryId) return setError('Name and Material Category are required');
+    if (!name.trim()) return setError('Category Name is required');
     setLoading(true);
     try {
-      const payload = { name: name.trim(), materialCategoryId, isActive };
+      const payload = { name: name.trim(), parentId: parentId || undefined, isActive };
       if (item?.id) await filmCategoriesApi.update(item.id, payload);
       else await filmCategoriesApi.create(payload);
       onSave();
     } catch (e: any) {
-      setError(e.message || 'Failed to save Film Category');
+      setError(e.message || 'Failed to save Category');
     } finally {
       setLoading(false);
     }
   };
 
+  const selectedParentNode = filmCategories.find((fc: any) => fc.id === parentId);
+
+  const renderFilmTreeNodes = (nodes: any[], level = 0) => {
+    return nodes.map((node: any) => {
+      if (item?.id && node.id === item.id) return null; // Prevent self-parenting
+      const childFcs = filmCategories.filter((fc: any) => fc.parentId === node.id);
+      const isSelected = parentId === node.id;
+
+      return (
+        <div key={node.id} className="pt-1 first:pt-0">
+          <div
+            onClick={() => setParentId(node.id)}
+            style={{ paddingLeft: `${Math.max(level * 16, 6)}px` }}
+            className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition ${isSelected ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-200' : 'hover:bg-slate-100 text-slate-800'}`}
+          >
+            <Tag className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            <span className="flex-1 text-xs font-semibold">{node.name}</span>
+            {isSelected && <Check className="w-4 h-4 text-indigo-600 shrink-0" />}
+          </div>
+
+          {childFcs.length > 0 && (
+            <div className="border-l border-slate-200 mt-1 space-y-1 ml-3">
+              {renderFilmTreeNodes(childFcs, level + 1)}
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
+
+  const topLevelFilms = filmCategories.filter((fc: any) => !fc.parentId);
+  const filteredFilms = topLevelFilms.filter((fc: any) => {
+    const query = treeSearch.toLowerCase().trim();
+    if (!query) return true;
+    if (fc.name?.toLowerCase().includes(query)) return true;
+    const childFcs = filmCategories.filter((child: any) => child.parentId === fc.id);
+    return childFcs.some((child: any) => child.name?.toLowerCase().includes(query));
+  });
+
   return (
-    <Modal title={item ? 'Edit Film Category' : 'New Film Category'} onClose={onClose}>
+    <Modal title={item?.id ? 'Edit Flash Category' : 'New Flash Category'} onClose={onClose}>
       <form onSubmit={handleSave} className="space-y-4 py-2">
         {error && <div className="p-3 bg-red-50 text-red-600 text-xs rounded border border-red-100">{error}</div>}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">Film Category Name *</label>
-          <input type="text" required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Canvas Shield, Canvas Alpha" className="w-full px-3 py-2 text-xs border rounded-lg" />
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Category Name *</label>
+          <input type="text" required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Screen Protectors, Canvas 3D" className="w-full px-3 py-2 text-xs border rounded-lg" />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">Parent Material Category *</label>
-          <select required value={materialCategoryId} onChange={e => setMaterialCategoryId(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg bg-white">
-            <option value="">Select Material Category...</option>
-            {materialCategories.map((mc: any) => <option key={mc.id} value={mc.id}>{mc.name}</option>)}
-          </select>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Parent Category (Optional)</label>
+          <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+            <div className="p-2 bg-slate-50 border-b border-slate-200 relative flex items-center justify-between gap-2">
+              <div className="relative flex-1">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search categories hierarchy..."
+                  value={treeSearch}
+                  onChange={e => setTreeSearch(e.target.value)}
+                  className="w-full pl-8 pr-7 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+                {treeSearch && (
+                  <button type="button" onClick={() => setTreeSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+              {parentId && (
+                <button
+                  type="button"
+                  onClick={() => setParentId('')}
+                  className="px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-rose-600 border border-slate-200 bg-white rounded-md shrink-0 cursor-pointer"
+                >
+                  Clear (Top-Level)
+                </button>
+              )}
+            </div>
+
+            <div className="max-h-36 overflow-y-auto min-h-[80px] p-2 space-y-1 divide-y divide-slate-100 text-xs scrollbar-thin scrollbar-thumb-slate-300">
+              {filteredFilms.length === 0 ? (
+                <div className="p-3 text-center text-slate-400 italic">No parent categories found</div>
+              ) : (
+                renderFilmTreeNodes(filteredFilms)
+              )}
+            </div>
+
+            <div className="p-2 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-600 flex items-center justify-between font-medium">
+              <span>Selected Parent:</span>
+              <span className="font-bold text-indigo-600">{selectedParentNode ? selectedParentNode.name : 'None (Top-Level)'}</span>
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <input type="checkbox" id="fcActive" checked={isActive} onChange={e => setIsActive(e.target.checked)} className="rounded" />
@@ -2763,9 +4223,10 @@ const FilmCategoryModal = ({ item, materialCategories, onClose, onSave }: { item
   );
 };
 
-const MaterialModal = ({ item, filmCategories, onClose, onSave }: { item?: any; filmCategories: any[]; onClose: () => void; onSave: () => void }) => {
+const MaterialModal = ({ item, filmCategories = [], materialCategories = [], onClose, onSave }: { item?: any; filmCategories: any[]; materialCategories?: any[]; onClose: () => void; onSave: () => void }) => {
   const [name, setName] = useState(item?.name || '');
   const [filmCategoryId, setFilmCategoryId] = useState(item?.filmCategoryId || '');
+  const [selectedMaterialCategoryId, setSelectedMaterialCategoryId] = useState('');
   const [thickness, setThickness] = useState(item?.thickness ? String(item.thickness) : '');
   const [layers, setLayers] = useState(item?.layers ? String(item.layers) : '1');
   const [minForce, setMinForce] = useState(item?.minForce ? String(item.minForce) : '');
@@ -2773,6 +4234,26 @@ const MaterialModal = ({ item, filmCategories, onClose, onSave }: { item?: any; 
   const [isActive, setIsActive] = useState(item?.isActive !== false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const [matCatSearch, setMatCatSearch] = useState('');
+  const [filmCatSearch, setFilmCatSearch] = useState('');
+
+  useEffect(() => {
+    setName(item?.name || '');
+    setFilmCategoryId(item?.filmCategoryId || '');
+    setThickness(item?.thickness ? String(item.thickness) : '');
+    setLayers(item?.layers ? String(item.layers) : '1');
+    setMinForce(item?.minForce ? String(item.minForce) : '');
+    setMinSpeed(item?.minSpeed ? String(item.minSpeed) : '');
+    setIsActive(item?.isActive !== false);
+    
+    if (item?.filmCategoryId) {
+      const parentFc = filmCategories.find((fc: any) => fc.id === item.filmCategoryId);
+      if (parentFc?.materialCategoryId) {
+        setSelectedMaterialCategoryId(parentFc.materialCategoryId);
+      }
+    }
+  }, [item, filmCategories]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2798,20 +4279,184 @@ const MaterialModal = ({ item, filmCategories, onClose, onSave }: { item?: any; 
     }
   };
 
+  const selectedCategoryNode = materialCategories.find((p: any) => p.id === selectedMaterialCategoryId);
+
+  const renderMatCatTree = (nodes: any[], level = 0) => {
+    return nodes.map((node: any) => {
+      const childMcs = materialCategories.filter((mc: any) => mc.parentId === node.id);
+      const isSelected = selectedMaterialCategoryId === node.id;
+
+      return (
+        <div key={node.id} className="pt-1 first:pt-0">
+          <div
+            onClick={() => {
+              setSelectedMaterialCategoryId(node.id);
+              // Auto-select first matching Film Category if available under this Material Category
+              const matchingFc = filmCategories.find((fc: any) => fc.materialCategoryId === node.id);
+              if (matchingFc) setFilmCategoryId(matchingFc.id);
+            }}
+            style={{ paddingLeft: `${Math.max(level * 16, 6)}px` }}
+            className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition ${isSelected ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-200' : 'hover:bg-slate-100 text-slate-800'}`}
+          >
+            {level === 0 ? <Package2 className="w-4 h-4 text-indigo-600 shrink-0" /> : <Layers className="w-3.5 h-3.5 text-purple-600 shrink-0" />}
+            <span className="flex-1 text-xs font-semibold">{node.name}</span>
+            {isSelected && <Check className="w-4 h-4 text-indigo-600 shrink-0" />}
+          </div>
+
+          {childMcs.length > 0 && (
+            <div className="border-l border-slate-200 mt-1 space-y-1 ml-3">
+              {renderMatCatTree(childMcs, level + 1)}
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
+
+  const topLevelCategories = materialCategories.filter((m: any) => !m.parentId);
+  const filteredMatCategories = topLevelCategories.filter((cat: any) => {
+    const query = matCatSearch.toLowerCase().trim();
+    if (!query) return true;
+    if (cat.name?.toLowerCase().includes(query)) return true;
+    const childMcs = materialCategories.filter((mc: any) => mc.parentId === cat.id);
+    return childMcs.some((mc: any) => mc.name?.toLowerCase().includes(query));
+  });
+
+  const renderFilmCatTree = (nodes: any[], level = 0) => {
+    return nodes.map((node: any) => {
+      const childFcs = filmCategories.filter((fc: any) => fc.parentId === node.id);
+      const isSelected = filmCategoryId === node.id;
+
+      return (
+        <div key={node.id} className="pt-1 first:pt-0">
+          <div
+            onClick={() => setFilmCategoryId(node.id)}
+            style={{ paddingLeft: `${Math.max(level * 16, 6)}px` }}
+            className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition ${isSelected ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-200' : 'hover:bg-slate-100 text-slate-800'}`}
+          >
+            {level === 0 ? <Tag className="w-4 h-4 text-indigo-600 shrink-0" /> : <Layers className="w-3.5 h-3.5 text-purple-600 shrink-0" />}
+            <span className="flex-1 text-xs font-semibold">{node.name}</span>
+            {isSelected && <Check className="w-4 h-4 text-indigo-600 shrink-0" />}
+          </div>
+
+          {childFcs.length > 0 && (
+            <div className="border-l border-slate-200 mt-1 space-y-1 ml-3">
+              {renderFilmCatTree(childFcs, level + 1)}
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
+
+  const topLevelFilmCategories = filmCategories.filter((fc: any) => {
+    return !fc.parentId || !filmCategories.some((p: any) => p.id === fc.parentId);
+  });
+
+  const filterFilmNode = (cat: any): boolean => {
+    const query = filmCatSearch.toLowerCase().trim();
+    if (!query) return true;
+    if (cat.name?.toLowerCase().includes(query)) return true;
+    const childFcs = filmCategories.filter((fc: any) => fc.parentId === cat.id);
+    return childFcs.some(child => filterFilmNode(child));
+  };
+
+  const filteredFilmCategories = topLevelFilmCategories.filter(filterFilmNode);
+
+  const selectedFcNode = filmCategories.find((fc: any) => fc.id === filmCategoryId);
+
   return (
-    <Modal title={item ? 'Edit Catalog Material' : 'New Catalog Material'} onClose={onClose}>
+    <Modal title={item?.id ? 'Edit Flash Product' : 'New Flash Product'} onClose={onClose}>
       <form onSubmit={handleSave} className="space-y-4 py-2">
         {error && <div className="p-3 bg-red-50 text-red-600 text-xs rounded border border-red-100">{error}</div>}
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1">Material Name *</label>
           <input type="text" required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Shield Dry Matte, Eco Clear" className="w-full px-3 py-2 text-xs border rounded-lg" />
         </div>
+
+        {/* Searchable Material Category Tree Selector */}
+        {materialCategories.length > 0 && (
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Material Category (Searchable Tree)</label>
+            <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+              <div className="p-2 bg-slate-50 border-b border-slate-200 relative flex items-center justify-between gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search material category tree..."
+                    value={matCatSearch}
+                    onChange={e => setMatCatSearch(e.target.value)}
+                    className="w-full pl-8 pr-7 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                  {matCatSearch && (
+                    <button type="button" onClick={() => setMatCatSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+                {selectedMaterialCategoryId && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMaterialCategoryId('')}
+                    className="px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-rose-600 border border-slate-200 bg-white rounded-md shrink-0 cursor-pointer"
+                  >
+                    Clear Filter
+                  </button>
+                )}
+              </div>
+
+              <div className="max-h-32 overflow-y-auto p-2 space-y-1 divide-y divide-slate-100 text-xs scrollbar-thin scrollbar-thumb-slate-300">
+                {filteredMatCategories.length === 0 ? (
+                  <div className="p-3 text-center text-slate-400 italic">No material categories found</div>
+                ) : (
+                  renderMatCatTree(filteredMatCategories)
+                )}
+              </div>
+
+              <div className="p-2 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-600 flex items-center justify-between font-medium">
+                <span>Selected Category:</span>
+                <span className="font-bold text-indigo-600">{selectedCategoryNode ? selectedCategoryNode.name : 'All Categories'}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Searchable Film Category Tree Selector */}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">Film Category *</label>
-          <select required value={filmCategoryId} onChange={e => setFilmCategoryId(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg bg-white">
-            <option value="">Select Film Category...</option>
-            {filmCategories.map((fc: any) => <option key={fc.id} value={fc.id}>{fc.name}</option>)}
-          </select>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Film Category * (Searchable Tree)</label>
+          <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+            <div className="p-2 bg-slate-50 border-b border-slate-200 relative flex items-center justify-between gap-2">
+              <div className="relative flex-1">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search film category tree..."
+                  value={filmCatSearch}
+                  onChange={e => setFilmCatSearch(e.target.value)}
+                  className="w-full pl-8 pr-7 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+                {filmCatSearch && (
+                  <button type="button" onClick={() => setFilmCatSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="max-h-36 overflow-y-auto min-h-[80px] p-2 space-y-1 divide-y divide-slate-100 text-xs scrollbar-thin scrollbar-thumb-slate-300">
+              {filteredFilmCategories.length === 0 ? (
+                <div className="p-4 text-center text-slate-400 italic">No film categories found</div>
+              ) : (
+                renderFilmCatTree(filteredFilmCategories)
+              )}
+            </div>
+
+            <div className="p-2 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-600 flex items-center justify-between font-medium">
+              <span>Selected Film Category:</span>
+              <span className="font-bold text-indigo-600">{selectedFcNode ? selectedFcNode.name : 'None Selected'}</span>
+            </div>
+          </div>
         </div>
         <div className="grid grid-cols-4 gap-3">
           <div>
@@ -2847,55 +4492,128 @@ const MaterialModal = ({ item, filmCategories, onClose, onSave }: { item?: any; 
 };
 
 const FilmTypesTab = () => {
-  const [subTab, setSubTab] = useState<'filmtypes' | 'producttypes' | 'materialcategories' | 'filmcategories' | 'materials'>('filmtypes');
+  const [subTab, setSubTab] = useState<'categories' | 'filmcategories' | 'materials'>('categories');
   
-  const [filmTypes, setFilmTypes] = useState<any[]>([]);
   const [productTypes, setProductTypes] = useState<any[]>([]);
   const [materialCategories, setMaterialCategories] = useState<any[]>([]);
   const [filmCategories, setFilmCategories] = useState<any[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [isSeeding, setIsSeeding] = useState(false);
+
+  const handleSeedDefaults = async () => {
+    setIsSeeding(true);
+    try {
+      const pt = await productTypesApi.create({ name: 'Canvas', slug: 'canvas', isActive: true });
+      if (pt?.id) {
+        const categories = [
+          'Mobile Screen Protector',
+          'Mobile Canvas',
+          'Tablet Screen Protector',
+          'Mobile Canvas Play',
+          'Krystal Mobile Clear Film',
+          'Laptop Film Protector',
+          'Mobile 3D Canvas',
+          'Flashgard Giveaway'
+        ];
+        for (const catName of categories) {
+          const mc = await materialCategoriesApi.create({ name: catName, productTypeId: pt.id, isActive: true });
+          if (mc?.id && catName === 'Mobile Screen Protector') {
+            await filmCategoriesApi.create({ name: 'HD Ultra Clear', materialCategoryId: mc.id, isActive: true });
+          }
+        }
+      }
+      await loadAllData();
+    } catch (err: any) {
+      console.error('Failed to seed defaults', err);
+      setApiError(err.message || 'Failed to seed default categories');
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
+  const effectiveProductTypes = productTypes.length > 0 
+    ? productTypes 
+    : (materialCategories.length > 0 || filmCategories.length > 0 
+        ? [{ id: 'synthetic_pt', name: 'General Categories', slug: 'general', isActive: true, isSynthetic: true }] 
+        : []);
+  const [modalType, setModalType] = useState<'producttype' | 'materialcategory' | 'filmcategory' | 'material' | null>(null);
   const [modalItem, setModalItem] = useState<any | null>(null);
-  const [showModal, setShowModal] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<any | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string; type: 'producttype' | 'materialcategory' | 'filmcategory' | 'material' } | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const loadAllData = useCallback(async () => {
     setLoading(true);
+    setApiError(null);
     try {
-      if (subTab === 'filmtypes') {
-        const d = await filmTypesApi.getAll(search || undefined, true);
-        setFilmTypes(Array.isArray(d) ? d : []);
-      } else if (subTab === 'producttypes') {
-        const d = await productTypesApi.getAll(search || undefined, true);
-        setProductTypes(Array.isArray(d) ? d : []);
-      } else if (subTab === 'materialcategories') {
-        const [mc, pt] = await Promise.all([
-          materialCategoriesApi.getAll(undefined, search || undefined, true),
-          productTypesApi.getAll(undefined, true)
+      if (subTab === 'categories') {
+        const [ptsRes, mcsRes] = await Promise.allSettled([
+          productTypesApi.getAll(search || undefined, false),
+          materialCategoriesApi.getAll(undefined, search || undefined, false)
         ]);
-        setMaterialCategories(Array.isArray(mc) ? mc : []);
-        setProductTypes(Array.isArray(pt) ? pt : []);
+
+        const errors = [ptsRes, mcsRes]
+          .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+          .map(r => r.reason?.message || String(r.reason));
+
+        if (errors.length > 0) {
+          setApiError(errors[0]);
+        }
+
+        const pts = ptsRes.status === 'fulfilled' ? ptsRes.value : [];
+        const mcs = mcsRes.status === 'fulfilled' ? mcsRes.value : [];
+
+        const ptList = Array.isArray(pts) ? pts : ((pts as any)?.items || []);
+        const mcList = Array.isArray(mcs) ? mcs : ((mcs as any)?.items || []);
+
+        setProductTypes(ptList);
+        setMaterialCategories(mcList);
+
+        // Auto expand all product types and material categories
+        const expandKeys = new Set<string>();
+        ptList.forEach((p: any) => expandKeys.add('pt_' + p.id));
+        mcList.forEach((m: any) => expandKeys.add('mc_' + m.id));
+        setExpandedRows(expandKeys);
       } else if (subTab === 'filmcategories') {
-        const [fc, mc] = await Promise.all([
-          filmCategoriesApi.getAll(undefined, search || undefined, true),
-          materialCategoriesApi.getAll(undefined, undefined, true)
-        ]);
-        setFilmCategories(Array.isArray(fc) ? fc : []);
-        setMaterialCategories(Array.isArray(mc) ? mc : []);
+        const fcsRes = await filmCategoriesApi.getAll(undefined, search || undefined, false);
+        const fcList = Array.isArray(fcsRes) ? fcsRes : ((fcsRes as any)?.items || []);
+        setFilmCategories(fcList);
       } else if (subTab === 'materials') {
-        const [m, fc] = await Promise.all([
-          materialsApi.getAll(undefined, search || undefined, true),
-          filmCategoriesApi.getAll(undefined, undefined, true)
+        const [mRes, fcRes, mcRes] = await Promise.allSettled([
+          materialsApi.getAll(undefined, search || undefined, false),
+          filmCategoriesApi.getAll(undefined, undefined, false),
+          materialCategoriesApi.getAll(undefined, undefined, false)
         ]);
-        const items = Array.isArray(m) ? m : (m?.items || []);
+
+        if (mRes.status === 'rejected') {
+          setApiError('Unable to fetch Flash Products. Please verify backend service is running.');
+        }
+
+        const m = mRes.status === 'fulfilled' ? mRes.value : [];
+        const fc = fcRes.status === 'fulfilled' ? fcRes.value : [];
+        const mc = mcRes.status === 'fulfilled' ? mcRes.value : [];
+
+        const items = Array.isArray(m) ? m : ((m as any)?.items || []);
+        const fcList = Array.isArray(fc) ? fc : ((fc as any)?.items || []);
+        const mcList = Array.isArray(mc) ? mc : ((mc as any)?.items || []);
+
         setMaterials(items);
-        setFilmCategories(Array.isArray(fc) ? fc : []);
+        setFilmCategories(fcList);
+        setMaterialCategories(mcList);
+
+        // Auto expand all material categories for hierarchical materials view
+        const expandKeys = new Set<string>();
+        mcList.forEach((mc: any) => expandKeys.add('m_mc_' + mc.id));
+        setExpandedRows(expandKeys);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setApiError(err.message || 'Failed to load data.');
     } finally {
       setLoading(false);
     }
@@ -2905,53 +4623,57 @@ const FilmTypesTab = () => {
     loadAllData();
   }, [loadAllData]);
 
+  const toggleRow = (key: string) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   const handleExportExcel = async () => {
     setIsExporting(true);
     try {
+      const xlsxMod = await import('xlsx-js-style');
+      const XLSX = xlsxMod.default || xlsxMod;
+
       let dataToExport: any[] = [];
-      let sheetName = 'Export';
-      
-      if (subTab === 'filmtypes') {
-        sheetName = 'Film Types';
-        dataToExport = filmTypes.map((f: any, idx: number) => ({
-          '#': idx + 1,
-          'Film Type Name': f.name,
-          'Parent Category': f.parent?.name || 'Top-Level',
-          'Layers': f.layers || 1,
-          'Thickness (mm)': f.thickness || '—',
-          'Min Speed': f.minSpeed || '—',
-          'Min Force': f.minForce || '—',
-          'Status': f.isActive ? 'Active' : 'Inactive',
-          'Description': f.description || ''
-        }));
-      } else if (subTab === 'producttypes') {
-        sheetName = 'Product Types';
-        dataToExport = productTypes.map((pt: any, idx: number) => ({
-          '#': idx + 1,
-          'Product Type Name': pt.name,
-          'Slug': pt.slug,
-          'Status': pt.isActive ? 'Active' : 'Inactive',
-          'Created At': pt.createdAt ? new Date(pt.createdAt).toLocaleDateString() : ''
-        }));
-      } else if (subTab === 'materialcategories') {
-        sheetName = 'Material Categories';
-        dataToExport = materialCategories.map((mc: any, idx: number) => ({
-          '#': idx + 1,
-          'Material Category': mc.name,
-          'Parent Product Type': mc.productType?.name || '—',
-          'Description': mc.description || '',
-          'Status': mc.isActive ? 'Active' : 'Inactive'
-        }));
-      } else if (subTab === 'filmcategories') {
-        sheetName = 'Film Categories';
-        dataToExport = filmCategories.map((fc: any, idx: number) => ({
-          '#': idx + 1,
-          'Film Category Name': fc.name,
-          'Parent Material Category': fc.materialCategory?.name || '—',
-          'Status': fc.isActive ? 'Active' : 'Inactive'
-        }));
-      } else if (subTab === 'materials') {
-        sheetName = 'Catalog Materials';
+      let sheetName = 'Categories_Taxonomy';
+
+      if (subTab === 'categories') {
+        let rowCount = 1;
+        for (const pt of productTypes) {
+          dataToExport.push({
+            '#': rowCount++,
+            'Tier Level': 'Tier 1: Product Type',
+            'Category Name': pt.name,
+            'Parent Category': 'Top-Level',
+            'Status': pt.isActive ? 'Active' : 'Inactive'
+          });
+          const childMcs = materialCategories.filter((m: any) => m.productTypeId === pt.id);
+          for (const mc of childMcs) {
+            dataToExport.push({
+              '#': rowCount++,
+              'Tier Level': 'Tier 2: Material Category',
+              'Category Name': mc.name,
+              'Parent Category': pt.name,
+              'Status': mc.isActive ? 'Active' : 'Inactive'
+            });
+            const childFcs = filmCategories.filter((f: any) => f.materialCategoryId === mc.id);
+            for (const fc of childFcs) {
+              dataToExport.push({
+                '#': rowCount++,
+                'Tier Level': 'Tier 3: Film Category',
+                'Category Name': fc.name,
+                'Parent Category': mc.name,
+                'Status': fc.isActive ? 'Active' : 'Inactive'
+              });
+            }
+          }
+        }
+      } else {
+        sheetName = 'Catalog_Materials';
         dataToExport = materials.map((m: any, idx: number) => ({
           '#': idx + 1,
           'Material Name': m.name,
@@ -2965,7 +4687,7 @@ const FilmTypesTab = () => {
       const worksheet = XLSX.utils.json_to_sheet(dataToExport);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-      XLSX.writeFile(workbook, `${sheetName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.writeFile(workbook, `${sheetName}_${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (e) {
       console.error(e);
     } finally {
@@ -2973,55 +4695,52 @@ const FilmTypesTab = () => {
     }
   };
 
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const handleDelete = async () => {
     if (!confirmDelete) return;
+    setIsDeleting(true);
+    setDeleteError(null);
     try {
-      if (subTab === 'filmtypes') await filmTypesApi.remove(confirmDelete.id);
-      else if (subTab === 'producttypes') await productTypesApi.remove(confirmDelete.id);
-      else if (subTab === 'materialcategories') await materialCategoriesApi.remove(confirmDelete.id);
-      else if (subTab === 'filmcategories') await filmCategoriesApi.remove(confirmDelete.id);
-      else if (subTab === 'materials') await materialsApi.remove(confirmDelete.id);
+      if (confirmDelete.type === 'producttype') await productTypesApi.remove(confirmDelete.id);
+      else if (confirmDelete.type === 'materialcategory') await materialCategoriesApi.remove(confirmDelete.id);
+      else if (confirmDelete.type === 'filmcategory') await filmCategoriesApi.remove(confirmDelete.id);
+      else if (confirmDelete.type === 'material') await materialsApi.remove(confirmDelete.id);
 
       setConfirmDelete(null);
-      loadAllData();
-    } catch (err) {
-      console.error(err);
+      await loadAllData();
+    } catch (err: any) {
+      console.error('Delete failed:', err);
+      const msg = err.message || `Failed to delete "${confirmDelete.name}". It may have linked items.`;
+      setDeleteError(msg);
+      setApiError(msg);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
     <div className="p-6 space-y-4">
-      {/* Taxonomy Sub-Nav Bar */}
+      {/* Sub-Nav Bar: 3 Consolidated Tabs */}
       <div className="flex border-b border-slate-200 bg-slate-50/50 p-1.5 rounded-xl overflow-x-auto gap-1">
         <button
-          onClick={() => { setSubTab('filmtypes'); setSearch(''); }}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'filmtypes' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
+          onClick={() => { setSubTab('categories'); setSearch(''); }}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${subTab === 'categories' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
         >
-          <Tag className="w-3.5 h-3.5" /> Operational Film Types
-        </button>
-        <button
-          onClick={() => { setSubTab('producttypes'); setSearch(''); }}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'producttypes' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
-        >
-          <Package2 className="w-3.5 h-3.5" /> Tier 1: Product Types
-        </button>
-        <button
-          onClick={() => { setSubTab('materialcategories'); setSearch(''); }}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'materialcategories' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
-        >
-          <Layers className="w-3.5 h-3.5" /> Tier 2: Material Categories
-        </button>
-        <button
-          onClick={() => { setSubTab('filmcategories'); setSearch(''); }}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'filmcategories' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
-        >
-          <FileText className="w-3.5 h-3.5" /> Tier 3: Film Categories
+          <Layers className="w-4 h-4" /> Material Category
         </button>
         <button
           onClick={() => { setSubTab('materials'); setSearch(''); }}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'materials' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${subTab === 'materials' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
         >
-          <ClipboardList className="w-3.5 h-3.5" /> Tier 4: Catalog Materials
+          <ClipboardList className="w-4 h-4" /> Flash Products
+        </button>
+        <button
+          onClick={() => { setSubTab('filmcategories'); setSearch(''); }}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${subTab === 'filmcategories' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          <Tag className="w-4 h-4" /> Flash Categories
         </button>
       </div>
 
@@ -3031,75 +4750,94 @@ const FilmTypesTab = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search items..."
+            placeholder={subTab === 'categories' ? "Search material categories..." : subTab === 'filmcategories' ? "Search flash categories..." : "Search flash products..."}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
           />
           {search && (
-            <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+            <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
               <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-          <button onClick={handleExportExcel} disabled={isExporting} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 bg-white shadow-sm flex items-center justify-center" title="Export Excel">
+          {subTab === 'categories' && (
+            <button
+              onClick={() => {
+                if (expandedRows.size > 0) {
+                  setExpandedRows(new Set());
+                } else {
+                  const expandKeys = new Set<string>();
+                  expandKeys.add('pt_synthetic_pt');
+                  productTypes.forEach((p: any) => expandKeys.add('pt_' + p.id));
+                  setExpandedRows(expandKeys);
+                }
+              }}
+              className="px-3 py-2 border border-slate-200 rounded-xl hover:bg-slate-50 bg-white shadow-sm flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer"
+              title={expandedRows.size > 0 ? "Collapse All Rows" : "Expand All Rows"}
+            >
+              <ChevronsUpDown className="w-3.5 h-3.5 text-slate-500" />
+              <span className="hidden sm:inline">{expandedRows.size > 0 ? 'Collapse All' : 'Expand All'}</span>
+            </button>
+          )}
+          <button onClick={handleExportExcel} disabled={isExporting} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 bg-white shadow-sm flex items-center justify-center cursor-pointer" title="Export Excel">
             {isExporting ? <Loader2 className="w-4 h-4 animate-spin text-indigo-600" /> : <Download className="w-4 h-4 text-slate-600" />}
           </button>
-          <button onClick={loadAllData} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 bg-white shadow-sm" title="Refresh">
+          <button onClick={loadAllData} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 bg-white shadow-sm cursor-pointer" title="Refresh">
             <RotateCcw className={`w-4 h-4 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
           </button>
-          <button onClick={() => { setModalItem(null); setShowModal(true); }} className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl flex items-center gap-2 transition shadow-sm">
-            <Plus className="w-4 h-4" /> New {subTab === 'filmtypes' ? 'Film Type' : subTab === 'producttypes' ? 'Product Type' : subTab === 'materialcategories' ? 'Material Category' : subTab === 'filmcategories' ? 'Film Category' : 'Catalog Material'}
-          </button>
+          {subTab === 'categories' ? (
+            <button onClick={() => { setModalItem(null); setModalType('materialcategory'); }} className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl flex items-center gap-2 transition shadow-sm cursor-pointer">
+              <Plus className="w-4 h-4" /> New Material Category
+            </button>
+          ) : subTab === 'filmcategories' ? (
+            <button onClick={() => { setModalItem(null); setModalType('filmcategory'); }} className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl flex items-center gap-2 transition shadow-sm cursor-pointer">
+              <Plus className="w-4 h-4" /> New Flash Category
+            </button>
+          ) : (
+            <button onClick={() => { setModalItem(null); setModalType('material'); }} className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl flex items-center gap-2 transition shadow-sm cursor-pointer">
+              <Plus className="w-4 h-4" /> New Flash Product
+            </button>
+          )}
         </div>
       </div>
+
+      {apiError && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="font-medium">{apiError}</span>
+          </div>
+          <button onClick={loadAllData} className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition cursor-pointer">
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Main Dynamic Table */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
         <table className="w-full text-left text-xs border-collapse">
           <thead className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
-            {subTab === 'filmtypes' && (
+            {subTab === 'categories' ? (
               <tr>
-                <th className="px-4 py-3">Material / Film Type Name</th>
+                <th className="px-4 py-3">Category Hierarchy</th>
                 <th className="px-4 py-3">Parent Category</th>
-                <th className="px-4 py-3">Layers & Thickness</th>
-                <th className="px-4 py-3">Plotter Settings</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
-            )}
-            {subTab === 'producttypes' && (
+            ) : subTab === 'filmcategories' ? (
               <tr>
-                <th className="px-4 py-3">Product Type Name</th>
-                <th className="px-4 py-3">Slug (URL Key)</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Created At</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            )}
-            {subTab === 'materialcategories' && (
-              <tr>
-                <th className="px-4 py-3">Material Category Name</th>
-                <th className="px-4 py-3">Parent Product Type</th>
-                <th className="px-4 py-3">Description</th>
+                <th className="px-4 py-3">Flash Category Hierarchy</th>
+                <th className="px-4 py-3">Parent Flash Category</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
-            )}
-            {subTab === 'filmcategories' && (
+            ) : (
               <tr>
-                <th className="px-4 py-3">Film Category Name</th>
-                <th className="px-4 py-3">Parent Material Category</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            )}
-            {subTab === 'materials' && (
-              <tr>
-                <th className="px-4 py-3">Material Name</th>
-                <th className="px-4 py-3">Parent Film Category</th>
+                <th className="px-4 py-3">Flash Product Hierarchy</th>
+                <th className="px-4 py-3">Category</th>
                 <th className="px-4 py-3">Layers & Thickness</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -3108,87 +4846,368 @@ const FilmTypesTab = () => {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
-              <tr><td colSpan={6} className="py-12 text-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin mx-auto text-indigo-500 mb-2" />Loading items...</td></tr>
-            ) : subTab === 'filmtypes' ? (
-              filmTypes.length === 0 ? <tr><td colSpan={6} className="py-12 text-center text-slate-400">No items found.</td></tr> :
-              filmTypes.map((f: any) => (
-                <tr key={f.id} className="hover:bg-slate-50/50 transition">
-                  <td className="px-4 py-3 font-bold text-slate-800"><div className="flex items-center gap-2"><Tag className="w-4 h-4 text-indigo-500 shrink-0" /><span>{f.name}</span></div></td>
-                  <td className="px-4 py-3 text-slate-600">{f.parent?.name || 'Top-Level'}</td>
-                  <td className="px-4 py-3 text-slate-600">{f.layers || 1} Layer(s) {f.thickness && `(${f.thickness}mm)`}</td>
-                  <td className="px-4 py-3 text-slate-600">{f.minSpeed || f.minForce ? `Speed: ${f.minSpeed || '—'} | Force: ${f.minForce || '—'}g` : 'Default'}</td>
-                  <td className="px-4 py-3"><span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${f.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{f.isActive ? 'Active' : 'Inactive'}</span></td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => { setModalItem(f); setShowModal(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
-                    <button onClick={() => setConfirmDelete(f)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+              <tr><td colSpan={5} className="py-12 text-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin mx-auto text-indigo-500 mb-2" />Loading items...</td></tr>
+            ) : subTab === 'categories' ? (
+              effectiveProductTypes.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-16 text-center">
+                    <div className="max-w-md mx-auto space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto shadow-xs">
+                        <Layers className="w-6 h-6" />
+                      </div>
+                      <h3 className="text-base font-bold text-slate-800">No Category Taxonomy Found</h3>
+                      <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                        Set up your catalog hierarchy starting with top-level Product Types, or seed standard default categories in 1 click.
+                      </p>
+                      <div className="flex items-center justify-center gap-3 pt-2">
+                        <button
+                          onClick={handleSeedDefaults}
+                          disabled={isSeeding}
+                          className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl flex items-center gap-2 shadow-sm transition cursor-pointer"
+                        >
+                          {isSeeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />} Seed Default Categories
+                        </button>
+                        <button
+                          onClick={() => { setModalItem(null); setModalType('producttype'); }}
+                          className="px-4 py-2 text-xs font-bold border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl flex items-center gap-2 transition cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4" /> Create Top Product Type
+                        </button>
+                      </div>
+                    </div>
                   </td>
                 </tr>
-              ))
-            ) : subTab === 'producttypes' ? (
-              productTypes.length === 0 ? <tr><td colSpan={5} className="py-12 text-center text-slate-400">No items found.</td></tr> :
-              productTypes.map((pt: any) => (
-                <tr key={pt.id} className="hover:bg-slate-50/50 transition">
-                  <td className="px-4 py-3 font-bold text-slate-800">{pt.name}</td>
-                  <td className="px-4 py-3 text-slate-500 font-mono text-[11px]">{pt.slug}</td>
-                  <td className="px-4 py-3"><span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${pt.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{pt.isActive ? 'Active' : 'Inactive'}</span></td>
-                  <td className="px-4 py-3 text-slate-500">{pt.createdAt ? new Date(pt.createdAt).toLocaleDateString() : '—'}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => { setModalItem(pt); setShowModal(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
-                    <button onClick={() => setConfirmDelete(pt)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
-                  </td>
-                </tr>
-              ))
-            ) : subTab === 'materialcategories' ? (
-              materialCategories.length === 0 ? <tr><td colSpan={5} className="py-12 text-center text-slate-400">No items found.</td></tr> :
-              materialCategories.map((mc: any) => (
-                <tr key={mc.id} className="hover:bg-slate-50/50 transition">
-                  <td className="px-4 py-3 font-bold text-slate-800">{mc.name}</td>
-                  <td className="px-4 py-3 text-indigo-600 font-semibold">{mc.productType?.name || '—'}</td>
-                  <td className="px-4 py-3 text-slate-500">{mc.description || '—'}</td>
-                  <td className="px-4 py-3"><span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${mc.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{mc.isActive ? 'Active' : 'Inactive'}</span></td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => { setModalItem(mc); setShowModal(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
-                    <button onClick={() => setConfirmDelete(mc)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
-                  </td>
-                </tr>
-              ))
+              ) : (
+                (() => {
+                  const renderCategoryTreeRows = (nodes: any[], parentName: string, level = 0): React.ReactNode => {
+                    return nodes.map((mc: any) => {
+                      const mcKey = 'mc_' + mc.id;
+                      const isExpanded = expandedRows.has(mcKey);
+                      const subChildren = materialCategories.filter((sub: any) => sub.parentId === mc.id);
+
+                      return (
+                        <React.Fragment key={mcKey}>
+                          <tr className={`border-t border-slate-100 hover:bg-indigo-50/20 transition ${level === 0 ? 'bg-slate-50/70 border-t-2 border-slate-200 font-bold' : 'bg-white'}`}>
+                            <td className="px-4 py-3 text-slate-900" style={{ paddingLeft: `${level * 20 + 16}px` }}>
+                              <div className="flex items-center gap-2">
+                                {subChildren.length > 0 ? (
+                                  <button
+                                    onClick={() => toggleRow(mcKey)}
+                                    className="p-0.5 rounded hover:bg-slate-200 text-slate-500 transition cursor-pointer"
+                                  >
+                                    {isExpanded ? <ChevronDown className="w-4 h-4 text-indigo-600" /> : <ChevronRight className="w-4 h-4" />}
+                                  </button>
+                                ) : (
+                                  <div className="w-4 h-4 shrink-0" />
+                                )}
+                                {level === 0 ? <Package2 className="w-4 h-4 text-indigo-600 shrink-0" /> : <Layers className="w-3.5 h-3.5 text-purple-600 shrink-0" />}
+                                <span className={`text-xs ${level === 0 ? 'font-black tracking-tight text-slate-900' : 'font-bold text-slate-700'}`}>{mc.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-slate-500 text-xs italic">{level === 0 ? 'Top-Level' : parentName}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${mc.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                {mc.isActive ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => { setModalItem({ productTypeId: mc.id }); setModalType('materialcategory'); }}
+                                  className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                                  title="Add Sub Category"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => { setModalItem(mc); setModalType('materialcategory'); }}
+                                  className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                                  title="Edit Category"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDelete({ id: mc.id, name: mc.name, type: 'materialcategory' })}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                                  title="Delete Category"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {isExpanded && subChildren.length > 0 && renderCategoryTreeRows(subChildren, mc.name, level + 1)}
+                        </React.Fragment>
+                      );
+                    });
+                  };
+
+                  const topLevelCategories = materialCategories.filter((m: any) => !m.parentId);
+                  return topLevelCategories.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-slate-400">
+                        No categories found. Click "+ New Material Category" to create one.
+                      </td>
+                    </tr>
+                  ) : (
+                    renderCategoryTreeRows(topLevelCategories, '', 0)
+                  );
+                })()
+              )
             ) : subTab === 'filmcategories' ? (
-              filmCategories.length === 0 ? <tr><td colSpan={4} className="py-12 text-center text-slate-400">No items found.</td></tr> :
-              filmCategories.map((fc: any) => (
-                <tr key={fc.id} className="hover:bg-slate-50/50 transition">
-                  <td className="px-4 py-3 font-bold text-slate-800">{fc.name}</td>
-                  <td className="px-4 py-3 text-indigo-600 font-semibold">{fc.materialCategory?.name || '—'}</td>
-                  <td className="px-4 py-3"><span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${fc.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{fc.isActive ? 'Active' : 'Inactive'}</span></td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => { setModalItem(fc); setShowModal(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
-                    <button onClick={() => setConfirmDelete(fc)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
-                  </td>
-                </tr>
-              ))
+              filmCategories.length === 0 ? (
+                <tr><td colSpan={5} className="py-12 text-center text-slate-400">No Flash Films found. Click "+ New Flash Film" to create one.</td></tr>
+              ) : (
+                (() => {
+                  const renderFilmTreeTableRows = (nodes: any[], parentName: string, level = 0): React.ReactNode => {
+                    return nodes.map((fc: any) => {
+                      const fcKey = 'fc_' + fc.id;
+                      const isExpanded = expandedRows.has(fcKey);
+                      const childFcs = filmCategories.filter((sub: any) => sub.parentId === fc.id);
+
+                      return (
+                        <React.Fragment key={fcKey}>
+                          <tr className={`border-t border-slate-100 hover:bg-indigo-50/20 transition ${level === 0 ? 'bg-slate-50/70 border-t-2 border-slate-200 font-bold' : 'bg-white'}`}>
+                            <td className="px-4 py-3 text-slate-900" style={{ paddingLeft: `${level * 20 + 16}px` }}>
+                              <div className="flex items-center gap-2">
+                                {childFcs.length > 0 ? (
+                                  <button
+                                    onClick={() => toggleRow(fcKey)}
+                                    className="p-0.5 rounded hover:bg-slate-200 text-slate-500 transition cursor-pointer"
+                                  >
+                                    {isExpanded ? <ChevronDown className="w-4 h-4 text-indigo-600" /> : <ChevronRight className="w-4 h-4" />}
+                                  </button>
+                                ) : (
+                                  <div className="w-4 h-4 shrink-0" />
+                                )}
+                                <Tag className="w-4 h-4 text-indigo-600 shrink-0" />
+                                <span className={`text-xs ${level === 0 ? 'font-black tracking-tight text-slate-900' : 'font-bold text-slate-700'}`}>{fc.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-slate-500 text-xs italic">{level === 0 ? 'Top-Level' : parentName}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${fc.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                {fc.isActive ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => { setModalItem({ parentId: fc.id }); setModalType('filmcategory'); }}
+                                  className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                                  title="Add Sub Category"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => { setModalItem(fc); setModalType('filmcategory'); }}
+                                  className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                                  title="Edit Category"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDelete({ id: fc.id, name: fc.name, type: 'filmcategory' })}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                                  title="Delete Category"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {isExpanded && childFcs.length > 0 && renderFilmTreeTableRows(childFcs, fc.name, level + 1)}
+                        </React.Fragment>
+                      );
+                    });
+                  };
+
+                  const topLevelFilms = filmCategories.filter((fc: any) => !fc.parentId);
+                  return topLevelFilms.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-slate-400">
+                        No Flash Categories found. Click "+ New Flash Category" to create one.
+                      </td>
+                    </tr>
+                  ) : (
+                    renderFilmTreeTableRows(topLevelFilms, '', 0)
+                  );
+                })()
+              )
             ) : (
-              materials.length === 0 ? <tr><td colSpan={5} className="py-12 text-center text-slate-400">No items found.</td></tr> :
-              materials.map((m: any) => (
-                <tr key={m.id} className="hover:bg-slate-50/50 transition">
-                  <td className="px-4 py-3 font-bold text-slate-800">{m.name}</td>
-                  <td className="px-4 py-3 text-indigo-600 font-semibold">{m.filmCategory?.name || '—'}</td>
-                  <td className="px-4 py-3 text-slate-600">{m.layers || 1} Layer(s) {m.thickness && `(${m.thickness}mm)`}</td>
-                  <td className="px-4 py-3"><span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${m.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{m.isActive ? 'Active' : 'Inactive'}</span></td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => { setModalItem(m); setShowModal(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
-                    <button onClick={() => setConfirmDelete(m)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
-                  </td>
-                </tr>
-              ))
+              (() => {
+                const renderMaterialTreeTableRows = (mcNodes: any[], parentName: string, level = 0): React.ReactNode => {
+                  return mcNodes.map((mc: any) => {
+                    const mcKey = 'm_mc_' + mc.id;
+                    const isExpanded = expandedRows.has(mcKey);
+                    const childMcs = materialCategories.filter((sub: any) => sub.parentId === mc.id);
+
+                    const matchingFcIds = new Set(filmCategories.filter((fc: any) => fc.materialCategoryId === mc.id).map((fc: any) => fc.id));
+                    const catMaterials = materials.filter((m: any) => 
+                      m.filmCategory?.materialCategoryId === mc.id || 
+                      m.filmCategory?.materialCategory?.id === mc.id || 
+                      matchingFcIds.has(m.filmCategoryId)
+                    );
+                    const hasChildren = childMcs.length > 0 || catMaterials.length > 0;
+
+                    return (
+                      <React.Fragment key={mcKey}>
+                        <tr className={`border-t border-slate-100 hover:bg-indigo-50/20 transition ${level === 0 ? 'bg-slate-50/80 border-t-2 border-slate-200 font-bold' : 'bg-white'}`}>
+                          <td className="px-4 py-3 text-slate-900" style={{ paddingLeft: `${level * 20 + 16}px` }}>
+                            <div className="flex items-center gap-2">
+                              {hasChildren ? (
+                                <button
+                                  onClick={() => toggleRow(mcKey)}
+                                  className="p-0.5 rounded hover:bg-slate-200 text-slate-500 transition cursor-pointer"
+                                >
+                                  {isExpanded ? <ChevronDown className="w-4 h-4 text-indigo-600" /> : <ChevronRight className="w-4 h-4" />}
+                                </button>
+                              ) : (
+                                <div className="w-4 h-4 shrink-0" />
+                              )}
+                              {level === 0 ? <Package2 className="w-4 h-4 text-indigo-600 shrink-0" /> : <Layers className="w-3.5 h-3.5 text-purple-600 shrink-0" />}
+                              <span className={`text-xs ${level === 0 ? 'font-black tracking-tight text-slate-900' : 'font-bold text-slate-700'}`}>{mc.name}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-200/60 font-semibold text-slate-600">
+                                {catMaterials.length} product{catMaterials.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-slate-500 text-xs italic">{level === 0 ? 'Top-Level Material' : parentName}</td>
+                          <td className="px-4 py-3 text-slate-400 text-xs">—</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${mc.isActive !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                              {mc.isActive !== false ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => { setModalItem({ materialCategoryId: mc.id }); setModalType('material'); }}
+                                className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                                title="Add Flash Product under this Category"
+                              >
+                                <Plus className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => { setModalItem(mc); setModalType('materialcategory'); }}
+                                className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                                title="Edit Material Category"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <>
+                            {/* Child Material Categories */}
+                            {childMcs.length > 0 && renderMaterialTreeTableRows(childMcs, mc.name, level + 1)}
+
+                            {/* Direct Flash Products under this Material Category */}
+                            {catMaterials.map((m: any) => (
+                              <tr key={'m_' + m.id} className="border-t border-slate-100 hover:bg-indigo-50/30 transition bg-white">
+                                <td className="px-4 py-2.5 text-slate-900" style={{ paddingLeft: `${(level + 1) * 20 + 16}px` }}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-4 h-4 shrink-0" />
+                                    <Package2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                    <span className="text-xs font-bold text-slate-800">{m.name}</span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2.5 text-indigo-600 font-semibold text-xs">{m.filmCategory?.name || '—'}</td>
+                                <td className="px-4 py-2.5 text-slate-600 text-xs">{m.layers || 1} Layer(s) {m.thickness && `(${m.thickness}mm)`}</td>
+                                <td className="px-4 py-2.5">
+                                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${m.isActive !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                    {m.isActive !== false ? 'Active' : 'Inactive'}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2.5 text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button onClick={() => { setModalItem(m); setModalType('material'); }} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition cursor-pointer" title="Edit Product"><Edit2 className="w-4 h-4" /></button>
+                                    <button onClick={() => setConfirmDelete({ id: m.id, name: m.name, type: 'material' })} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition cursor-pointer" title="Delete Product"><Trash2 className="w-4 h-4" /></button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </>
+                        )}
+                      </React.Fragment>
+                    );
+                  });
+                };
+
+                const topLevelMcs = materialCategories.filter((m: any) => !m.parentId);
+                const allMatchingFcIds = new Set(filmCategories.filter((fc: any) => !!fc.materialCategoryId).map((fc: any) => fc.id));
+                const uncategorizedMaterials = materials.filter((m: any) => 
+                  !m.filmCategory?.materialCategoryId && 
+                  !m.filmCategory?.materialCategory?.id && 
+                  !allMatchingFcIds.has(m.filmCategoryId)
+                );
+
+                if (topLevelMcs.length === 0 && uncategorizedMaterials.length === 0) {
+                  return (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-slate-400">
+                        No Flash Products found. Click "+ New Flash Product" to create one.
+                      </td>
+                    </tr>
+                  );
+                }
+
+                return (
+                  <>
+                    {renderMaterialTreeTableRows(topLevelMcs, '', 0)}
+
+                    {uncategorizedMaterials.length > 0 && (
+                      <>
+                        <tr className="bg-amber-50/60 border-t-2 border-amber-200 font-bold">
+                          <td className="px-4 py-3 text-amber-900" colSpan={5}>
+                            <div className="flex items-center gap-2">
+                              <Package className="w-4 h-4 text-amber-600 shrink-0" />
+                              <span className="text-xs font-black uppercase tracking-tight text-amber-900">Uncategorized / Direct Flash Products</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-200/60 font-semibold text-amber-800">
+                                {uncategorizedMaterials.length} product{uncategorizedMaterials.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                        {uncategorizedMaterials.map((m: any) => (
+                          <tr key={'m_uncat_' + m.id} className="border-t border-slate-100 hover:bg-slate-50 transition bg-white">
+                            <td className="px-4 py-2.5 text-slate-900 pl-8">
+                              <div className="flex items-center gap-2">
+                                <Package2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                <span className="text-xs font-bold text-slate-800">{m.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-400 italic text-xs">Uncategorized</td>
+                            <td className="px-4 py-2.5 text-slate-600 text-xs">{m.layers || 1} Layer(s) {m.thickness && `(${m.thickness}mm)`}</td>
+                            <td className="px-4 py-2.5">
+                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${m.isActive !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                {m.isActive !== false ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button onClick={() => { setModalItem(m); setModalType('material'); }} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition cursor-pointer" title="Edit Product"><Edit2 className="w-4 h-4" /></button>
+                                <button onClick={() => setConfirmDelete({ id: m.id, name: m.name, type: 'material' })} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition cursor-pointer" title="Delete Product"><Trash2 className="w-4 h-4" /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </>
+                    )}
+                  </>
+                );
+              })()
             )}
           </tbody>
         </table>
       </div>
 
-      {showModal && subTab === 'filmtypes' && <FilmTypeModal item={modalItem} filmTypes={filmTypes} onClose={() => { setShowModal(false); setModalItem(null); }} onSave={() => { setShowModal(false); setModalItem(null); loadAllData(); }} />}
-      {showModal && subTab === 'producttypes' && <ProductTypeModal item={modalItem} onClose={() => { setShowModal(false); setModalItem(null); }} onSave={() => { setShowModal(false); setModalItem(null); loadAllData(); }} />}
-      {showModal && subTab === 'materialcategories' && <MaterialCategoryModal item={modalItem} productTypes={productTypes} onClose={() => { setShowModal(false); setModalItem(null); }} onSave={() => { setShowModal(false); setModalItem(null); loadAllData(); }} />}
-      {showModal && subTab === 'filmcategories' && <FilmCategoryModal item={modalItem} materialCategories={materialCategories} onClose={() => { setShowModal(false); setModalItem(null); }} onSave={() => { setShowModal(false); setModalItem(null); loadAllData(); }} />}
-      {showModal && subTab === 'materials' && <MaterialModal item={modalItem} filmCategories={filmCategories} onClose={() => { setShowModal(false); setModalItem(null); }} onSave={() => { setShowModal(false); setModalItem(null); loadAllData(); }} />}
+      {modalType === 'producttype' && <ProductTypeModal item={modalItem} onClose={() => { setModalType(null); setModalItem(null); }} onSave={() => { setModalType(null); setModalItem(null); loadAllData(); }} />}
+      {modalType === 'materialcategory' && <MaterialCategoryModal item={modalItem} productTypes={productTypes} materialCategories={materialCategories} onClose={() => { setModalType(null); setModalItem(null); }} onSave={() => { setModalType(null); setModalItem(null); loadAllData(); }} />}
+      {modalType === 'filmcategory' && <FilmCategoryModal item={modalItem} filmCategories={filmCategories} onClose={() => { setModalType(null); setModalItem(null); }} onSave={() => { setModalType(null); setModalItem(null); loadAllData(); }} />}
+      {modalType === 'material' && <MaterialModal item={modalItem} filmCategories={filmCategories} materialCategories={materialCategories} onClose={() => { setModalType(null); setModalItem(null); }} onSave={() => { setModalType(null); setModalItem(null); loadAllData(); }} />}
 
       {confirmDelete && (
         <ConfirmDialog
@@ -3197,8 +5216,10 @@ const FilmTypesTab = () => {
           message={`Are you sure you want to delete "${confirmDelete.name}"?`}
           confirmLabel="Delete"
           variant="danger"
+          isLoading={isDeleting}
+          errorMessage={deleteError || undefined}
           onConfirm={handleDelete}
-          onClose={() => setConfirmDelete(null)}
+          onClose={() => { setConfirmDelete(null); setDeleteError(null); }}
         />
       )}
     </div>
@@ -3222,14 +5243,15 @@ const StatsCard = ({ icon: Icon, label, value, color }: any) => (
 const TABS = [
   { id: 'receipts', label: 'Inward Receipts', icon: FileText },
   { id: 'batches', label: 'Stock Batches', icon: Package },
-  { id: 'filmtypes', label: 'Film Types & Materials', icon: Tag },
   { id: 'workorders', label: 'Work Orders', icon: ClipboardList },
+  { id: 'packaged', label: 'Packaged Stock', icon: PackageCheck },
   { id: 'dispatch', label: 'Dispatch', icon: Truck },
+  { id: 'filmtypes', label: 'Flash Products & Categories', icon: Tag },
 ];
 
 export default function InventoryPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('');
+  const [activeTab, setActiveTab] = useState('packaged');
   const [initialReceiptId, setInitialReceiptId] = useState<string | null>(null);
   const [initialBatchSearch, setInitialBatchSearch] = useState<string | null>(null);
   const [showInward, setShowInward] = useState(false);
@@ -3238,13 +5260,44 @@ export default function InventoryPage() {
   const orgType = (user?.organization as any)?.organizationType?.name || user?.organization?.type || '';
   const isHQ = orgType === 'parent' || orgType === 'internal' || user?.isSuperAdmin;
 
-  const visibleTabs = TABS.filter(t => t.id !== 'receipts' || isHQ);
+  const userPerms = useMemo(() => user?.permissions || [], [user]);
+
+  const hasTabAccess = useCallback((tabId: string) => {
+    if (user?.isSuperAdmin) return true;
+
+    const tabPermMap: Record<string, string[]> = {
+      receipts: ['inventory_inward:read', 'inventory_inward:write', 'inward:read', 'inward:write'],
+      batches: ['inventory_batches:read', 'inventory_batches:write'],
+      workorders: ['inventory_workorders:read', 'inventory_workorders:write', 'production:read', 'production:write'],
+      packaged: ['inventory_packaged:read', 'inventory_packaged:write'],
+      dispatch: ['inventory_dispatch:read', 'inventory_dispatch:write', 'dispatch:read', 'dispatch:write'],
+      filmtypes: ['inventory_filmtypes:read', 'inventory_filmtypes:write'],
+    };
+
+    const reqPerms = tabPermMap[tabId] || [];
+    const hasSpecificPerm = reqPerms.some(p => userPerms.includes(p));
+    if (hasSpecificPerm) return true;
+
+    const allTabPerms = Object.values(tabPermMap).flat();
+    const hasAnyTabSpecificAssigned = allTabPerms.some(p => userPerms.includes(p));
+
+    if (hasAnyTabSpecificAssigned) return false;
+
+    return userPerms.includes('inventory:read') || userPerms.includes('inventory:write');
+  }, [user, userPerms]);
+
+  const visibleTabs = useMemo(() => {
+    return TABS.filter(t => hasTabAccess(t.id));
+  }, [hasTabAccess]);
 
   useEffect(() => {
-    setActiveTab(isHQ ? 'receipts' : 'batches');
-  }, [isHQ]);
+    if (visibleTabs.length > 0 && !visibleTabs.some(t => t.id === activeTab)) {
+      setActiveTab(visibleTabs[0].id);
+    }
+  }, [visibleTabs, activeTab]);
 
   const [stats, setStats] = useState({ receipts: 0, batches: 0, workOrders: 0, dispatches: 0, inTransit: 0 });
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const handleReceiptClick = (id: string) => {
     setInitialReceiptId(id);
@@ -3261,7 +5314,7 @@ export default function InventoryPage() {
     setShowInward(true);
   };
 
-  useEffect(() => {
+  const loadStats = useCallback(() => {
     Promise.allSettled([
       inventoryApi.getInwardReceipts({ page: 1, limit: 1 }),
       inventoryApi.getBatches({ page: 1, limit: 1 }),
@@ -3278,6 +5331,17 @@ export default function InventoryPage() {
       });
     });
   }, []);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  const handleInwardSaved = () => {
+    setShowInward(false);
+    setInwardInitialId(null);
+    setRefreshKey(prev => prev + 1);
+    loadStats();
+  };
 
   return (
     <div className="min-h-full">
@@ -3297,8 +5361,8 @@ export default function InventoryPage() {
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {isHQ && <StatsCard icon={FileText} label="Inward Receipts" value={stats.receipts} color="bg-slate-600" />}
-        <StatsCard icon={Package} label="Total Batches" value={stats.batches} color="bg-indigo-500" />
         <StatsCard icon={ClipboardList} label="Work Orders" value={stats.workOrders} color="bg-purple-500" />
+        <StatsCard icon={Package} label="Total Batches" value={stats.batches} color="bg-indigo-500" />
         <StatsCard icon={Truck} label="Dispatch Orders" value={stats.dispatches} color="bg-blue-500" />
         <StatsCard icon={Zap} label="In Transit" value={stats.inTransit} color="bg-amber-500" />
       </div>
@@ -3307,18 +5371,19 @@ export default function InventoryPage() {
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <TabBar tabs={visibleTabs} active={activeTab} onChange={setActiveTab} />
 
-        {activeTab === 'receipts' && <InwardReceiptsTab onReceiptClick={handleReceiptClick} onAddStock={handleAddStock} />}
-        {activeTab === 'batches' && <BatchesTab initialReceiptId={initialReceiptId} onShowInward={() => { setInwardInitialId(null); setShowInward(true); }} onGoToWorkOrder={handleBatchToWorkOrder} />}
-        {activeTab === 'filmtypes' && <FilmTypesTab />}
+        {activeTab === 'receipts' && <InwardReceiptsTab onReceiptClick={handleReceiptClick} onAddStock={handleAddStock} refreshKey={refreshKey} />}
+        {activeTab === 'batches' && <BatchesTab initialReceiptId={initialReceiptId} onShowInward={() => { setInwardInitialId(null); setShowInward(true); }} onGoToWorkOrder={handleBatchToWorkOrder} refreshKey={refreshKey} />}
         {activeTab === 'workorders' && <WorkOrdersTab initialBatchSearch={initialBatchSearch} onClearSearch={() => setInitialBatchSearch(null)} />}
+        {activeTab === 'packaged' && <PackagedTab refreshKey={refreshKey} onGoToWorkOrder={handleBatchToWorkOrder} />}
         {activeTab === 'dispatch' && <DispatchTab />}
+        {activeTab === 'filmtypes' && <FilmTypesTab />}
       </div>
 
       {showInward && (
         <InwardProcurementModal
           initialInwardReceiptId={inwardInitialId}
           onClose={() => { setShowInward(false); setInwardInitialId(null); }}
-          onSave={() => { setShowInward(false); setInwardInitialId(null); /* would need to refresh current tab context */ }}
+          onSave={handleInwardSaved}
         />
       )}
     </div>

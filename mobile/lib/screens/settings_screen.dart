@@ -1,12 +1,14 @@
 import 'dart:typed_data';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/plotter_service.dart';
+import '../services/api_service.dart';
 import '../widgets/plotter_status_action.dart';
+import '../widgets/plotter_connection_sheet.dart';
+import '../widgets/server_config_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -17,13 +19,9 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final PlotterService _plotterService = PlotterService();
-  List<PlotterDevice> _devices = [];
-  bool _isSearching = false;
   String? _connectedAddress;
   String? _connectedName;
-  String? _connectionType;
   bool _isConnected = false;
-  bool _isConnecting = false;
 
   @override
   void initState() {
@@ -42,82 +40,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final isConnected = await _plotterService.isConnected();
     final address = await _plotterService.getConnectedAddress();
     final name = await _plotterService.getConnectedName();
-    final type = await _plotterService.getConnectionType();
     if (mounted) {
       setState(() {
         _isConnected = isConnected;
         _connectedAddress = address;
         _connectedName = name;
-        _connectionType = type;
       });
-    }
-  }
-
-  Future<void> _startSearch() async {
-    // Request permissions first
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.location,
-    ].request();
-
-    if (statuses[Permission.bluetoothScan]!.isDenied ||
-        statuses[Permission.bluetoothConnect]!.isDenied ||
-        statuses[Permission.location]!.isDenied) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Bluetooth and Location permissions are required to find the plotter.')),
-        );
-      }
-      return;
-    }
-
-    setState(() {
-      _isSearching = true;
-      _devices = [];
-    });
-
-    try {
-      final devices = await _plotterService.search(timeout: 10000);
-      if (mounted) {
-        setState(() {
-          _devices = devices;
-          _isSearching = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isSearching = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error searching: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _connectToDevice(PlotterDevice device) async {
-    setState(() {
-      _isConnecting = true;
-    });
-
-    final connectResult = await _plotterService.connect(device);
-    
-    if (mounted) {
-      setState(() {
-        _isConnecting = false;
-      });
-      _loadConnectionStatus();
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(connectResult['success'] 
-            ? 'Connected to ${device.name}' 
-            : 'Failed to connect: ${connectResult['error']}'),
-          backgroundColor: connectResult['success'] ? Colors.green : Colors.red,
-        ),
-      );
     }
   }
 
@@ -133,23 +61,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildConnectionBadge() {
     if (!_isConnected) return const SizedBox.shrink();
+    final isUsb = _plotterService.isUsbPlotter;
+    final color = isUsb ? Colors.purple : Colors.green;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.green.withOpacity(0.12),
+        color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green.withOpacity(0.3)),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.bluetooth_connected, size: 12, color: Colors.green),
-          SizedBox(width: 4),
+          Icon(isUsb ? Icons.usb_rounded : Icons.bluetooth_connected, size: 12, color: color),
+          const SizedBox(width: 4),
           Text(
-            'Connected',
+            isUsb ? 'USB Cable' : 'Connected',
             style: TextStyle(
               fontSize: 10, 
-              color: Colors.green,
+              color: color,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -205,13 +135,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   ListTile(
+                    onTap: () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                        ),
+                        builder: (context) => const PlotterConnectionSheet(),
+                      ).then((_) => _loadConnectionStatus());
+                    },
                     leading: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFCE1D19).withOpacity(0.1),
+                        color: (_isConnected ? (_plotterService.isUsbPlotter ? Colors.purple : Colors.green) : const Color(0xFFCE1D19)).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.print_outlined, color: Color(0xFFCE1D19)),
+                      child: Icon(
+                        _isConnected ? (_plotterService.isUsbPlotter ? Icons.usb_rounded : Icons.print_rounded) : Icons.print_outlined,
+                        color: _isConnected ? (_plotterService.isUsbPlotter ? Colors.purple : Colors.green) : const Color(0xFFCE1D19),
+                      ),
                     ),
                     title: Row(
                       children: [
@@ -228,10 +171,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     subtitle: Text(
                       _isConnected 
-                        ? 'Connected to ${_connectedName ?? _connectedAddress ?? 'Unknown'}' 
-                        : 'Not connected',
+                        ? 'Connected to ${_connectedName ?? _connectedAddress ?? 'Unknown'} (${_plotterService.isUsbPlotter ? "USB Cable" : "Bluetooth"})' 
+                        : 'Tap to connect via USB OTG cable or Bluetooth',
                       style: TextStyle(color: const Color(0xFF0F172A).withOpacity(0.6), fontWeight: FontWeight.w500),
                     ),
+                    trailing: const Icon(Icons.chevron_right, color: Colors.grey),
                   ),
                   if (_connectedAddress != null) ...[
                     const Divider(height: 1, indent: 16, endIndent: 16),
@@ -246,7 +190,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: Text(success ? 'Plotter reset/reconnected successfully!' : 'Failed to reset plotter.'),
+                                    content: Text(success ? 'Plotter reset signal sent!' : 'Failed to reset plotter.'),
                                     backgroundColor: success ? Colors.green : Colors.red,
                                   ),
                                 );
@@ -268,90 +212,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-            
-            if (_connectedAddress == null) 
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFCE1D19),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    elevation: 0,
-                    shadowColor: const Color(0xFFCE1D19).withOpacity(0.3),
-                  ),
-                  onPressed: _isSearching ? null : _startSearch,
-                  icon: _isSearching 
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.bluetooth_searching),
-                  label: Text(
-                    _isSearching ? 'Searching...' : 'Search for Plotter',
-                    style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5),
-                  ),
-                ),
-              ),
-
-            if (_devices.isNotEmpty && _connectedAddress == null) ...[
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Text(
-                  'Available Devices', 
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF0F172A), letterSpacing: 0.5),
-                ),
-              ),
-              ..._devices.map((device) {
-                bool isPortrait = device.name.toLowerCase().contains('portrait2');
-                return _buildCardWrapper(
-                  ListTile(
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: (device.isClassic ? Colors.orange : Colors.blue).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        device.isClassic ? Icons.bluetooth : Icons.bluetooth_connected,
-                        color: device.isClassic ? Colors.orange : Colors.blue,
-                      ),
-                    ),
-                    title: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            device.name, 
-                            style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                          ),
-                        ),
-                        if (!isPortrait)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: (device.isClassic ? Colors.orange : Colors.blue).withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              device.isClassic ? 'Classic' : 'BLE',
-                              style: TextStyle(
-                                fontSize: 10, 
-                                color: device.isClassic ? Colors.orange[800] : device.isClassic ? Colors.orange[800] : Colors.blue[800],
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    subtitle: isPortrait 
-                      ? null 
-                      : Text(device.address, style: TextStyle(color: const Color(0xFF0F172A).withOpacity(0.5))),
-                    trailing: _isConnecting 
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.chevron_right, color: Color(0xFF0F172A)),
-                    onTap: _isConnecting ? null : () => _connectToDevice(device),
-                  ),
-                );
-              }),
-            ],
 
               const SizedBox(height: 16),
               Padding(
@@ -391,20 +251,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
              
              Consumer<AuthProvider>(
                builder: (context, auth, _) {
+                 final isSuper = auth.isSuperAdmin;
+                 final orgText = auth.orgName ?? (isSuper ? 'Bling Accessories' : 'Personal Account');
+                 final licText = isSuper
+                     ? (auth.licenseKey != null && auth.licenseKey!.isNotEmpty
+                         ? _decryptLicenseKey(auth.licenseKey)
+                         : 'System Super Admin (All-Access)')
+                     : _decryptLicenseKey(auth.licenseKey);
+
                  return Column(
                    children: [
                      _buildCardWrapper(
                        ListTile(
-                         leading: Icon(Icons.business_outlined, color: theme.colorScheme.onSurface),
+                         leading: Icon(
+                           isSuper ? Icons.admin_panel_settings_outlined : Icons.business_outlined,
+                           color: isSuper ? const Color(0xFFCE1D19) : theme.colorScheme.onSurface,
+                         ),
                          title: Text('Organization', style: TextStyle(fontWeight: FontWeight.w800, color: theme.colorScheme.onSurface)),
-                         subtitle: Text(auth.orgName ?? 'Personal Account', style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.w500)),
+                         subtitle: Text(
+                           orgText,
+                           style: TextStyle(
+                             color: theme.colorScheme.onSurface.withOpacity(0.6),
+                             fontWeight: FontWeight.w500,
+                           ),
+                         ),
+                         trailing: isSuper
+                             ? Container(
+                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                 decoration: BoxDecoration(
+                                   color: const Color(0xFFCE1D19).withOpacity(0.12),
+                                   borderRadius: BorderRadius.circular(8),
+                                 ),
+                                 child: const Text(
+                                   'ADMIN',
+                                   style: TextStyle(
+                                     fontSize: 10,
+                                     color: Color(0xFFCE1D19),
+                                     fontWeight: FontWeight.w900,
+                                     letterSpacing: 0.5,
+                                   ),
+                                 ),
+                               )
+                             : null,
                        ),
                      ),
                      _buildCardWrapper(
                        ListTile(
-                         leading: Icon(Icons.vpn_key_outlined, color: theme.colorScheme.onSurface),
+                         leading: Icon(
+                           isSuper ? Icons.verified_user_outlined : Icons.vpn_key_outlined,
+                           color: isSuper ? const Color(0xFFCE1D19) : theme.colorScheme.onSurface,
+                         ),
                          title: Text('License', style: TextStyle(fontWeight: FontWeight.w800, color: theme.colorScheme.onSurface)),
-                         subtitle: Text(_decryptLicenseKey(auth.licenseKey), style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.w500)),
+                         subtitle: Text(
+                           licText,
+                           style: TextStyle(
+                             color: theme.colorScheme.onSurface.withOpacity(0.6),
+                             fontWeight: FontWeight.w500,
+                           ),
+                         ),
                        ),
                      ),
                    ],
@@ -424,9 +328,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               builder: (context, authProvider, _) {
                 return _buildCardWrapper(
                   SwitchListTile(
-                    secondary: Icon(Icons.fingerprint, color: theme.colorScheme.onSurface),
-                    title: Text('Biometric Login', style: TextStyle(fontWeight: FontWeight.w800, color: theme.colorScheme.onSurface)),
-                    subtitle: const Text('Sign in with fingerprint or face recognition'),
+                    secondary: Icon(Icons.lock_person_outlined, color: theme.colorScheme.onSurface),
+                    title: Text('Device Lock & Biometric Login', style: TextStyle(fontWeight: FontWeight.w800, color: theme.colorScheme.onSurface)),
+                    subtitle: const Text('Sign in with PIN, pattern, fingerprint, or face'),
                     activeColor: const Color(0xFFCE1D19),
                     value: authProvider.isBiometricsEnabled,
                     onChanged: (bool value) async {
@@ -460,6 +364,100 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 );
               },
+            ),
+
+            _buildSectionHeader('Server & Network'),
+            _buildCardWrapper(
+              InkWell(
+                onTap: () async {
+                  final changed = await ServerConfigDialog.show(context);
+                  if (changed == true && mounted) setState(() {});
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: (ApiService.isLive ? Colors.green : Colors.orange).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          ApiService.isLive ? Icons.cloud_done_rounded : Icons.wifi_rounded,
+                          color: ApiService.isLive ? Colors.green : Colors.orange,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Backend Server',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: (ApiService.isLive ? Colors.green : Colors.orange).withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                  child: Text(
+                                    ApiService.environmentLabel,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: ApiService.isLive ? Colors.green[800] : Colors.orange[900],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    ApiService.baseUrl,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontFamily: 'monospace',
+                                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFCE1D19).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'Switch',
+                          style: TextStyle(
+                            color: Color(0xFFCE1D19),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
 
             _buildCardWrapper(

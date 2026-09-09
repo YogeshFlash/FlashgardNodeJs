@@ -9,8 +9,11 @@ import 'screens/home_screen.dart';
 import 'screens/models_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/plotter_service.dart';
+import 'services/api_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await ApiService.init();
   runApp(
     MultiProvider(
       providers: [

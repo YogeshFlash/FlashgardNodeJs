@@ -3,15 +3,16 @@ import { orgsApi, contactsApi, usersApi, addressesApi, licensesApi, cutCreditsAp
 import {
   Building2, Plus, Search, Edit2, Trash2, Loader2,
   Users, MapPin, Phone, Ticket, Key,
-  ChevronRight, ChevronLeft, Star, Check, ChevronDown, X, Gift, RotateCcw, Download, ShieldCheck
+  ChevronRight, ChevronLeft, Star, Check, ChevronDown, X, Gift, RotateCcw, Download, ShieldCheck, QrCode
 } from 'lucide-react';
 import { HasPermission } from '../components/HasPermission';
 import { useAuth } from '../contexts/AuthContext';
+import { formatISTDate } from '../lib/dateUtils';
 import { UserModal } from './UsersPage';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ResetPasswordModal } from '../components/ResetPasswordModal';
 import { TransferCreditsModal } from './LicensesPage';
-import XLSX from 'xlsx-js-style';
+import { WelcomeKitModal } from '../components/WelcomeKitModal';
 
 function buildOrgRows(orgs: any[]) {
   const byParent = new Map<string, any[]>();
@@ -136,6 +137,65 @@ const OrgHoverCard = ({ org, orgs, position, typeColors }: { org: any; orgs: any
 };
 
 // ─── Helper Components ───────────────────────────────
+const PaginationBar = ({ meta, page, setPage, pageSize, setPageSize }: { meta: any; page: number; setPage: (fn: any) => void; pageSize?: number; setPageSize?: (sz: number) => void }) => {
+  if (!meta || !meta.totalPages || meta.totalPages <= 1) return null;
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs gap-3 shadow-sm my-2">
+      <div className="flex items-center gap-2 text-slate-600 font-medium flex-wrap">
+        <span>Showing Page <strong className="text-slate-900 font-bold">{meta.page || page}</strong> of <strong className="text-slate-900 font-bold">{meta.totalPages}</strong></span>
+        <span className="text-slate-300">|</span>
+        <span className="text-slate-500 font-mono"><strong className="text-slate-800">{meta.total}</strong> total records</span>
+        {pageSize && setPageSize && (
+          <>
+            <span className="text-slate-300">|</span>
+            <div className="flex items-center gap-1">
+              <span className="text-slate-500 font-medium">Rows:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs font-bold text-slate-800 cursor-pointer shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+          disabled={page <= 1}
+          className="px-3 py-1.5 font-semibold text-xs border border-slate-200 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition bg-white text-slate-700 shadow-sm flex items-center gap-1 cursor-pointer"
+        >
+          ← Previous
+        </button>
+        <div className="flex items-center gap-1 px-1">
+          <span className="text-slate-500">Page</span>
+          <select
+            value={page}
+            onChange={(e) => setPage(Number(e.target.value))}
+            className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-800 cursor-pointer shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            {Array.from({ length: meta.totalPages }, (_, i) => i + 1).map(pNum => (
+              <option key={pNum} value={pNum}>Page {pNum}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={() => setPage((p: number) => Math.min(meta.totalPages, p + 1))}
+          disabled={page >= meta.totalPages}
+          className="px-3 py-1.5 font-semibold text-xs border border-slate-200 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition bg-white text-slate-700 shadow-sm flex items-center gap-1 cursor-pointer"
+        >
+          Next →
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const TabBar = ({ tabs, active, onChange }: { tabs: any[]; active: string; onChange: (t: string) => void }) => (
   <div className="flex border-b border-slate-200 bg-white sticky top-0 z-10">
     <div className="flex overflow-x-auto no-scrollbar px-2">
@@ -568,13 +628,31 @@ export const OrgRoleModal = ({ role, orgId, onClose, onSave }: any) => {
       id: 'catalog_module',
       label: 'Catalog & Hardware',
       icon: '📦',
-      groups: ['catalog', 'production', 'plotters']
+      groups: ['catalog', 'plotters']
     },
     {
       id: 'inventory_module',
       label: 'Inventory & Warehouse',
       icon: '🏬',
-      groups: ['inventory', 'inward']
+      groups: [
+        'inventory',
+        'inventory_inward',
+        'inventory_batches',
+        'inventory_workorders',
+        'inventory_packaged',
+        'inventory_dispatch',
+        'inventory_filmtypes',
+        'inward',
+        'dispatch',
+        'production',
+        'qr'
+      ]
+    },
+    {
+      id: 'nav_module',
+      label: 'Sidebar Navigation & Pages',
+      icon: '🧭',
+      groups: ['nav']
     },
     {
       id: 'system_module',
@@ -591,9 +669,18 @@ export const OrgRoleModal = ({ role, orgId, onClose, onSave }: any) => {
     users: { label: 'Users & Staff', icon: '👥' },
     roles: { label: 'Access Roles & Permissions', icon: '🛡️' },
     catalog: { label: 'Catalog & Cut Patterns', icon: '📦' },
-    inventory: { label: 'Film Inventory & Stock', icon: '🏬' },
-    inward: { label: 'Inward Receipts', icon: '📥' },
+    nav: { label: 'Sidebar Navigation Controls', icon: '🧭' },
+    inventory: { label: 'Inventory (Full Access)', icon: '🏬' },
+    inventory_inward: { label: 'Tab: Inward Receipts', icon: '📥' },
+    inventory_batches: { label: 'Tab: Stock Batches', icon: '📦' },
+    inventory_workorders: { label: 'Tab: Work Orders', icon: '⚙️' },
+    inventory_packaged: { label: 'Tab: Packaged Stock', icon: '🎁' },
+    inventory_dispatch: { label: 'Tab: Dispatch Orders', icon: '🚚' },
+    inventory_filmtypes: { label: 'Tab: Flash Products & Categories', icon: '🏷️' },
+    inward: { label: 'Inward Receipts & Stock Entry', icon: '📥' },
+    dispatch: { label: 'Dispatch Orders & Logistics', icon: '🚚' },
     production: { label: 'Production & Work Orders', icon: '⚙️' },
+    qr: { label: 'QR Code Generation & Auditing', icon: '🔳' },
     audit_logs: { label: 'Audit Logs', icon: '📋' },
     licenses: { label: 'Licenses & Transfers', icon: '🔑' },
     plotters: { label: 'Plotters & Hardware', icon: '🖥️' },
@@ -922,7 +1009,15 @@ export const OrgRoleModal = ({ role, orgId, onClose, onSave }: any) => {
 };
 
 // ─── Tab Contents ─────────────────────────────────────
-const DetailsTab = ({ org, orgs, onEdit }: { org: any; orgs: any[]; onEdit: () => void }) => {
+const DetailsTab = ({
+  org,
+  orgs,
+  onEdit,
+}: {
+  org: any;
+  orgs: any[];
+  onEdit: () => void;
+}) => {
   const typeColors: Record<string, string> = {
     internal: 'bg-purple-100 text-purple-700',
     distributor: 'bg-blue-100 text-blue-700',
@@ -1013,9 +1108,10 @@ const ContactsTab = ({ orgId }: { orgId: number }) => {
         <EmptyState icon={Phone} message="No contacts yet" onAdd={() => setModal('new')} addLabel="Add a contact" />
       ) : (
         <div className="space-y-3">
-          {items.map(c => (
+          {items.map((c, idx) => (
             <div key={c.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 group hover:border-slate-200 transition-colors">
               <div className="flex items-center gap-3">
+                <span className="font-mono text-xs font-bold text-slate-400 shrink-0 min-w-[20px]">{idx + 1}</span>
                 <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-700 font-bold text-sm flex items-center justify-center">
                   {c.firstName?.[0]}{c.lastName?.[0]}
                 </div>
@@ -1086,8 +1182,9 @@ const UsersTab = ({ orgId }: { orgId: string }) => {
         <EmptyState icon={Users} message="No users in this organization" addLabel="Add a user" onAdd={() => setModal('new')} />
       ) : (
         <div className="space-y-2">
-          {items.map(u => (
+          {items.map((u, idx) => (
             <div key={u.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 group">
+              <span className="font-mono text-xs font-bold text-slate-400 shrink-0 min-w-[20px]">{idx + 1}</span>
               <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 font-bold text-sm flex items-center justify-center">
                 {(u.firstName?.[0] || u.email?.[0] || '?').toUpperCase()}
               </div>
@@ -1159,9 +1256,10 @@ const AddressesTab = ({ orgId }: { orgId: number }) => {
         <EmptyState icon={MapPin} message="No addresses yet" onAdd={() => setModal('new')} addLabel="Add an address" />
       ) : (
         <div className="space-y-3">
-          {items.map(a => (
+          {items.map((a, idx) => (
             <div key={a.id} className="flex items-start justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 group hover:border-slate-200 transition-colors">
               <div className="flex items-start gap-3">
+                <span className="font-mono text-xs font-bold text-slate-400 shrink-0 min-w-[20px] mt-1">{idx + 1}</span>
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center mt-0.5">
                   <MapPin className="w-4 h-4" />
                 </div>
@@ -1298,7 +1396,10 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
     );
   });
 
-  const handleExportLicensesExcel = () => {
+  const handleExportLicensesExcel = async () => {
+    const xlsxMod = await import('xlsx-js-style');
+    const XLSX = xlsxMod.default || xlsxMod;
+
     const dataToExport = filteredLicenses.map((l, index) => {
       const lastTransfer = l.transferItems?.[0]?.transfer;
       const assignedBy = lastTransfer?.fromOrg?.name || 'Flashgard';
@@ -1403,78 +1504,60 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
       ) : (
         <>
           {/* Top Pagination Controls */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 bg-slate-50/60 p-2.5 rounded-xl border border-slate-200">
-            <div className="flex items-center gap-2">
-              <span>Showing {startIndex + 1} to {Math.min(startIndex + pageSize, filteredLicenses.length)} of {filteredLicenses.length} licenses</span>
-              <select
-                value={pageSize}
-                onChange={e => setPageSize(Number(e.target.value))}
-                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-500"
-              >
-                <option value={10}>10 / page</option>
-                <option value={25}>25 / page</option>
-                <option value={50}>50 / page</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
-                disabled={currentPage === 1}
-                className="p-1.5 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
-                title="Previous Page"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="px-3 py-1 font-semibold text-slate-700">
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
-                disabled={currentPage === totalPages}
-                className="p-1.5 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
-                title="Next Page"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+          <PaginationBar meta={{ totalPages, total: filteredLicenses.length, page: currentPage }} page={currentPage} setPage={setCurrentPage} pageSize={pageSize} setPageSize={setPageSize} />
 
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="p-3">Org</th>
-                  <th className="p-3">Key</th>
-                  <th className="p-3">Type</th>
-                  <th className="p-3">Assigned Date</th>
-                  <th className="p-3">Assigned By</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3 text-right">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Org</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Key</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Assigned Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Assigned By</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {paginatedLicenses.map(l => {
+                {paginatedLicenses.map((l, idx) => {
                   const lastTransfer = l.transferItems?.[0]?.transfer;
                   const assignedDate = lastTransfer?.resolvedAt || lastTransfer?.createdAt || l.createdAt;
                   const assignedBy = lastTransfer?.fromOrg?.name || 'Flashgard';
                   return (
-                    <tr key={l.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="p-3">
+                    <tr key={l.id} className="group hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">
+                        {(currentPage - 1) * pageSize + idx + 1}
+                      </td>
+                      <td className="px-4 py-3">
                          <div className="flex flex-col">
-                          <span className="font-bold text-slate-900">{l.owner?.name}</span>
+                          <span className="font-bold text-slate-900 text-xs">{l.owner?.name}</span>
                           <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">{l.owner?.organizationType?.name}</span>
                         </div>
                       </td>
-                      <td className="p-3 font-mono font-bold text-slate-800">{l.key}</td>
-                      <td className="p-3">{l.batch?.licenseType || 'BASIC'}</td>
-                      <td className="p-3 text-slate-500">{new Date(assignedDate).toLocaleDateString()}</td>
-                      <td className="p-3 font-semibold text-slate-700">{assignedBy}</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${l.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : l.status === 'AVAILABLE' ? 'bg-blue-100 text-blue-700' : l.status === 'SUSPENDED' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-md inline-block shadow-2xs">
+                          {l.key}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-slate-700 text-xs">{l.batch?.licenseType || 'BASIC'}</td>
+                      <td className="px-4 py-3 text-slate-500 text-xs">{formatISTDate(assignedDate)}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-700 text-xs">{assignedBy}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          l.status === 'ACTIVE' 
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
+                            : l.status === 'AVAILABLE' 
+                            ? 'bg-blue-50 text-blue-700 border border-blue-100' 
+                            : l.status === 'SUSPENDED' 
+                            ? 'bg-amber-50 text-amber-700 border border-amber-100' 
+                            : 'bg-slate-50 text-slate-600 border border-slate-200'
+                        }`}>
                           {l.status}
                         </span>
                       </td>
-                      <td className="p-3 text-right">
+                      <td className="px-4 py-3 text-right">
                         <HasPermission permission="licenses:write">
                           <button 
                             onClick={() => handleToggleClick(l)} 
@@ -1492,41 +1575,7 @@ const LicensesTab = ({ orgId }: { orgId: string }) => {
           </div>
 
           {/* Bottom Pagination Controls */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1 text-xs text-slate-500">
-            <div className="flex items-center gap-2">
-              <span>Showing {startIndex + 1} to {Math.min(startIndex + pageSize, filteredLicenses.length)} of {filteredLicenses.length} licenses</span>
-              <select
-                value={pageSize}
-                onChange={e => setPageSize(Number(e.target.value))}
-                className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-500"
-              >
-                <option value={10}>10 / page</option>
-                <option value={25}>25 / page</option>
-                <option value={50}>50 / page</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
-                disabled={currentPage === 1}
-                className="p-1.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
-                title="Previous Page"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="px-3 py-1 font-semibold text-slate-700">
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
-                disabled={currentPage === totalPages}
-                className="p-1.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
-                title="Next Page"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+          <PaginationBar meta={{ totalPages, total: filteredLicenses.length, page: currentPage }} page={currentPage} setPage={setCurrentPage} pageSize={pageSize} setPageSize={setPageSize} />
         </>
       )}
     </div>
@@ -1571,7 +1620,10 @@ const CreditsTab = ({ orgId, org, orgs, reload }: { orgId: string, org: any, org
     );
   });
 
-  const handleExportCreditsExcel = () => {
+  const handleExportAssignmentsExcel = async () => {
+    const xlsxMod = await import('xlsx-js-style');
+    const XLSX = xlsxMod.default || xlsxMod;
+
     const dataToExport = filteredTransfers.map((t, index) => {
       return {
         '#': index + 1,
@@ -1635,7 +1687,7 @@ const CreditsTab = ({ orgId, org, orgs, reload }: { orgId: string, org: any, org
             )}
           </div>
           <button
-            onClick={handleExportCreditsExcel}
+            onClick={handleExportAssignmentsExcel}
             disabled={filteredTransfers.length === 0}
             className="btn-secondary text-xs flex items-center gap-1.5 py-1.5 px-3 whitespace-nowrap border border-slate-200 hover:bg-slate-100 transition-all disabled:opacity-50"
             title="Download Listed Assignment History as Excel"
@@ -1657,83 +1709,65 @@ const CreditsTab = ({ orgId, org, orgs, reload }: { orgId: string, org: any, org
       ) : (
         <>
           {/* Top Pagination Controls */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 bg-slate-50/60 p-2.5 rounded-xl border border-slate-200">
-            <div className="flex items-center gap-2">
-              <span>Showing {startIndex + 1} to {Math.min(startIndex + pageSize, filteredTransfers.length)} of {filteredTransfers.length} credit transfers</span>
-              <select
-                value={pageSize}
-                onChange={e => setPageSize(Number(e.target.value))}
-                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-500"
-              >
-                <option value={10}>10 / page</option>
-                <option value={25}>25 / page</option>
-                <option value={50}>50 / page</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
-                disabled={currentPage === 1}
-                className="p-1.5 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
-                title="Previous Page"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="px-3 py-1 font-semibold text-slate-700">
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
-                disabled={currentPage === totalPages}
-                className="p-1.5 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
-                title="Next Page"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+          <PaginationBar meta={{ totalPages, total: filteredTransfers.length, page: currentPage }} page={currentPage} setPage={setCurrentPage} pageSize={pageSize} setPageSize={setPageSize} />
 
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="p-3">Assigned From</th>
-                  <th className="p-3">Credits / Plan</th>
-                  <th className="p-3">Notes / Payment</th>
-                  <th className="p-3">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Assigned From</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Credits / Plan</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Notes / Payment</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {paginatedTransfers.map(t => (
-                  <tr key={t.id}>
-                    <td className="p-3 font-semibold text-slate-700">{t.owner?.name || 'System'}</td>
-                    <td className="p-3 font-bold">
-                      <div className="flex flex-col">
-                        <span className={t.planType === 'UNLIMITED' ? 'text-purple-600' : t.planType === 'LIFETIME' ? 'text-amber-600' : 'text-emerald-600'}>
-                          {t.planType === 'USAGE' ? `+${t.credits} Cuts` : t.planType === 'UNLIMITED' ? (
-                            (() => {
-                              const start = t.startDate ? new Date(t.startDate) : new Date(t.createdAt);
-                              const end = t.endDate ? new Date(t.endDate) : (t.validityDays ? new Date(start.getTime() + t.validityDays * 24 * 60 * 60 * 1000) : null);
-                              return end ? `${start.toLocaleDateString()} - ${end.toLocaleDateString()}` : `${t.validityDays} Days`;
-                            })()
-                          ) : 'Lifetime'}
-                        </span>
-                        <span className="text-[10px] text-slate-400 uppercase tracking-wider">{t.planType || 'USAGE'} Plan</span>
-                        {t.isOffer && (
-                          <div className="flex items-center gap-1 mt-1 text-[10px] text-purple-600 font-bold uppercase tracking-wider">
-                            <Gift className="w-3 h-3" /> Offer
-                          </div>
+                {paginatedTransfers.map((t, idx) => (
+                  <tr key={t.id} className="group hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 font-mono font-bold text-slate-400 text-xs">
+                      {(currentPage - 1) * pageSize + idx + 1}
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-slate-800 text-xs">{t.owner?.name || 'System'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col items-start gap-1">
+                        {t.planType === 'USAGE' ? (
+                          <span className="font-mono text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-md inline-block shadow-2xs">
+                            +{t.credits} Cuts
+                          </span>
+                        ) : t.planType === 'UNLIMITED' ? (
+                          (() => {
+                            const start = t.startDate ? new Date(t.startDate) : new Date(t.createdAt);
+                            const end = t.endDate ? new Date(t.endDate) : (t.validityDays ? new Date(start.getTime() + t.validityDays * 24 * 60 * 60 * 1000) : null);
+                            return (
+                              <span className="font-mono text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200/80 px-2.5 py-1 rounded-md inline-block shadow-2xs">
+                                {end ? `${formatISTDate(start)} - ${formatISTDate(end)}` : `${t.validityDays} Days`}
+                              </span>
+                            );
+                          })()
+                        ) : (
+                          <span className="font-mono text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200/80 px-2.5 py-1 rounded-md inline-block shadow-2xs">
+                            Lifetime
+                          </span>
                         )}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t.planType || 'USAGE'} Plan</span>
+                          {t.isOffer && (
+                            <span className="flex items-center gap-1 text-[9px] text-purple-600 bg-purple-50 border border-purple-100 font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md">
+                              <Gift className="w-3 h-3" /> Offer
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
-                    <td className="p-3 max-w-[220px]">
+                    <td className="px-4 py-3 max-w-[220px]">
                       {t.notes ? (
-                        <span className="text-xs text-slate-500 break-words">{t.notes}</span>
+                        <span className="text-xs text-slate-600 break-words font-medium">{t.notes}</span>
                       ) : (
                         <span className="text-slate-300 text-xs">—</span>
                       )}
                     </td>
-                    <td className="p-3 text-slate-500 whitespace-nowrap">{new Date(t.createdAt).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{formatISTDate(t.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1741,41 +1775,7 @@ const CreditsTab = ({ orgId, org, orgs, reload }: { orgId: string, org: any, org
           </div>
 
           {/* Bottom Pagination Controls */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1 text-xs text-slate-500">
-            <div className="flex items-center gap-2">
-              <span>Showing {startIndex + 1} to {Math.min(startIndex + pageSize, filteredTransfers.length)} of {filteredTransfers.length} credit transfers</span>
-              <select
-                value={pageSize}
-                onChange={e => setPageSize(Number(e.target.value))}
-                className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-500"
-              >
-                <option value={10}>10 / page</option>
-                <option value={25}>25 / page</option>
-                <option value={50}>50 / page</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
-                disabled={currentPage === 1}
-                className="p-1.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
-                title="Previous Page"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="px-3 py-1 font-semibold text-slate-700">
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
-                disabled={currentPage === totalPages}
-                className="p-1.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
-                title="Next Page"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+          <PaginationBar meta={{ totalPages, total: filteredTransfers.length, page: currentPage }} page={currentPage} setPage={setCurrentPage} pageSize={pageSize} setPageSize={setPageSize} />
         </>
       )}
     </div>
@@ -1801,6 +1801,7 @@ const Organizations = () => {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [orgModal, setOrgModal] = useState<any>(null);
+  const [welcomeKitOrgId, setWelcomeKitOrgId] = useState<string | null>(null);
 
   // New state for collapsible left sidebar and tree expansions
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -2000,13 +2001,16 @@ const Organizations = () => {
     });
   }, [orgs, expandedIds, debouncedSearch]);
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (!orgs || orgs.length === 0) {
       alert('No organizations available to export.');
       return;
     }
 
     try {
+      const xlsxMod = await import('xlsx-js-style');
+      const XLSX = xlsxMod.default || xlsxMod;
+
       const rows = (debouncedSearch.trim() && orgRows.length > 0) ? orgRows : buildOrgRows(orgs);
       const orgMap = new Map(orgs.map((o: any) => [o.id, o]));
 
@@ -2327,6 +2331,14 @@ const Organizations = () => {
               </span>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setWelcomeKitOrgId(selected.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors shadow-xs cursor-pointer"
+                title="View Digital Onboarding Pass & Activation Certificate"
+              >
+                <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="hidden sm:inline">Welcome Pass</span>
+              </button>
               <button onClick={() => setRefreshTrigger(p => p + 1)} className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center bg-white shadow-sm" title="Refresh Tab">
                 <RotateCcw className="w-4 h-4 text-slate-500" />
               </button>
@@ -2348,7 +2360,13 @@ const Organizations = () => {
 
           {/* Tab Content */}
           <div className="flex-1 overflow-y-auto" key={activeTab + '_' + refreshTrigger}>
-            {activeTab === 'Details' && <DetailsTab org={selected} orgs={orgs} onEdit={() => setOrgModal(selected)} />}
+            {activeTab === 'Details' && (
+              <DetailsTab
+                org={selected}
+                orgs={orgs}
+                onEdit={() => setOrgModal(selected)}
+              />
+            )}
             {activeTab === 'Contacts' && <ContactsTab orgId={selected.id} />}
             {activeTab === 'Users' && <UsersTab orgId={selected.id} />}
             {activeTab === 'Addresses' && <AddressesTab orgId={selected.id} />}
@@ -2356,6 +2374,14 @@ const Organizations = () => {
             {activeTab === 'Credits' && <CreditsTab orgId={selected.id} org={selected} orgs={orgs} reload={() => fetchOrgs(true)} />}
           </div>
         </div>
+      )}
+
+      {welcomeKitOrgId && (
+        <WelcomeKitModal
+          isOpen={!!welcomeKitOrgId}
+          orgId={welcomeKitOrgId}
+          onClose={() => setWelcomeKitOrgId(null)}
+        />
       )}
     </div>
   );

@@ -190,7 +190,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
       appBar: AppBar(
         title: Text(
           'Recharge Credits',
-          style: GoogleFonts.outfit(
+          style: GoogleFonts.inter(
             fontWeight: FontWeight.bold,
             color: isDark ? Colors.white : const Color(0xFF0F172A),
           ),
@@ -242,7 +242,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
           const SizedBox(height: 24),
           Text(
             'Recharge Blocked',
-            style: GoogleFonts.outfit(
+            style: GoogleFonts.inter(
               fontSize: 24,
               fontWeight: FontWeight.bold,
               color: isDark ? Colors.white : const Color(0xFF0F172A),
@@ -254,7 +254,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
             child: Text(
               'Your organization does not have an active subscription license. Recharging credits requires a valid registered license.',
               textAlign: TextAlign.center,
-              style: GoogleFonts.outfit(
+              style: GoogleFonts.inter(
                 fontSize: 16,
                 color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                 height: 1.5,
@@ -276,7 +276,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
           Text(
             _errorMessage!,
             textAlign: TextAlign.center,
-            style: GoogleFonts.outfit(
+            style: GoogleFonts.inter(
               fontSize: 16,
               color: isDark ? Colors.white : const Color(0xFF0F172A),
             ),
@@ -311,7 +311,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
               children: [
                 Text(
                   'Select Recharge Package',
-                  style: GoogleFonts.outfit(
+                  style: GoogleFonts.inter(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: isDark ? Colors.white : const Color(0xFF0F172A),
@@ -320,7 +320,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                 const SizedBox(height: 6),
                 Text(
                   'Credits are instantly credited to your organization wallet upon verification.',
-                  style: GoogleFonts.outfit(
+                  style: GoogleFonts.inter(
                     fontSize: 14,
                     color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                   ),
@@ -364,7 +364,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
               children: [
                 Text(
                   pkg['name'] ?? '',
-                  style: GoogleFonts.outfit(
+                  style: GoogleFonts.inter(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                     color: isDisabled
@@ -375,7 +375,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                 const SizedBox(height: 4),
                 Text(
                   pkg['description'] ?? '',
-                  style: GoogleFonts.outfit(
+                  style: GoogleFonts.inter(
                     fontSize: 13,
                     color: isDisabled
                         ? (isDark ? const Color(0xFF94A3B8).withOpacity(0.4) : const Color(0xFF64748B).withOpacity(0.4))
@@ -397,7 +397,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                             : pkg['planType'] == 'LIFETIME'
                                 ? 'Lifetime Unlimited'
                                 : '${pkg['credits']} Cuts',
-                        style: GoogleFonts.outfit(
+                        style: GoogleFonts.inter(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: isDisabled ? themeColor.withOpacity(0.4) : themeColor,
@@ -415,7 +415,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
             children: [
               Text(
                 '₹${pkg['price']}',
-                style: GoogleFonts.outfit(
+                style: GoogleFonts.inter(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
                   color: isDisabled
@@ -444,7 +444,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                       )
                     : Text(
                         'Pay',
-                        style: GoogleFonts.outfit(
+                        style: GoogleFonts.inter(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: isDisabled ? Colors.grey.shade500 : Colors.white,
