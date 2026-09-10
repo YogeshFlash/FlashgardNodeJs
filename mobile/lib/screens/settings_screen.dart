@@ -73,10 +73,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(isUsb ? Icons.usb_rounded : Icons.bluetooth_connected, size: 12, color: color),
+          Icon(isUsb ? Icons.cable_rounded : Icons.bluetooth_connected, size: 12, color: color),
           const SizedBox(width: 4),
           Text(
-            isUsb ? 'USB Cable' : 'Connected',
+            isUsb ? 'OTG' : 'Connected',
             style: TextStyle(
               fontSize: 10, 
               color: color,
@@ -171,8 +171,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     subtitle: Text(
                       _isConnected 
-                        ? 'Connected to ${_connectedName ?? _connectedAddress ?? 'Unknown'} (${_plotterService.isUsbPlotter ? "USB Cable" : "Bluetooth"})' 
-                        : 'Tap to connect via USB OTG cable or Bluetooth',
+                        ? 'Connected to ${_connectedName ?? _connectedAddress ?? 'Unknown'} (${_plotterService.isUsbPlotter ? "OTG" : "Bluetooth"})' 
+                        : 'Tap to connect via OTG or Bluetooth',
                       style: TextStyle(color: const Color(0xFF0F172A).withOpacity(0.6), fontWeight: FontWeight.w500),
                     ),
                     trailing: const Icon(Icons.chevron_right, color: Colors.grey),

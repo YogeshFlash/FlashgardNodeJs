@@ -266,9 +266,7 @@ class _PlotterConnectionSheetState extends State<PlotterConnectionSheet>
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
-                  isConnected
-                      ? (isOtg ? Icons.cable_rounded : Icons.bluetooth_connected_rounded)
-                      : Icons.print_outlined,
+                  isConnected ? Icons.print_rounded : Icons.print_outlined,
                   color: isConnected ? const Color(0xFF10B981) : theme.colorScheme.primary,
                   size: 20,
                 ),

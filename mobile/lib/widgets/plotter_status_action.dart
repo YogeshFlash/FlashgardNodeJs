@@ -12,31 +12,41 @@ class PlotterStatusAction extends StatelessWidget {
     final isConnected = plotterService.connectedAddress != null;
     final theme = Theme.of(context);
 
+    final isOtg = plotterService.isUsbPlotter;
+    final Color statusColor = isConnected
+        ? (isOtg ? Colors.purple : const Color(0xFF10B981))
+        : theme.colorScheme.onSurface.withOpacity(0.6);
+
     return Container(
       margin: const EdgeInsets.only(right: 8),
       child: IconButton(
         icon: Stack(
+          clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
+            // Plotter machine icon representing both OTG & Bluetooth connection
             Icon(
-              isConnected
-                  ? (plotterService.isUsbPlotter ? Icons.usb_rounded : Icons.bluetooth_connected)
-                  : Icons.cable_rounded,
-              color: isConnected
-                  ? (plotterService.isUsbPlotter ? Colors.purple : Colors.green)
-                  : theme.colorScheme.onSurface.withOpacity(0.5),
+              Icons.print_rounded,
+              color: statusColor,
               size: 24,
             ),
             if (isConnected)
               Positioned(
-                top: 0,
-                right: 0,
+                top: -2,
+                right: -4,
                 child: Container(
-                  width: 8,
-                  height: 8,
+                  padding: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
-                    color: plotterService.isUsbPlotter ? Colors.purple : Colors.green,
+                    color: theme.colorScheme.surface,
                     shape: BoxShape.circle,
+                  ),
+                  child: Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(
+                      color: isOtg ? Colors.purple : const Color(0xFF10B981),
+                      shape: BoxShape.circle,
+                    ),
                   ),
                 ),
               ),
