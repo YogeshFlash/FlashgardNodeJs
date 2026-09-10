@@ -43,8 +43,8 @@ class PlotterStatusAction extends StatelessWidget {
           ],
         ),
         tooltip: isConnected
-            ? 'Plotter: ${plotterService.connectedName} (${plotterService.isUsbPlotter ? "USB OTG" : "Bluetooth"})'
-            : 'Plotter disconnected (Tap to connect USB / Bluetooth)',
+            ? 'Plotter: ${plotterService.connectedName} (${plotterService.isUsbPlotter ? "OTG" : "Bluetooth"})'
+            : 'Plotter disconnected (Tap to connect OTG / Bluetooth)',
         onPressed: () {
           showModalBottomSheet(
             context: context,
