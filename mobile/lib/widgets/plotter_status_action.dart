@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/plotter_service.dart';
+import 'cutting_plotter_icon.dart';
 import 'plotter_connection_sheet.dart';
 
 class PlotterStatusAction extends StatelessWidget {
@@ -24,11 +25,11 @@ class PlotterStatusAction extends StatelessWidget {
           clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
-            // Plotter machine icon representing both OTG & Bluetooth connection
-            Icon(
-              Icons.print_rounded,
-              color: statusColor,
+            // Authentic cutting plotter machine icon with blade & carriage
+            CuttingPlotterIcon(
               size: 24,
+              color: statusColor,
+              isConnected: isConnected,
             ),
             if (isConnected)
               Positioned(

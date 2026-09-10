@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/plotter_service.dart';
+import 'cutting_plotter_icon.dart';
 
 class PlotterConnectionSheet extends StatefulWidget {
   const PlotterConnectionSheet({super.key});
@@ -265,10 +266,10 @@ class _PlotterConnectionSheetState extends State<PlotterConnectionSheet>
                       : theme.colorScheme.primary.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  isConnected ? Icons.print_rounded : Icons.print_outlined,
-                  color: isConnected ? const Color(0xFF10B981) : theme.colorScheme.primary,
+                child: CuttingPlotterIcon(
                   size: 20,
+                  color: isConnected ? const Color(0xFF10B981) : theme.colorScheme.primary,
+                  isConnected: isConnected,
                 ),
               ),
               const SizedBox(width: 10),

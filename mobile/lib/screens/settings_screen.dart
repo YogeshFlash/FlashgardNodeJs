@@ -8,6 +8,7 @@ import '../services/plotter_service.dart';
 import '../services/api_service.dart';
 import '../widgets/plotter_status_action.dart';
 import '../widgets/plotter_connection_sheet.dart';
+import '../widgets/cutting_plotter_icon.dart';
 import '../widgets/server_config_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -151,9 +152,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         color: (_isConnected ? (_plotterService.isUsbPlotter ? Colors.purple : Colors.green) : const Color(0xFFCE1D19)).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(
-                        _isConnected ? (_plotterService.isUsbPlotter ? Icons.usb_rounded : Icons.print_rounded) : Icons.print_outlined,
+                      child: CuttingPlotterIcon(
+                        size: 22,
                         color: _isConnected ? (_plotterService.isUsbPlotter ? Colors.purple : Colors.green) : const Color(0xFFCE1D19),
+                        isConnected: _isConnected,
                       ),
                     ),
                     title: Row(
